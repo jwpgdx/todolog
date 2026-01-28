@@ -126,3 +126,40 @@ export const updateTempIdToRealId = async (tempId, realId) => {
         throw error;
     }
 };
+
+/**
+ * Pending Changes에서 특정 tempId를 실제 ID로 일괄 업데이트
+ * CREATE 성공 후 해당 tempId를 참조하는 모든 pending changes 업데이트
+ * @param {string} tempId - 임시 ID
+ * @param {string} realId - 서버에서 받은 실제 ID
+ */
+export const replaceTempIdInPending = async (tempId, realId) => {
+    try {
+        const pending = await getPendingChanges();
+        let updateCount = 0;
+        
+        const updated = pending.map(p => {
+            // todoId가 tempId인 경우 (update/delete)
+            if (p.todoId === tempId) {
+                updateCount++;
+                return { ...p, todoId: realId };
+            }
+            // tempId 필드가 있는 경우 (create)
+            if (p.tempId === tempId) {
+                updateCount++;
+                return { ...p, tempId: undefined, todoId: realId };
+            }
+            return p;
+        });
+        
+        if (updateCount > 0) {
+            await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
+            console.log(`✅ [pendingChanges] tempId 교체 완료: ${tempId} → ${realId} (${updateCount}개)`);
+        }
+        
+        return updateCount;
+    } catch (error) {
+        console.error('❌ [pendingChanges] tempId 교체 실패:', error);
+        throw error;
+    }
+};

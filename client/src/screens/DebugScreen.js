@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Platform } from 'react-native';
 import { useQueryClient } from '@tanstack/react-query';
 import { todoAPI } from '../api/todos';
 import { loadTodos, saveTodos, upsertTodo, removeTodo } from '../storage/todoStorage';
-import { getPendingChanges, addPendingChange, clearPendingChanges } from '../storage/pendingChangesStorage';
+import { getPendingChanges, addPendingChange, clearPendingChanges, replaceTempIdInPending } from '../storage/pendingChangesStorage';
 import NetInfo from '@react-native-community/netinfo';
 
 export default function DebugScreen() {
@@ -337,13 +337,32 @@ export default function DebugScreen() {
       for (const change of pending) {
         try {
           if (change.type === 'create') {
-            await todoAPI.createTodo(change.data);
+            const res = await todoAPI.createTodo(change.data);
             await removeTodo(change.tempId);
+            await upsertTodo(res.data);
+            
+            // 다른 pending changes에서 이 tempId를 참조하는 경우 실제 ID로 교체
+            await replaceTempIdInPending(change.tempId, res.data._id);
+            
             success++;
           } else if (change.type === 'delete') {
+            // tempId인 경우 스킵 (로컬에서만 삭제)
+            if (change.todoId && change.todoId.startsWith('temp_')) {
+              addLog(`⏭️ tempId 삭제 스킵: ${change.todoId}`);
+              success++;
+              continue;
+            }
+            
             await todoAPI.deleteTodo(change.todoId);
             success++;
           } else if (change.type === 'update') {
+            // tempId인 경우 스킵 (이미 create에서 처리됨)
+            if (change.todoId && change.todoId.startsWith('temp_')) {
+              addLog(`⏭️ tempId 수정 스킵: ${change.todoId}`);
+              success++;
+              continue;
+            }
+            
             await todoAPI.updateTodo(change.todoId, change.data);
             success++;
           }
@@ -410,8 +429,8 @@ export default function DebugScreen() {
         isAllDay: true,
         startDate: '2026-01-27',
         endDate: '2026-01-27',
-        frequency: 'daily',
-        recurrenceEndDate: '2026-02-10', // 2주간
+        recurrence: ['RRULE:FREQ=DAILY;UNTIL=20260210T235959Z'],
+        recurrenceEndDate: '2026-02-10',
         userTimeZone: 'Asia/Seoul',
       };
 
@@ -440,9 +459,8 @@ export default function DebugScreen() {
         isAllDay: true,
         startDate: '2026-01-27',
         endDate: '2026-01-27',
-        frequency: 'weekly',
-        weekdays: [1, 3, 5], // 월, 수, 금
-        recurrenceEndDate: '2026-03-01', // 1개월간
+        recurrence: ['RRULE:FREQ=WEEKLY;BYDAY=MO,WE,FR;UNTIL=20260301T235959Z'],
+        recurrenceEndDate: '2026-03-01',
         userTimeZone: 'Asia/Seoul',
       };
 
@@ -466,14 +484,13 @@ export default function DebugScreen() {
       }
 
       const newTodo = {
-        title: `매월 1일, 15일 ${new Date().toLocaleTimeString()}`,
+        title: `매월 27일 ${new Date().toLocaleTimeString()}`,
         categoryId: '6974f9574a71170933652243',
         isAllDay: true,
         startDate: '2026-01-27',
         endDate: '2026-01-27',
-        frequency: 'monthly',
-        dayOfMonth: [1, 15], // 매월 1일, 15일
-        recurrenceEndDate: '2026-06-30', // 6개월간
+        recurrence: ['RRULE:FREQ=MONTHLY;BYMONTHDAY=27;UNTIL=20260630T235959Z'],
+        recurrenceEndDate: '2026-06-30',
         userTimeZone: 'Asia/Seoul',
       };
 
@@ -481,7 +498,7 @@ export default function DebugScreen() {
       await upsertTodo(response.data);
       queryClient.invalidateQueries({ queryKey: ['todos'] });
       
-      addLog(`✅ 매월 반복 생성: ${response.data.title} (1일, 15일)`);
+      addLog(`✅ 매월 반복 생성: ${response.data.title} (27일)`);
     } catch (error) {
       addLog(`❌ 매월 반복 생성 실패: ${error.message}`);
     }
@@ -502,8 +519,8 @@ export default function DebugScreen() {
         isAllDay: true,
         startDate: '2026-01-27',
         endDate: '2026-01-27',
-        frequency: 'yearly',
-        yearlyDate: '01-27', // MM-DD
+        recurrence: ['RRULE:FREQ=YEARLY;BYMONTH=1;BYMONTHDAY=27'],
+        recurrenceEndDate: null,
         userTimeZone: 'Asia/Seoul',
       };
 
@@ -517,8 +534,8 @@ export default function DebugScreen() {
     }
   };
 
-  // 16. 반복 일정 수정 - 이 일정만
-  const updateSingleOccurrence = async () => {
+  // 16. 반복 일정 수정 - 모든 일정
+  const updateRecurringTodo = async () => {
     try {
       const netInfo = await NetInfo.fetch();
       if (!netInfo.isConnected) {
@@ -527,7 +544,11 @@ export default function DebugScreen() {
       }
 
       const allTodos = await loadTodos();
-      const recurringTodo = allTodos.find(todo => todo.frequency && todo.frequency !== 'none');
+      const recurringTodo = allTodos.find(todo => 
+        todo.recurrence && 
+        Array.isArray(todo.recurrence) && 
+        todo.recurrence.length > 0
+      );
       
       if (!recurringTodo) {
         addLog(`⚠️ 반복 일정 없음`);
@@ -535,22 +556,21 @@ export default function DebugScreen() {
       }
 
       const updatedData = {
-        title: `${recurringTodo.title} (단일 수정)`,
-        updateType: 'single',
-        occurrenceDate: '2026-01-27',
+        title: `${recurringTodo.title} (수정됨)`,
       };
 
       const response = await todoAPI.updateTodo(recurringTodo._id, updatedData);
+      await upsertTodo(response.data);
       queryClient.invalidateQueries({ queryKey: ['todos'] });
       
-      addLog(`✅ 단일 일정 수정: ${response.data.title}`);
+      addLog(`✅ 반복 일정 수정: ${response.data.title}`);
     } catch (error) {
-      addLog(`❌ 단일 일정 수정 실패: ${error.message}`);
+      addLog(`❌ 반복 일정 수정 실패: ${error.message}`);
     }
   };
 
-  // 17. 반복 일정 수정 - 모든 일정
-  const updateAllOccurrences = async () => {
+  // 17. 반복 일정 삭제 - 모든 일정
+  const deleteRecurringTodo = async () => {
     try {
       const netInfo = await NetInfo.fetch();
       if (!netInfo.isConnected) {
@@ -559,106 +579,319 @@ export default function DebugScreen() {
       }
 
       const allTodos = await loadTodos();
-      const recurringTodo = allTodos.find(todo => todo.frequency && todo.frequency !== 'none');
+      const recurringTodo = allTodos.find(todo => 
+        todo.recurrence && 
+        Array.isArray(todo.recurrence) && 
+        todo.recurrence.length > 0
+      );
       
       if (!recurringTodo) {
         addLog(`⚠️ 반복 일정 없음`);
         return;
       }
 
-      const updatedData = {
-        title: `${recurringTodo.title} (전체 수정)`,
-        updateType: 'all',
-      };
-
-      const response = await todoAPI.updateTodo(recurringTodo._id, updatedData);
-      queryClient.invalidateQueries({ queryKey: ['todos'] });
-      
-      addLog(`✅ 전체 일정 수정: ${response.data.title}`);
-    } catch (error) {
-      addLog(`❌ 전체 일정 수정 실패: ${error.message}`);
-    }
-  };
-
-  // 18. 반복 일정 삭제 - 이 일정만
-  const deleteSingleOccurrence = async () => {
-    try {
-      const netInfo = await NetInfo.fetch();
-      if (!netInfo.isConnected) {
-        addLog(`⚠️ 오프라인 상태 - 서버 연결 필요`);
-        return;
-      }
-
-      const allTodos = await loadTodos();
-      const recurringTodo = allTodos.find(todo => todo.frequency && todo.frequency !== 'none');
-      
-      if (!recurringTodo) {
-        addLog(`⚠️ 반복 일정 없음`);
-        return;
-      }
-
-      await todoAPI.deleteTodo(recurringTodo._id, {
-        deleteType: 'single',
-        occurrenceDate: '2026-01-27',
-      });
-      
-      queryClient.invalidateQueries({ queryKey: ['todos'] });
-      
-      addLog(`✅ 단일 일정 삭제: ${recurringTodo.title} (2026-01-27)`);
-    } catch (error) {
-      addLog(`❌ 단일 일정 삭제 실패: ${error.message}`);
-    }
-  };
-
-  // 19. 반복 일정 삭제 - 모든 일정
-  const deleteAllOccurrences = async () => {
-    try {
-      const netInfo = await NetInfo.fetch();
-      if (!netInfo.isConnected) {
-        addLog(`⚠️ 오프라인 상태 - 서버 연결 필요`);
-        return;
-      }
-
-      const allTodos = await loadTodos();
-      const recurringTodo = allTodos.find(todo => todo.frequency && todo.frequency !== 'none');
-      
-      if (!recurringTodo) {
-        addLog(`⚠️ 반복 일정 없음`);
-        return;
-      }
-
-      await todoAPI.deleteTodo(recurringTodo._id, {
-        deleteType: 'all',
-      });
-      
+      await todoAPI.deleteTodo(recurringTodo._id);
       await removeTodo(recurringTodo._id);
       queryClient.invalidateQueries({ queryKey: ['todos'] });
       
-      addLog(`✅ 전체 일정 삭제: ${recurringTodo.title}`);
+      addLog(`✅ 반복 일정 삭제: ${recurringTodo.title}`);
     } catch (error) {
-      addLog(`❌ 전체 일정 삭제 실패: ${error.message}`);
+      addLog(`❌ 반복 일정 삭제 실패: ${error.message}`);
     }
   };
 
-  // 20. 전체 초기화
+  // 18. 강제 전체 동기화 (델타 무시)
+  const forceFullSync = async () => {
+    try {
+      const netInfo = await NetInfo.fetch();
+      if (!netInfo.isConnected) {
+        addLog(`⚠️ 오프라인 상태 - 서버 연결 필요`);
+        return;
+      }
+
+      addLog(`🔄 강제 전체 동기화 시작...`);
+      const response = await todoAPI.getAllTodos();
+      const allTodos = response.data;
+
+      await saveTodos(allTodos);
+      queryClient.setQueryData(['todos', 'all'], allTodos);
+      
+      // 날짜별 캐시도 업데이트
+      const todosForDate = allTodos.filter(todo => {
+        if (todo.isAllDay) {
+          const todoStart = todo.startDate;
+          const todoEnd = todo.endDate || todo.startDate;
+          return '2026-01-27' >= todoStart && '2026-01-27' <= todoEnd;
+        } else if (todo.startDateTime) {
+          const todoDateStr = todo.startDateTime.split('T')[0];
+          return todoDateStr === '2026-01-27';
+        }
+        return false;
+      });
+      queryClient.setQueryData(['todos', '2026-01-27'], todosForDate);
+
+      addLog(`✅ 강제 전체 동기화 완료: ${allTodos.length}개 (날짜별 ${todosForDate.length}개)`);
+    } catch (error) {
+      addLog(`❌ 강제 전체 동기화 실패: ${error.message}`);
+    }
+  };
+
+  // 19. 캐시 vs 로컬 저장소 비교
+  const compareCacheAndStorage = async () => {
+    try {
+      const localTodos = await loadTodos();
+      const cachedTodos = queryClient.getQueryData(['todos', 'all']) || [];
+      
+      const localIds = new Set(localTodos.map(t => t._id));
+      const cachedIds = new Set(cachedTodos.map(t => t._id));
+      
+      const onlyInLocal = localTodos.filter(t => !cachedIds.has(t._id));
+      const onlyInCache = cachedTodos.filter(t => !localIds.has(t._id));
+      
+      addLog(`📊 로컬: ${localTodos.length}개, 캐시: ${cachedTodos.length}개`);
+      if (onlyInLocal.length > 0) {
+        addLog(`⚠️ 로컬에만 있음: ${onlyInLocal.length}개`);
+      }
+      if (onlyInCache.length > 0) {
+        addLog(`⚠️ 캐시에만 있음: ${onlyInCache.length}개`);
+      }
+      if (onlyInLocal.length === 0 && onlyInCache.length === 0) {
+        addLog(`✅ 로컬과 캐시 일치`);
+      }
+    } catch (error) {
+      addLog(`❌ 비교 실패: ${error.message}`);
+    }
+  };
+
+  // 20. 동시 수정 충돌 시뮬레이션
+  const simulateConflict = async () => {
+    try {
+      const allTodos = await loadTodos();
+      const todosForDate = allTodos.filter(todo => {
+        if (todo.isAllDay) {
+          const todoStart = todo.startDate;
+          const todoEnd = todo.endDate || todo.startDate;
+          return '2026-01-27' >= todoStart && '2026-01-27' <= todoEnd;
+        }
+        return false;
+      });
+
+      if (todosForDate.length === 0) {
+        addLog(`⚠️ 테스트할 일정 없음`);
+        return;
+      }
+
+      const todo = todosForDate[0];
+      
+      // 1. 로컬에서 수정
+      const localUpdate = {
+        ...todo,
+        title: `${todo.title} (로컬수정)`,
+        updatedAt: new Date().toISOString(),
+      };
+      await upsertTodo(localUpdate);
+      addLog(`📝 로컬 수정: ${localUpdate.title}`);
+
+      // 2. 서버에서도 수정 (다른 내용)
+      const netInfo = await NetInfo.fetch();
+      if (netInfo.isConnected) {
+        await todoAPI.updateTodo(todo._id, {
+          title: `${todo.title} (서버수정)`,
+        });
+        addLog(`📝 서버 수정: ${todo.title} (서버수정)`);
+        
+        // 3. 델타 동기화로 충돌 확인
+        addLog(`⚠️ 충돌 발생! 델타 동기화로 서버 버전이 우선됩니다.`);
+      } else {
+        addLog(`⚠️ 오프라인 - 서버 수정 불가`);
+      }
+    } catch (error) {
+      addLog(`❌ 충돌 시뮬레이션 실패: ${error.message}`);
+    }
+  };
+
+  // 21. 대량 데이터 생성 (성능 테스트)
+  const createBulkTodos = async () => {
+    try {
+      const netInfo = await NetInfo.fetch();
+      if (!netInfo.isConnected) {
+        addLog(`⚠️ 오프라인 상태 - 서버 연결 필요`);
+        return;
+      }
+
+      addLog(`🔄 대량 생성 시작 (10개)...`);
+      const promises = [];
+      
+      for (let i = 0; i < 10; i++) {
+        const newTodo = {
+          title: `대량테스트 ${i + 1}`,
+          categoryId: '6974f9574a71170933652243',
+          isAllDay: true,
+          startDate: '2026-01-27',
+          endDate: '2026-01-27',
+        };
+        promises.push(todoAPI.createTodo(newTodo));
+      }
+
+      const results = await Promise.all(promises);
+      
+      for (const res of results) {
+        await upsertTodo(res.data);
+      }
+      
+      queryClient.invalidateQueries({ queryKey: ['todos'] });
+      addLog(`✅ 대량 생성 완료: ${results.length}개`);
+    } catch (error) {
+      addLog(`❌ 대량 생성 실패: ${error.message}`);
+    }
+  };
+
+  // 22. 반복 일정 발생 확인 (특정 날짜)
+  const checkRecurrenceOccurrence = async () => {
+    try {
+      const allTodos = await loadTodos();
+      const recurringTodos = allTodos.filter(todo => 
+        todo.recurrence && 
+        Array.isArray(todo.recurrence) && 
+        todo.recurrence.length > 0
+      );
+      
+      if (recurringTodos.length === 0) {
+        addLog(`⚠️ 반복 일정 없음`);
+        return;
+      }
+
+      const testDate = '2026-01-27';
+      addLog(`📅 ${testDate} 반복 일정 확인:`);
+      
+      recurringTodos.forEach(todo => {
+        const rrule = todo.recurrence[0] || '';
+        const endDate = todo.recurrenceEndDate 
+          ? new Date(todo.recurrenceEndDate).toISOString().split('T')[0]
+          : '무제한';
+        addLog(`  - ${todo.title}: ${rrule.substring(0, 50)}...`);
+        addLog(`    시작: ${todo.startDate}, 종료: ${endDate}`);
+      });
+      
+      addLog(`✅ 총 ${recurringTodos.length}개 반복 일정`);
+    } catch (error) {
+      addLog(`❌ 반복 일정 확인 실패: ${error.message}`);
+    }
+  };
+
+  // 23. 전체 초기화
   const resetAll = async () => {
-    Alert.alert(
-      '전체 초기화',
-      '로컬 저장소와 Pending Changes를 모두 삭제하시겠습니까?',
-      [
-        { text: '취소', style: 'cancel' },
-        {
-          text: '초기화',
-          style: 'destructive',
-          onPress: async () => {
-            await saveTodos([]);
-            await clearPendingChanges();
-            queryClient.clear();
-            addLog(`🗑️ 전체 초기화 완료`);
+    addLog(`⚠️ 전체 초기화 확인 중...`);
+    
+    if (Platform.OS === 'web') {
+      // 웹 환경
+      const confirmed = window.confirm('로컬 저장소와 Pending Changes를 모두 삭제하시겠습니까?');
+      if (confirmed) {
+        try {
+          addLog(`🔄 초기화 시작...`);
+          await saveTodos([]);
+          await clearPendingChanges();
+          queryClient.clear();
+          addLog(`🗑️ 전체 초기화 완료`);
+        } catch (error) {
+          addLog(`❌ 초기화 실패: ${error.message}`);
+        }
+      } else {
+        addLog(`❌ 초기화 취소됨`);
+      }
+    } else {
+      // 모바일 환경
+      Alert.alert(
+        '전체 초기화',
+        '로컬 저장소와 Pending Changes를 모두 삭제하시겠습니까?',
+        [
+          { 
+            text: '취소', 
+            style: 'cancel',
+            onPress: () => addLog(`❌ 초기화 취소됨`)
           },
-        },
-      ]
-    );
+          {
+            text: '초기화',
+            style: 'destructive',
+            onPress: async () => {
+              try {
+                addLog(`🔄 초기화 시작...`);
+                await saveTodos([]);
+                await clearPendingChanges();
+                queryClient.clear();
+                addLog(`🗑️ 전체 초기화 완료`);
+              } catch (error) {
+                addLog(`❌ 초기화 실패: ${error.message}`);
+              }
+            },
+          },
+        ]
+      );
+    }
+  };
+
+  // 24. 캐시만 클리어 (AsyncStorage는 유지)
+  const clearCacheOnly = async () => {
+    try {
+      addLog(`🔄 캐시 클리어 시작...`);
+      queryClient.clear();
+      
+      const localTodos = await loadTodos();
+      addLog(`✅ 캐시 클리어 완료 (로컬: ${localTodos.length}개 유지)`);
+    } catch (error) {
+      addLog(`❌ 캐시 클리어 실패: ${error.message}`);
+    }
+  };
+
+  // 25. 오프라인 최초 실행 시뮬레이션
+  const simulateOfflineFirstLaunch = async () => {
+    try {
+      addLog(`🧪 오프라인 최초 실행 시뮬레이션 시작`);
+      
+      // 1. 네트워크 상태 확인
+      const netInfo = await NetInfo.fetch();
+      addLog(`1️⃣ 네트워크: ${netInfo.isConnected ? '온라인' : '오프라인'}`);
+      
+      if (netInfo.isConnected) {
+        addLog(`⚠️ 경고: 네트워크가 온라인입니다. 오프라인으로 전환하세요.`);
+      }
+      
+      // 2. AsyncStorage 확인
+      const localTodos = await loadTodos();
+      addLog(`2️⃣ AsyncStorage: ${localTodos.length}개 할일`);
+      
+      if (localTodos.length === 0) {
+        addLog(`⚠️ 경고: AsyncStorage가 비어있습니다. 먼저 데이터를 동기화하세요.`);
+        return;
+      }
+      
+      // 3. React Query 캐시 확인
+      const cachedTodos = queryClient.getQueryData(['todos', '2026-01-27']);
+      addLog(`3️⃣ React Query 캐시: ${cachedTodos?.length || 0}개`);
+      
+      // 4. 캐시 클리어
+      addLog(`4️⃣ 캐시 클리어 중...`);
+      queryClient.clear();
+      
+      // 5. 캐시 클리어 후 확인
+      const cachedAfterClear = queryClient.getQueryData(['todos', '2026-01-27']);
+      addLog(`5️⃣ 캐시 클리어 후: ${cachedAfterClear?.length || 0}개`);
+      
+      // 6. useTodos 시뮬레이션 (서버 요청 실패 시나리오)
+      addLog(`6️⃣ useTodos 시뮬레이션 (서버 요청 실패)`);
+      const cachedData = queryClient.getQueryData(['todos', '2026-01-27']);
+      if (cachedData) {
+        addLog(`   ✅ 캐시에서 데이터 반환: ${cachedData.length}개`);
+      } else {
+        addLog(`   ❌ 캐시 없음 → 빈 배열 반환`);
+        addLog(`   🔍 AsyncStorage 확인 필요!`);
+      }
+      
+      addLog(`✅ 시뮬레이션 완료`);
+      addLog(`📝 결과: ${cachedData ? '정상' : '문제 발견 - 캐시 없음'}`);
+    } catch (error) {
+      addLog(`❌ 시뮬레이션 실패: ${error.message}`);
+    }
   };
 
   return (
@@ -719,6 +952,11 @@ export default function DebugScreen() {
         </TouchableOpacity>
 
         <View style={styles.divider} />
+        <Text style={styles.sectionTitle}>🧹 정리</Text>
+
+        <TouchableOpacity style={[styles.button, styles.infoButton]} onPress={clearCacheOnly}>
+          <Text style={styles.buttonText}>💾 캐시만 클리어</Text>
+        </TouchableOpacity>
 
         <TouchableOpacity style={[styles.button, styles.dangerButton]} onPress={resetAll}>
           <Text style={styles.buttonText}>🗑️ 전체 초기화</Text>
@@ -745,22 +983,42 @@ export default function DebugScreen() {
 
         <View style={styles.divider} />
 
-        <TouchableOpacity style={[styles.button, styles.updateButton]} onPress={updateSingleOccurrence}>
-          <Text style={styles.buttonText}>📝 이 일정만 수정</Text>
+        <TouchableOpacity style={[styles.button, styles.updateButton]} onPress={updateRecurringTodo}>
+          <Text style={styles.buttonText}>📝 반복 일정 수정</Text>
         </TouchableOpacity>
 
-        <TouchableOpacity style={[styles.button, styles.updateButton]} onPress={updateAllOccurrences}>
-          <Text style={styles.buttonText}>📝 모든 일정 수정</Text>
+        <TouchableOpacity style={[styles.button, styles.deleteButton]} onPress={deleteRecurringTodo}>
+          <Text style={styles.buttonText}>🗑️ 반복 일정 삭제</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity style={[styles.button, styles.infoButton]} onPress={checkRecurrenceOccurrence}>
+          <Text style={styles.buttonText}>📅 반복 일정 발생 확인</Text>
         </TouchableOpacity>
 
         <View style={styles.divider} />
+        <Text style={styles.sectionTitle}>🧪 고급 테스트</Text>
 
-        <TouchableOpacity style={[styles.button, styles.deleteButton]} onPress={deleteSingleOccurrence}>
-          <Text style={styles.buttonText}>🗑️ 이 일정만 삭제</Text>
+        <TouchableOpacity style={[styles.button, styles.syncButton]} onPress={forceFullSync}>
+          <Text style={styles.buttonText}>🔄 강제 전체 동기화</Text>
         </TouchableOpacity>
 
-        <TouchableOpacity style={[styles.button, styles.deleteButton]} onPress={deleteAllOccurrences}>
-          <Text style={styles.buttonText}>🗑️ 모든 일정 삭제</Text>
+        <TouchableOpacity style={[styles.button, styles.infoButton]} onPress={compareCacheAndStorage}>
+          <Text style={styles.buttonText}>📊 캐시 vs 로컬 비교</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity style={[styles.button, styles.warningButton]} onPress={simulateConflict}>
+          <Text style={styles.buttonText}>⚠️ 동시 수정 충돌</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity style={[styles.button, styles.createButton]} onPress={createBulkTodos}>
+          <Text style={styles.buttonText}>📦 대량 생성 (10개)</Text>
+        </TouchableOpacity>
+
+        <View style={styles.divider} />
+        <Text style={styles.sectionTitle}>🧪 오프라인 테스트</Text>
+
+        <TouchableOpacity style={[styles.button, styles.warningButton]} onPress={simulateOfflineFirstLaunch}>
+          <Text style={styles.buttonText}>📵 오프라인 최초 실행</Text>
         </TouchableOpacity>
       </ScrollView>
 
@@ -815,6 +1073,12 @@ const styles = StyleSheet.create({
   },
   recurrenceButton: {
     backgroundColor: '#AF52DE',
+  },
+  infoButton: {
+    backgroundColor: '#00C7BE',
+  },
+  warningButton: {
+    backgroundColor: '#FF9500',
   },
   buttonText: {
     color: 'white',

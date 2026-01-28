@@ -27,7 +27,7 @@ const api = axios.create({
   headers: {
     'Content-Type': 'application/json',
   },
-  timeout: 10000,
+  timeout: 5000, // 5초 타임아웃 (오프라인 대기 시간 단축)
 });
 
 let logoutHandler = null;

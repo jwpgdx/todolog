@@ -21,6 +21,7 @@ import {
     getPendingChanges,
     removePendingChange,
     clearPendingChanges,
+    replaceTempIdInPending,
 } from '../storage/pendingChangesStorage';
 
 /**
@@ -42,129 +43,23 @@ export const useSyncTodos = () => {
 
     /**
      * 로컬 데이터를 TanStack Query 캐시에 주입
+     * [최적화] 전체 캐시만 주입, 일별/월별은 필요할 때 필터링
      */
     const populateCache = useCallback((todos) => {
+        const startTime = performance.now();
+        
         if (!todos || todos.length === 0) {
-            console.log('⚠️ [useSyncTodos.populateCache] 데이터 없음 - 캐시 주입 스킵');
+            console.log('⚠️ [useSyncTodos.populateCache] 데이터 없음');
             return;
         }
 
-        console.log('📦 [useSyncTodos.populateCache] 캐시 주입 시작:', todos.length, '개 항목');
-        console.log('📦 [useSyncTodos.populateCache] 샘플 데이터:', todos.slice(0, 2).map(t => ({
-            id: t._id,
-            title: t.title,
-            startDate: t.startDate,
-            recurrence: t.recurrence,
-            isAllDay: t.isAllDay
-        })));
-
-        // 월별로 그룹핑 (캠린더용)
-        const monthMap = {};
-        // 일별 그룹핑 (일간 리스트용) - 반복 일정 포함
-        const dateMap = {};
-
-        // 오늘 기준 전후 3개월 범위 계산 (반복 일정 일별 캐시용)
-        const today = new Date();
-        const rangeStart = new Date(today);
-        rangeStart.setMonth(today.getMonth() - 3);
-        const rangeEnd = new Date(today);
-        rangeEnd.setMonth(today.getMonth() + 3);
-
-        todos.forEach(todo => {
-            if (!todo.startDate) {
-                console.log('⚠️ [useSyncTodos.populateCache] startDate 없음:', todo._id, todo.title);
-                return;
-            }
-
-            const [year, month] = todo.startDate.split('-');
-            const monthKey = `${year}-${month}`;
-
-            // 월별 그룹핑
-            if (!monthMap[monthKey]) monthMap[monthKey] = [];
-            monthMap[monthKey].push(todo);
-
-            // 일별 그룹핑
-            if (!todo.recurrence) {
-                // 비반복 일정: startDate ~ endDate 모든 날짜에 추가
-                const startDate = new Date(todo.startDate);
-                const endDate = todo.endDate ? new Date(todo.endDate) : startDate;
-                let current = new Date(startDate);
-
-                while (current <= endDate) {
-                    const dateStr = current.toISOString().split('T')[0];
-                    if (!dateMap[dateStr]) dateMap[dateStr] = [];
-                    if (!dateMap[dateStr].find(t => t._id === todo._id)) {
-                        dateMap[dateStr].push(todo);
-                    }
-                    current.setDate(current.getDate() + 1);
-                }
-            } else {
-                // 반복 일정: occursOnDate로 범위 내 모든 날짜 체크
-                console.log('🔁 [useSyncTodos.populateCache] 반복 일정 처리:', todo.title, 'recurrence:', todo.recurrence, 'type:', typeof todo.recurrence, 'isArray:', Array.isArray(todo.recurrence));
-                
-                let current = new Date(rangeStart);
-                let occurrenceCount = 0;
-                
-                while (current <= rangeEnd) {
-                    const dateStr = current.toISOString().split('T')[0];
-                    
-                    if (occursOnDate(todo, dateStr)) {
-                        if (!dateMap[dateStr]) dateMap[dateStr] = [];
-                        if (!dateMap[dateStr].find(t => t._id === todo._id)) {
-                            dateMap[dateStr].push(todo);
-                            occurrenceCount++;
-                        }
-                    }
-                    
-                    current.setDate(current.getDate() + 1);
-                }
-                
-                console.log('✅ [useSyncTodos.populateCache] 반복 일정 주입 완료:', todo.title, '-', occurrenceCount, '개 날짜');
-            }
-
-            // 반복 일정은 여러 달에 걸쳐 수 있음 (월별 캐시용)
-            if (todo.recurrence && todo.recurrenceEndDate) {
-                const startDate = new Date(todo.startDate);
-                const endDate = new Date(todo.recurrenceEndDate);
-                let current = new Date(startDate);
-
-                while (current <= endDate) {
-                    const y = current.getFullYear();
-                    const m = current.getMonth() + 1;
-                    const k = `${y}-${String(m).padStart(2, '0')}`;
-
-                    if (!monthMap[k]) monthMap[k] = [];
-                    if (!monthMap[k].find(t => t._id === todo._id)) {
-                        monthMap[k].push(todo);
-                    }
-
-                    current.setMonth(current.getMonth() + 1);
-                }
-            }
-        });
-
-        // 월별 캐시 주입 (캠린더용)
-        Object.keys(monthMap).forEach(key => {
-            const [year, month] = key.split('-');
-            queryClient.setQueryData(
-                ['events', parseInt(year), parseInt(month)],
-                monthMap[key]
-            );
-        });
-
-        // 일별 캐시 주입 (홈 화면 리스트용)
-        Object.keys(dateMap).forEach(date => {
-            queryClient.setQueryData(['todos', date], dateMap[date]);
-        });
-
-        // 전체 캐시 주입 (CalendarScreen용)
+        console.log('📦 [useSyncTodos.populateCache] 캐시 주입:', todos.length, '개');
+        
+        // 전체 캐시만 주입 (빠름!)
         queryClient.setQueryData(['todos', 'all'], todos);
-
-        console.log('✅ [useSyncTodos.populateCache] 캐시 주입 완료:', {
-            월별: Object.keys(monthMap).length,
-            일별: Object.keys(dateMap).length,
-            전체: todos.length
-        });
+        
+        const endTime = performance.now();
+        console.log(`✅ [useSyncTodos.populateCache] 완료 (${(endTime - startTime).toFixed(2)}ms)`);
     }, [queryClient]);
 
     /**
@@ -187,15 +82,35 @@ export const useSyncTodos = () => {
                         // tempId 제거하고 서버 데이터 저장
                         await removeTodo(change.tempId);
                         await upsertTodo(createRes.data);
+                        
+                        // 다른 pending changes에서 이 tempId를 참조하는 경우 실제 ID로 교체
+                        await replaceTempIdInPending(change.tempId, createRes.data._id);
+                        
                         console.log('✅ [useSyncTodos] 서버 생성 완료, 로컬 저장:', createRes.data._id);
                         break;
 
                     case 'update':
+                        // tempId인 경우 스킵 (이미 create에서 처리됨)
+                        if (change.todoId && change.todoId.startsWith('temp_')) {
+                            console.log('⏭️ [useSyncTodos] tempId 수정 스킵 (create에서 처리됨):', change.todoId);
+                            await removePendingChange(change.id);
+                            success++;
+                            break;
+                        }
+                        
                         await todoAPI.updateTodo(change.todoId, change.data);
                         console.log('✅ [useSyncTodos] 서버 수정 완료:', change.todoId);
                         break;
 
                     case 'delete':
+                        // tempId인 경우 스킵 (로컬에서만 삭제)
+                        if (change.todoId && change.todoId.startsWith('temp_')) {
+                            console.log('⏭️ [useSyncTodos] tempId 삭제 스킵 (로컬에서만 삭제):', change.todoId);
+                            await removePendingChange(change.id);
+                            success++;
+                            break;
+                        }
+                        
                         await todoAPI.deleteTodo(change.todoId);
                         console.log('✅ [useSyncTodos] 서버 삭제 완료:', change.todoId);
                         break;
