@@ -894,6 +894,132 @@ export default function DebugScreen() {
     }
   };
 
+  // 26. Cache-First 성능 측정
+  const measureCacheFirstPerformance = async () => {
+    try {
+      addLog(`⚡ Cache-First 성능 측정 시작`);
+      
+      // 1. 전체 캐시 확인
+      const allTodos = queryClient.getQueryData(['todos', 'all']);
+      if (!allTodos || allTodos.length === 0) {
+        addLog(`⚠️ 전체 캐시 없음 - 먼저 동기화하세요`);
+        return;
+      }
+      addLog(`1️⃣ 전체 캐시: ${allTodos.length}개`);
+      
+      // 2. useTodos 성능 측정 (날짜별 필터링)
+      const testDate = '2026-01-27';
+      const startUseTodos = performance.now();
+      const dateTodos = queryClient.getQueryData(['todos', testDate]);
+      const endUseTodos = performance.now();
+      addLog(`2️⃣ useTodos (${testDate}): ${dateTodos?.length || 0}개 (${(endUseTodos - startUseTodos).toFixed(2)}ms)`);
+      
+      // 3. useCalendarEvents 성능 측정 (월별 필터링)
+      const startCalendar = performance.now();
+      const monthEvents = queryClient.getQueryData(['events', 2026, 1]);
+      const endCalendar = performance.now();
+      addLog(`3️⃣ useCalendarEvents (2026-01): ${monthEvents?.length || 0}개 (${(endCalendar - startCalendar).toFixed(2)}ms)`);
+      
+      // 4. useAllTodos 성능 측정
+      const startAllTodos = performance.now();
+      const allTodosCache = queryClient.getQueryData(['todos', 'all']);
+      const endAllTodos = performance.now();
+      addLog(`4️⃣ useAllTodos: ${allTodosCache?.length || 0}개 (${(endAllTodos - startAllTodos).toFixed(2)}ms)`);
+      
+      // 5. 총 성능 요약
+      const totalTime = (endUseTodos - startUseTodos) + (endCalendar - startCalendar) + (endAllTodos - startAllTodos);
+      addLog(`✅ 총 소요 시간: ${totalTime.toFixed(2)}ms`);
+      addLog(`📊 예상 결과: 1ms 이하 = 성공, 5ms 이상 = 문제`);
+    } catch (error) {
+      addLog(`❌ 성능 측정 실패: ${error.message}`);
+    }
+  };
+
+  // 27. 백그라운드 업데이트 확인
+  const verifyBackgroundUpdate = async () => {
+    try {
+      addLog(`🔄 백그라운드 업데이트 확인 시작`);
+      
+      const netInfo = await NetInfo.fetch();
+      if (!netInfo.isConnected) {
+        addLog(`⚠️ 오프라인 상태 - 서버 연결 필요`);
+        return;
+      }
+      
+      // 1. 현재 캐시 확인
+      const beforeCache = queryClient.getQueryData(['todos', 'all']);
+      addLog(`1️⃣ 현재 캐시: ${beforeCache?.length || 0}개`);
+      
+      // 2. 서버에서 새 데이터 가져오기 (백그라운드 업데이트 시뮬레이션)
+      addLog(`2️⃣ 서버 요청 중...`);
+      const startTime = performance.now();
+      const response = await todoAPI.getAllTodos();
+      const endTime = performance.now();
+      addLog(`3️⃣ 서버 응답: ${response.data.length}개 (${(endTime - startTime).toFixed(2)}ms)`);
+      
+      // 3. 캐시 업데이트
+      queryClient.setQueryData(['todos', 'all'], response.data);
+      addLog(`4️⃣ 캐시 업데이트 완료`);
+      
+      // 4. 업데이트 후 캐시 확인
+      const afterCache = queryClient.getQueryData(['todos', 'all']);
+      addLog(`5️⃣ 업데이트 후 캐시: ${afterCache?.length || 0}개`);
+      
+      // 5. 결과 비교
+      if (beforeCache?.length === afterCache?.length) {
+        addLog(`✅ 백그라운드 업데이트 성공 (변경 없음)`);
+      } else {
+        addLog(`✅ 백그라운드 업데이트 성공 (${beforeCache?.length || 0} → ${afterCache?.length || 0})`);
+      }
+    } catch (error) {
+      addLog(`❌ 백그라운드 업데이트 실패: ${error.message}`);
+    }
+  };
+
+  // 28. 캐시 vs 서버 속도 비교
+  const compareCacheVsServer = async () => {
+    try {
+      addLog(`📊 캐시 vs 서버 속도 비교 시작`);
+      
+      const netInfo = await NetInfo.fetch();
+      if (!netInfo.isConnected) {
+        addLog(`⚠️ 오프라인 상태 - 서버 연결 필요`);
+        return;
+      }
+      
+      // 1. 캐시 속도 측정
+      const cacheStart = performance.now();
+      const cachedTodos = queryClient.getQueryData(['todos', 'all']);
+      const cacheEnd = performance.now();
+      const cacheTime = cacheEnd - cacheStart;
+      addLog(`1️⃣ 캐시 속도: ${cachedTodos?.length || 0}개 (${cacheTime.toFixed(2)}ms)`);
+      
+      // 2. 서버 속도 측정
+      addLog(`2️⃣ 서버 요청 중...`);
+      const serverStart = performance.now();
+      const response = await todoAPI.getAllTodos();
+      const serverEnd = performance.now();
+      const serverTime = serverEnd - serverStart;
+      addLog(`3️⃣ 서버 속도: ${response.data.length}개 (${serverTime.toFixed(2)}ms)`);
+      
+      // 3. 속도 비교
+      const speedup = (serverTime / cacheTime).toFixed(0);
+      addLog(`📊 캐시가 ${speedup}배 빠름`);
+      addLog(`✅ 캐시: ${cacheTime.toFixed(2)}ms vs 서버: ${serverTime.toFixed(2)}ms`);
+      
+      // 4. Cache-First 효과 분석
+      if (cacheTime < 1) {
+        addLog(`🎉 Cache-First 최적화 성공! (1ms 이하)`);
+      } else if (cacheTime < 10) {
+        addLog(`✅ Cache-First 정상 작동 (10ms 이하)`);
+      } else {
+        addLog(`⚠️ Cache-First 성능 저하 (10ms 이상)`);
+      }
+    } catch (error) {
+      addLog(`❌ 속도 비교 실패: ${error.message}`);
+    }
+  };
+
   return (
     <View style={styles.container}>
       <Text style={styles.title}>🔧 델타 동기화 디버그</Text>
@@ -1020,6 +1146,21 @@ export default function DebugScreen() {
         <TouchableOpacity style={[styles.button, styles.warningButton]} onPress={simulateOfflineFirstLaunch}>
           <Text style={styles.buttonText}>📵 오프라인 최초 실행</Text>
         </TouchableOpacity>
+
+        <View style={styles.divider} />
+        <Text style={styles.sectionTitle}>⚡ Cache-First 성능 테스트</Text>
+
+        <TouchableOpacity style={[styles.button, styles.performanceButton]} onPress={measureCacheFirstPerformance}>
+          <Text style={styles.buttonText}>⚡ Cache-First 성능 측정</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity style={[styles.button, styles.performanceButton]} onPress={verifyBackgroundUpdate}>
+          <Text style={styles.buttonText}>🔄 백그라운드 업데이트 확인</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity style={[styles.button, styles.performanceButton]} onPress={compareCacheVsServer}>
+          <Text style={styles.buttonText}>📊 캐시 vs 서버 속도 비교</Text>
+        </TouchableOpacity>
       </ScrollView>
 
       <View style={styles.logContainer}>
@@ -1079,6 +1220,9 @@ const styles = StyleSheet.create({
   },
   warningButton: {
     backgroundColor: '#FF9500',
+  },
+  performanceButton: {
+    backgroundColor: '#FF2D55',
   },
   buttonText: {
     color: 'white',

@@ -401,7 +401,8 @@ The form is not a simple modal. It listens to keyboard events.
 ### 📚 Documentation
 
 - **Cache Optimization**: `client/docs/CACHE_STRATEGY_ANALYSIS.md` - Deep-dive into cache architecture and performance improvements
-- **Implementation Plan**: `client/docs/CACHE_OPTIMIZATION_PLAN.md` - Step-by-step optimization guide
+- **Implementation Complete**: `client/docs/CACHE_FIRST_IMPLEMENTATION_COMPLETE.md` - Cache-First optimization results (5s → 0.1ms)
+- **Roadmap**: `client/docs/ROADMAP.md` - Feature roadmap and TODO list (Guest mode, AI features, etc.)
 - **Debug Guide**: `client/DEBUG_TEST_GUIDE.md` - Manual testing procedures for sync and offline features
 
 ---

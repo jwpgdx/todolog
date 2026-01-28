@@ -294,7 +294,29 @@ export const useSyncTodos = () => {
     }, [syncTodos]);
 
     /**
-     * 초기 로드
+     * 초기 캐시 준비 - 로그인 여부와 관계없이 즉시 실행
+     */
+    useEffect(() => {
+        const prepareCache = async () => {
+            try {
+                const localTodos = await loadTodos();
+                if (localTodos.length > 0) {
+                    console.log('⚡ [useSyncTodos] 초기 캐시 즉시 준비:', localTodos.length, '개');
+                    populateCache(localTodos);
+                } else {
+                    console.log('⚠️ [useSyncTodos] 로컬 데이터 없음 - 캐시 준비 스킵');
+                }
+            } catch (error) {
+                console.error('❌ [useSyncTodos] 초기 캐시 준비 실패:', error);
+            }
+        };
+        
+        // 즉시 캐시 준비 (로그인 여부 무관)
+        prepareCache();
+    }, []);
+
+    /**
+     * 로그인 후 동기화
      */
     useEffect(() => {
         if (isLoggedIn) {
