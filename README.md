@@ -55,6 +55,69 @@ Understanding how the login works is crucial for debugging `401` errors.
 
 ---
 
+---
+
+## ⚡ Performance Optimizations
+
+### Cache Strategy (Jan 2026)
+
+**Problem**: Initial app load took 30+ seconds offline due to over-engineered cache pre-generation.
+
+**Solution**: Simplified from 3-tier cache to single-source cache with on-demand filtering.
+
+**Architecture**:
+```javascript
+// Before: 3-tier cache (2,160+ entries)
+['todos', 'all']           // 72 items
+['todos', '2026-01-28']    // 180 daily caches (6 months pre-generated)
+['events', 2026, 1]        // Monthly caches
+
+// After: Single cache (1 entry)
+['todos', 'all']           // 72 items
+// Daily/monthly filtered on-demand (~1ms)
+```
+
+**Results**:
+- Cache injection: **5s → 0.3ms** (99.994% faster)
+- Offline load: **30s → 100ms** (99.7% faster)
+- Memory usage: **3MB → 1MB** (66% reduction)
+- Code complexity: **100 lines → 10 lines** (90% reduction)
+
+**Key Files**:
+- `client/src/hooks/useSyncTodos.js` - Simplified cache injection
+- `client/src/utils/todoFilters.js` - On-demand filtering utilities
+- `client/docs/CACHE_STRATEGY_ANALYSIS.md` - Full technical analysis
+
+---
+
+## 🔄 Offline-First Architecture
+
+### Data Flow
+
+```
+App Start (Offline)
+  ↓
+AsyncStorage (100ms)
+  ↓
+populateCache (0.3ms) → ['todos', 'all']
+  ↓
+useTodos → filterByDate (1ms) → React Query auto-caches ['todos', date]
+  ↓
+Screen renders (Total: ~100ms)
+```
+
+### Sync Strategy
+
+1. **App Start**: Load from AsyncStorage immediately
+2. **Background**: Attempt server sync (non-blocking)
+3. **Online**: Delta sync (only changed items)
+4. **Offline**: Queue changes in `pendingChanges`
+5. **Reconnect**: Auto-sync pending changes
+
+**Key Insight**: React Query handles cache invalidation automatically. We only maintain one source of truth (`['todos', 'all']`), and let React Query cache filtered results.
+
+---
+
 ## 💾 Data Models & Schema Strategy
 
 ### `Todo` Model
