@@ -1,0 +1,14 @@
+{
+  "name": "todolog",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "concurrently \"npm run dev:server\" \"npm run dev:client\"",
+    "dev:db": "cd mongodb-macos-x86_64-6.0.18/bin && ./mongod --dbpath ~/mongodb/data",
+    "dev:server": "cd server && npm run dev",
+    "dev:client": "cd client && npx expo start --web"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+}
