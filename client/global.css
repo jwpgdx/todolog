@@ -1,0 +1,81 @@
+/* global.css */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* --- 라이트 모드 --- */
+    --color-bg: 255 255 255;
+    /* 아주 연한 회색 (Gray-50) - 눈 편안함 */
+    --color-surface: 237 237 237;
+    /* 완전 흰색 (카드, 모달) */
+    --color-muted: 243 244 246;
+    /* 입력창 배경 (Gray-100) */
+
+    --color-text: 17 24 39;
+    /* 거의 검정 (Gray-900) */
+    --color-text-secondary: 107 114 128;
+    /* 중간 회색 (Gray-500) */
+    --color-text-inverted: 255 255 255;
+    /* 흰색 (버튼 위) */
+
+    --color-border: 60 60 67;
+    /* 연한 선 (Gray-200) */
+
+    --color-primary: 59 130 246;
+    /* Blue-500 */
+
+    --color-success: 34 197 94;
+    /* Green-500 */
+    --color-error: 239 68 68;
+    /* Red-500 */
+  }
+
+  .dark {
+    --color-bg: 17 24 39;
+    /* 찐 검정보다는 진한 남색 계열 (Gray-900) */
+    --color-surface: 31 41 55;
+    /* 살짝 밝은 회색 (Gray-800) -> 이게 있어야 입체감 생김 */
+    --color-muted: 55 65 81;
+    /* 입력창 (Gray-700) */
+
+    --color-text: 249 250 251;
+    /* 흰색 (Gray-50) */
+    --color-text-secondary: 156 163 175;
+    /* 연한 회색 (Gray-400) */
+    --color-text-inverted: 255 255 255;
+    /* 다크모드에서도 버튼 글씨는 보통 흰색 */
+
+    --color-border: 55 65 81;
+    /* 어두운 선 (Gray-700) */
+  }
+}
+
+/* 웹 스크롤 문제 해결: 루트 요소 높이 고정 */
+html,
+body {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
+#root,
+body>div {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+/* React Native Web 컴포넌트 스타일링 개선 */
+@media (min-width: 1px) {
+
+  /* React Native Text 컴포넌트가 웹에서 올바르게 렌더링되도록 */
+  [data-testid*="text"],
+  [class*="text-"],
+  text {
+    display: inline;
+    font-family: inherit;
+  }
+}

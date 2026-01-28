@@ -1,0 +1,32 @@
+{
+    "theme": "테마",
+    "theme_system": "시스템 설정",
+    "theme_light": "라이트 모드",
+    "theme_dark": "다크 모드",
+    "language": "언어",
+    "lang_system": "시스템 설정",
+    "lang_ko": "한국어",
+    "lang_en": "English",
+    "lang_ja": "日本語",
+    "settings": "설정",
+    "screen_style": "화면 및 스타일",
+    "todo_calendar": "할 일 및 캘린더",
+    "account_data": "계정 및 데이터",
+    "notification": "알림 설정",
+    "start_day": "주 시작 요일",
+    "hide_completed": "완료된 할 일 숨기기",
+    "timezone": "타임존",
+    "delete_account": "회원 탈퇴",
+    "day_sunday": "일요일",
+    "day_monday": "월요일",
+    "week_number": "{{week}}주차",
+    "time": {
+        "hour": "시",
+        "minute": "분"
+    },
+    "date": {
+        "year": "년",
+        "month": "월",
+        "header_fmt": "YYYY년 M월"
+    }
+}

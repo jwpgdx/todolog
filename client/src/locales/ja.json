@@ -1,0 +1,32 @@
+{
+    "theme": "テーマ",
+    "theme_system": "システム設定",
+    "theme_light": "ライトモード",
+    "theme_dark": "ダークモード",
+    "language": "言語",
+    "lang_system": "システム設定",
+    "lang_ko": "韓国語",
+    "lang_en": "英語",
+    "lang_ja": "日本語",
+    "settings": "設定",
+    "screen_style": "画面とスタイル",
+    "todo_calendar": "ToDoとカレンダー",
+    "account_data": "アカウントとデータ",
+    "notification": "通知設定",
+    "start_day": "週の始まり",
+    "hide_completed": "完了したToDoを隠す",
+    "timezone": "タイムゾーン",
+    "delete_account": "アカウント削除",
+    "day_sunday": "日曜日",
+    "day_monday": "月曜日",
+    "week_number": "{{week}}週目",
+    "time": {
+        "hour": "時",
+        "minute": "分"
+    },
+    "date": {
+        "year": "年",
+        "month": "月",
+        "header_fmt": "YYYY年 M月"
+    }
+}

@@ -1,0 +1,34 @@
+{
+  "name": "react-native-wheel-pick",
+  "version": "1.2.6",
+  "description": "React native wheel picker iOS style with android.",
+  "main": "src/index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/TronNatthakorn/react-native-wheel-pick.git"
+  },
+  "keywords": [
+    "react-native",
+    "react-native-wheel",
+    "react-native-wheel-pick",
+    "react-native-wheel-picker"
+  ],
+  "author": "Tron Natthakorn <tron.natthakorn@engineer.com>",
+  "license": "Apache-2.0",
+  "bugs": {
+    "url": "https://github.com/TronNatthakorn/react-native-wheel-pick/issues"
+  },
+  "homepage": "https://github.com/TronNatthakorn/react-native-wheel-pick#readme",
+  "dependencies": {
+    "moment": "^2.19.1"
+  },
+  "peerDependencies": {
+    "moment": ">=2.0.0",
+    "prop-types": "*",
+    "@react-native-community/datetimepicker": ">=6.1.3",
+    "@react-native-picker/picker": ">=2.4.1"
+  }
+}

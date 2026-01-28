@@ -1,0 +1,32 @@
+{
+    "theme": "Theme",
+    "theme_system": "System Default",
+    "theme_light": "Light Mode",
+    "theme_dark": "Dark Mode",
+    "language": "Language",
+    "lang_system": "System Default",
+    "lang_ko": "Korean",
+    "lang_en": "English",
+    "lang_ja": "Japanese",
+    "settings": "Settings",
+    "screen_style": "Display & Style",
+    "todo_calendar": "Todo & Calendar",
+    "account_data": "Account & Data",
+    "notification": "Notifications",
+    "start_day": "Start Day of Week",
+    "hide_completed": "Hide Completed Todos",
+    "timezone": "Time Zone",
+    "delete_account": "Delete Account",
+    "day_sunday": "Sunday",
+    "day_monday": "Monday",
+    "week_number": "Week {{week}}",
+    "time": {
+        "hour": "",
+        "minute": ""
+    },
+    "date": {
+        "year": "",
+        "month": "",
+        "header_fmt": "MMMM YYYY"
+    }
+}
