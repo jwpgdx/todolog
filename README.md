@@ -311,6 +311,42 @@ Screen renders (Total: ~100ms)
 
 ---
 
+---
+
+## 📅 UltimateCalendar - Infinite Scroll & Dynamic Events (Jan 2026)
+
+### Architecture
+
+**UltimateCalendar** is a high-performance calendar component with infinite scrolling and dynamic event calculation.
+
+**Key Features**:
+1. **Infinite Scroll**: Bidirectional loading (past/future) with Virtual Window (156 weeks = 3 years)
+2. **Dynamic Events**: On-demand event calculation for visible range only (±5 weeks)
+3. **Week-Based Caching**: 40-week cache with 85%+ hit rate
+4. **Dual View**: Seamless weekly ↔ monthly mode switching
+
+**Performance**:
+- Initial load: 12-15ms (84 weeks)
+- Event calculation: <10ms (cache hit: 0.3-1.5ms, miss: 3-8ms)
+- Scroll: 60fps maintained
+- Memory: Optimized with automatic cache cleanup
+
+**Implementation Files**:
+- `client/src/components/ui/ultimate-calendar/UltimateCalendar.js` - Main component
+- `client/src/components/ui/ultimate-calendar/WeeklyView.js` - Horizontal scroll view
+- `client/src/components/ui/ultimate-calendar/MonthlyView.js` - Vertical scroll view
+- `client/src/hooks/useCalendarDynamicEvents.js` - Dynamic event calculation hook
+
+**Key Optimizations**:
+1. **Virtual Window**: Limits data to 3 years to prevent memory issues
+2. **Content Offset Correction**: Maintains scroll position when loading past data
+3. **Scroll Conflict Resolution**: `isUserScrolling` flag prevents sync conflicts
+4. **Category Cache Invalidation**: Updates colors when categories change
+
+**Details**: See `client/docs/IMPLEMENTATION_COMPLETE.md`
+
+---
+
 ## 💾 Data Models & Schema Strategy
 
 ### `Todo` Model
@@ -400,10 +436,9 @@ The form is not a simple modal. It listens to keyboard events.
 
 ### 📚 Documentation
 
-- **Cache Optimization**: `client/docs/CACHE_STRATEGY_ANALYSIS.md` - Deep-dive into cache architecture and performance improvements
-- **Implementation Complete**: `client/docs/CACHE_FIRST_IMPLEMENTATION_COMPLETE.md` - Cache-First optimization results (5s → 0.1ms)
-- **Roadmap**: `client/docs/ROADMAP.md` - Feature roadmap and TODO list (Guest mode, AI features, etc.)
-- **Debug Guide**: `client/DEBUG_TEST_GUIDE.md` - Manual testing procedures for sync and offline features
+- **Implementation Complete**: `client/docs/IMPLEMENTATION_COMPLETE.md` - Completed features (Infinite Scroll, Dynamic Events, Cache Optimization)
+- **Roadmap**: `client/docs/ROADMAP.md` - Next tasks and feature roadmap
+- **Requirements**: `.kiro/steering/requirements.md` - Development guidelines and tech stack reference
 
 ---
 

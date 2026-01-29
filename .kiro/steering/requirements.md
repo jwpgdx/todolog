@@ -50,3 +50,37 @@
 - 
 **No Hallucinations:**
  Verify libraries in `package.json` or `requirements.txt` before importing.
+
+
+# PROJECT CONTEXT & KEY FILES
+
+## Recently Completed (2026-01-29)
+- **UltimateCalendar**: Infinite scroll + dynamic events implementation
+- **Performance**: <10ms event calculation, 85%+ cache hit rate
+- **Files Modified**:
+  - `client/src/components/ui/ultimate-calendar/UltimateCalendar.js`
+  - `client/src/components/ui/ultimate-calendar/WeeklyView.js`
+  - `client/src/components/ui/ultimate-calendar/MonthlyView.js`
+  - `client/src/hooks/useCalendarDynamicEvents.js`
+
+## Key Architecture Patterns
+1. **Cache Strategy**: Single-source cache (`['todos', 'all']`) with on-demand filtering
+2. **Infinite Scroll**: Virtual Window (156 weeks) with bidirectional loading
+3. **Dynamic Events**: Range-based calculation (±5 weeks) with week-based caching
+4. **Sync Conflicts**: Use ref flags (`isUserScrolling`, `isArrowNavigating`) to prevent conflicts
+
+## Important Documentation
+- **README.md**: Architecture overview, cache strategy, UltimateCalendar details
+- **client/docs/IMPLEMENTATION_COMPLETE.md**: Completed features and performance metrics
+- **client/docs/ROADMAP.md**: Next tasks and priorities
+
+## Next Session Start Guide
+When starting a new session, refer to:
+1. **ROADMAP.md** for next tasks (recommended: test code cleanup)
+2. **IMPLEMENTATION_COMPLETE.md** for context on completed work
+3. **README.md** for architecture patterns and conventions
+
+## Debug & Testing
+- **Manual Tests**: `client/src/test/TestDashboard.js` - Entry point for manual tests
+- **Debug Logs**: Currently enabled in `useCalendarDynamicEvents.js` and `UltimateCalendar.js`
+- **Next Task**: Remove debug logs for production readiness

@@ -9,7 +9,7 @@ dayjs.locale('ko'); // Default (will be overridden by i18n)
 
 /**
  * Generates an array of weeks for the calendar.
- * Range: 18 months before and after the current date.
+ * Range: 36 months before and after the current date.
  * 
  * @param {dayjs.Dayjs} today - The reference "today" date object.
  * @returns {object} { weeks, todayWeekIndex }
@@ -18,8 +18,8 @@ export const generateCalendarData = (today, startDayOfWeek = 'sunday') => {
     // 1. Determine the target day index (0 = Sunday, 1 = Monday)
     const targetDayIndex = startDayOfWeek === 'monday' ? 1 : 0;
 
-    // 2. Identify the first day of the 18-month range
-    const monthStart = today.subtract(18, 'month').startOf('month');
+    // 2. Identify the first day of the 36-month range
+    const monthStart = today.subtract(36, 'month').startOf('month');
 
     // 3. Calculate the start of the week relative to the month start
     // Formula to find the previous [TargetDay]: (currentDay + 7 - targetDay) % 7
@@ -27,7 +27,7 @@ export const generateCalendarData = (today, startDayOfWeek = 'sunday') => {
     const diff = (monthStart.day() + 7 - targetDayIndex) % 7;
     const start = monthStart.subtract(diff, 'day');
 
-    const end = today.add(18, 'month').endOf('month').endOf('week'); // This end buffer is generous enough
+    const end = today.add(36, 'month').endOf('month').endOf('week'); // This end buffer is generous enough
 
     const weeksArray = [];
     let currentDateIter = start;
@@ -36,7 +36,7 @@ export const generateCalendarData = (today, startDayOfWeek = 'sunday') => {
     // Use a while loop to generate weeks until we pass the end date
     // Safety break added to prevent infinite loops if calculation is wrong
     let safetyCounter = 0;
-    while ((currentDateIter.isBefore(end) || currentDateIter.isSame(end, 'day')) && safetyCounter < 1000) {
+    while ((currentDateIter.isBefore(end) || currentDateIter.isSame(end, 'day')) && safetyCounter < 2000) {
         const week = [];
         for (let i = 0; i < 7; i++) {
             const date = currentDateIter.add(i, 'day');

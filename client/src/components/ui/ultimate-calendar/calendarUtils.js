@@ -9,34 +9,37 @@ dayjs.locale('ko'); // Default (will be overridden by i18n)
 
 /**
  * Generates an array of weeks for the calendar.
- * Range: 18 months before and after the current date.
  * 
  * @param {dayjs.Dayjs} today - The reference "today" date object.
+ * @param {string} startDayOfWeek - 'sunday' or 'monday'
+ * @param {dayjs.Dayjs} rangeStart - Optional start date for range
+ * @param {dayjs.Dayjs} rangeEnd - Optional end date for range
  * @returns {object} { weeks, todayWeekIndex }
  */
-export const generateCalendarData = (today, startDayOfWeek = 'sunday') => {
+export const generateCalendarData = (today, startDayOfWeek = 'sunday', rangeStart = null, rangeEnd = null) => {
     // 1. Determine the target day index (0 = Sunday, 1 = Monday)
     const targetDayIndex = startDayOfWeek === 'monday' ? 1 : 0;
 
-    // 2. Identify the first day of the 18-month range
-    const monthStart = today.subtract(18, 'month').startOf('month');
+    // 2. Use provided range or default to 36 months before/after
+    const monthStart = rangeStart 
+        ? rangeStart.startOf('month')
+        : today.subtract(36, 'month').startOf('month');
+    
+    const end = rangeEnd
+        ? rangeEnd.endOf('month').endOf('week')
+        : today.add(36, 'month').endOf('month').endOf('week');
 
     // 3. Calculate the start of the week relative to the month start
-    // Formula to find the previous [TargetDay]: (currentDay + 7 - targetDay) % 7
-    // e.g. If Mon(1) start, and Month starts on Sun(0) -> (0 + 7 - 1) % 7 = 6 days back.
     const diff = (monthStart.day() + 7 - targetDayIndex) % 7;
     const start = monthStart.subtract(diff, 'day');
-
-    const end = today.add(18, 'month').endOf('month').endOf('week'); // This end buffer is generous enough
 
     const weeksArray = [];
     let currentDateIter = start;
     let tIndex = 0;
 
     // Use a while loop to generate weeks until we pass the end date
-    // Safety break added to prevent infinite loops if calculation is wrong
     let safetyCounter = 0;
-    while ((currentDateIter.isBefore(end) || currentDateIter.isSame(end, 'day')) && safetyCounter < 1000) {
+    while ((currentDateIter.isBefore(end) || currentDateIter.isSame(end, 'day')) && safetyCounter < 2000) {
         const week = [];
         for (let i = 0; i < 7; i++) {
             const date = currentDateIter.add(i, 'day');
@@ -76,12 +79,12 @@ export const generateCalendarData = (today, startDayOfWeek = 'sunday') => {
  * 월별로 그룹화된 캘린더 데이터 생성
  * CalendarScreen에서 월별 무한 스크롤에 사용
  * 
- * @param {number} pastMonths - 과거 몇 개월 (기본 12)
- * @param {number} futureMonths - 미래 몇 개월 (기본 24)
+ * @param {number} pastMonths - 과거 몇 개월 (기본 24)
+ * @param {number} futureMonths - 미래 몇 개월 (기본 48)
  * @param {string} startDayOfWeek - 'sunday' 또는 'monday'
  * @returns {Array<{ monthKey, title, weeks, monthIndex }>}
  */
-export const generateMonthlyData = (pastMonths = 12, futureMonths = 24, startDayOfWeek = 'sunday') => {
+export const generateMonthlyData = (pastMonths = 24, futureMonths = 48, startDayOfWeek = 'sunday') => {
     const today = dayjs();
     const targetDayIndex = startDayOfWeek === 'monday' ? 1 : 0;
     const monthsData = [];

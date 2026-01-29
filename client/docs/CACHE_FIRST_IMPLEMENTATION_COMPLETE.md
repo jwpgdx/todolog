@@ -242,6 +242,57 @@
 
 ## 📝 구현 세부 사항
 
+### 캐시 구조 이해 (Vue3 비유)
+
+**React Query 캐시 = Pinia Store**
+
+```javascript
+// Vue3 비유
+const todoStore = useTodoStore();
+todoStore.allTodos = [...]; // 전체 할일 저장 (원본)
+
+// TodoScreen
+const todayTodos = computed(() => {
+  return todoStore.allTodos.filter(todo => todo.date === today);
+});
+
+// CalendarScreen
+const eventsByDate = computed(() => {
+  const events = {};
+  todoStore.allTodos.forEach(todo => {
+    // RRule 전개해서 events 객체 생성
+  });
+  return events;
+});
+```
+
+**현재 React Native 구조:**
+
+```javascript
+// React Query 캐시 (= Pinia Store)
+['todos', 'all'] = [...]; // 전체 할일 저장 (원본)
+
+// TodoScreen
+const { data: todos } = useTodos(date);
+// ↓ 내부에서
+const allTodos = queryClient.getQueryData(['todos', 'all']);
+return allTodos.filter(todo => todo.date === date);
+
+// CalendarScreen
+const { data: todos } = useAllTodos();
+// ↓ 내부에서
+const allTodos = queryClient.getQueryData(['todos', 'all']);
+return allTodos; // 전체 반환
+// ↓ 그 다음 useMemo로 eventsByDate 계산
+```
+
+**핵심:**
+- **원본 데이터는 하나**: `['todos', 'all']` (Pinia Store와 동일)
+- **각 화면이 필요한 대로 필터링/가공**
+- **React Query가 필터링 결과를 자동 캐싱** (`['todos', date]`, `['events', year, month]`)
+
+---
+
 ### Cache-First 패턴 핵심 로직
 
 ```javascript

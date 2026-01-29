@@ -12,6 +12,7 @@ import ExpandableCalendarTest from './expandable-calendar-test';
 import ReanimatedCalendarTest from './reanimated-calendar-test';
 import CalendarListTest from './calendar-list-test';
 import CustomDatePicker from '../components/ui/DatePicker';
+import TestCalendarDynamicEvents from './TestCalendarDynamicEvents';
 
 export default function TestDashboard() {
     const [currentView, setCurrentView] = useState('menu');
@@ -68,6 +69,10 @@ export default function TestDashboard() {
 
             <TouchableOpacity style={styles.button} onPress={() => setCurrentView('custom-datepicker')}>
                 <Text style={styles.buttonText}>13. Custom DatePicker (New)</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.button} onPress={() => setCurrentView('calendar-dynamic-events')}>
+                <Text style={styles.buttonText}>14. Calendar Dynamic Events 🆕</Text>
             </TouchableOpacity>
         </View>
     );
@@ -149,6 +154,12 @@ export default function TestDashboard() {
                             onDateChange={setSelectedDate}
                         />
                         <Text style={styles.resultText}>Selected: {selectedDate}</Text>
+                    </View>
+                );
+            case 'calendar-dynamic-events':
+                return (
+                    <View style={{ flex: 1, width: '100%' }}>
+                        <TestCalendarDynamicEvents />
                     </View>
                 );
             default:

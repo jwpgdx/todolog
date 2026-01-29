@@ -17,6 +17,7 @@ import { useDateStore } from '../../../store/dateStore';
 import { useAuthStore } from '../../../store/authStore';
 import { useTranslation } from 'react-i18next';
 import { generateCalendarData } from './calendarUtils';
+import { useCalendarDynamicEvents } from '../../../hooks/useCalendarDynamicEvents';
 import { CELL_HEIGHT, WEEK_DAY_HEIGHT, THEME, SCREEN_WIDTH } from './constants';
 
 // Enable LayoutAnimation for Android
@@ -26,9 +27,10 @@ if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental
 
 // Limits
 const CALENDAR_HEIGHT_WEEK = CELL_HEIGHT;
-const CALENDAR_HEIGHT_MONTH = CELL_HEIGHT * 6;
+const CALENDAR_HEIGHT_MONTH = CELL_HEIGHT * 5; // ✅ 6주 → 5주로 축소 (성능 + range 매칭)
+const MAX_WEEKS = 156; // ✅ Virtual Window: 3년치 (52주 × 3)
 
-export default function UltimateCalendar({ eventsByDate = {} }) {
+export default function UltimateCalendar() {
     // Localization
     const { t, i18n } = useTranslation();
 
@@ -46,11 +48,36 @@ export default function UltimateCalendar({ eventsByDate = {} }) {
     // Refs
     const weeklyRef = useRef(null);
     const monthlyRef = useRef(null);
+    const visibleWeekIndexRef = useRef(0); // ✅ ref로 즉시 추적
+    const isArrowNavigating = useRef(false); // ✅ Arrow 네비게이션 중 플래그
+    const isUserScrolling = useRef(false); // ✅ 사용자 스크롤 중 플래그 (스와이프 감지)
 
     // State
     const [hasLoadedMonthly, setHasLoadedMonthly] = useState(false);
     const [isWeekly, setIsWeekly] = useState(true);
     const [headerDate, setHeaderDate] = useState(today);
+    
+    // ✅ 무한 스크롤 상태
+    const [weeks, setWeeks] = useState([]);
+    const [todayWeekIndex, setTodayWeekIndex] = useState(0);
+    const [loadedRange, setLoadedRange] = useState({
+        start: today.subtract(6, 'month'),
+        end: today.add(12, 'month')
+    });
+    const [isLoadingMore, setIsLoadingMore] = useState(false);
+    const [isLoadingPast, setIsLoadingPast] = useState(false);
+    
+    // ✅ 실제 화면에 보이는 주 인덱스 추적
+    const [visibleWeekIndex, setVisibleWeekIndex] = useState(0);
+
+    // ✅ 동적 이벤트 계산 Hook
+    // range: 5 = ±5주 = 총 11주 (FlashList drawDistance 고려)
+    const eventsByDate = useCalendarDynamicEvents({
+        weeks,
+        visibleIndex: visibleWeekIndex,
+        range: 5,
+        cacheType: 'week'
+    });
 
     // ⚡️ [최적화] 앱 진입 0.5초 후 월간 뷰를 미리 로딩
     useEffect(() => {
@@ -60,10 +87,33 @@ export default function UltimateCalendar({ eventsByDate = {} }) {
         return () => clearTimeout(timer);
     }, []);
 
-    // Generate Data
-    const { weeks, todayWeekIndex } = useMemo(() =>
-        generateCalendarData(today, startDayOfWeek),
-        [today, startDayOfWeek]);
+    // ✅ 초기 데이터 생성 (19개월: 6 past + current + 12 future)
+    useEffect(() => {
+        console.log('📅 [UltimateCalendar] 초기 데이터 생성 시작...');
+        const startTime = performance.now();
+        
+        const { weeks: initialWeeks, todayWeekIndex: initialTodayIdx } = 
+            generateCalendarData(today, startDayOfWeek, loadedRange.start, loadedRange.end);
+        
+        console.log(`🔍 [디버그] 초기 데이터:`);
+        console.log(`  - 첫 주: ${initialWeeks[0]?.[0]?.dateString} ~ ${initialWeeks[0]?.[6]?.dateString}`);
+        console.log(`  - 마지막 주: ${initialWeeks[initialWeeks.length-1]?.[0]?.dateString} ~ ${initialWeeks[initialWeeks.length-1]?.[6]?.dateString}`);
+        
+        setWeeks(initialWeeks);
+        setTodayWeekIndex(initialTodayIdx);
+        setVisibleWeekIndex(initialTodayIdx);
+        visibleWeekIndexRef.current = initialTodayIdx; // ✅ ref도 초기화
+        
+        const endTime = performance.now();
+        console.log(`✅ [UltimateCalendar] 초기 생성 완료: ${initialWeeks.length}주 (${(endTime - startTime).toFixed(2)}ms)`);
+        console.log(`📅 [UltimateCalendar] 범위: ${loadedRange.start.format('YYYY-MM')} ~ ${loadedRange.end.format('YYYY-MM')}`);
+        console.log(`📍 [UltimateCalendar] 오늘 인덱스: ${initialTodayIdx}`);
+    }, [today, startDayOfWeek]);
+
+    // Generate Data (제거 - useState로 대체)
+    // const { weeks, todayWeekIndex } = useMemo(() =>
+    //     generateCalendarData(today, startDayOfWeek),
+    //     [today, startDayOfWeek]);
 
     const weekDays = useMemo(() => {
         return Array.from({ length: 7 }).map((_, i) => {
@@ -78,6 +128,190 @@ export default function UltimateCalendar({ eventsByDate = {} }) {
     }, [weeks, currentDate, todayWeekIndex]);
 
     const headerTitle = headerDate.format(t('date.header_fmt'));
+
+    // ✅ 무한 스크롤 핸들러 (하단)
+    const handleEndReached = useCallback(() => {
+        if (isLoadingMore || isLoadingPast || weeks.length === 0) {
+            console.log('⏸️ [하단 스크롤] 스킵 - 로딩 중 또는 데이터 없음');
+            return;
+        }
+        
+        // ✅ 비활성 뷰에서 트리거된 경우 무시
+        if (isWeekly) {
+            console.log('⏸️ [하단 스크롤] 스킵 - 주간뷰 활성 중 (월간뷰 이벤트 무시)');
+            return;
+        }
+        
+        console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+        console.log('🔽 [하단 스크롤] 트리거됨');
+        setIsLoadingMore(true);
+        
+        const startTime = performance.now();
+        
+        // 1️⃣ 현재 상태 확인
+        const currentWeeksLength = weeks.length;
+        console.log(`1️⃣ [현재 상태]`);
+        console.log(`   - 현재 총 주 수: ${currentWeeksLength}주`);
+        
+        // 2️⃣ 새 데이터 생성
+        const lastWeek = weeks[weeks.length - 1];
+        const lastDate = lastWeek[6].dateObj;
+        const newStart = lastDate.add(1, 'day');
+        const newEnd = newStart.add(12, 'month').endOf('month');
+        
+        console.log(`2️⃣ [데이터 생성]`);
+        console.log(`   - 기존 마지막 주: ${lastWeek[0]?.dateString} ~ ${lastWeek[6]?.dateString}`);
+        console.log(`   - 생성 범위: ${newStart.format('YYYY-MM-DD')} ~ ${newEnd.format('YYYY-MM-DD')}`);
+        
+        const { weeks: newWeeks } = generateCalendarData(
+            today, 
+            startDayOfWeek, 
+            newStart,
+            newEnd
+        );
+        
+        // 3️⃣ 중복 체크
+        if (newWeeks.length > 0 && newWeeks[0][0].dateString === lastWeek[0].dateString) {
+            console.log(`3️⃣ [중복 제거] 첫 주 제거됨`);
+            newWeeks.shift();
+        } else {
+            console.log(`3️⃣ [중복 체크] 중복 없음 ✓`);
+        }
+        
+        const addedCount = newWeeks.length;
+        console.log(`   - 추가될 주 수: ${addedCount}주`);
+        console.log(`   - 추가 첫 주: ${newWeeks[0]?.[0]?.dateString} ~ ${newWeeks[0]?.[6]?.dateString}`);
+        console.log(`   - 추가 마지막 주: ${newWeeks[addedCount-1]?.[0]?.dateString} ~ ${newWeeks[addedCount-1]?.[6]?.dateString}`);
+        
+        // 4️⃣ 상태 업데이트 (하단은 인덱스 변경 없음)
+        console.log(`4️⃣ [상태 업데이트] 배열 뒤에 추가 (인덱스 불변)`);
+        setWeeks(prev => [...prev, ...newWeeks]);
+        setLoadedRange(prev => ({ ...prev, end: newEnd.startOf('month') }));
+        
+        const endTime = performance.now();
+        console.log(`✅ [완료] ${addedCount}주 추가 완료 (${(endTime - startTime).toFixed(2)}ms)`);
+        console.log(`   - 새 총 주 수: ${currentWeeksLength + addedCount}주`);
+        console.log(`   - 버벅임: 없음 (하단 추가는 원래 부드러움)`);
+        console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+        
+        setTimeout(() => setIsLoadingMore(false), 100);
+    }, [loadedRange, isLoadingMore, isLoadingPast, weeks.length, today, startDayOfWeek, isWeekly]);
+
+    // ✅ 무한 스크롤 핸들러 (상단) - Content Offset 보정 버전 (개선)
+    const handleStartReached = useCallback((currentOffset = 0) => {
+        if (isLoadingMore || isLoadingPast || weeks.length === 0) {
+            console.log('⏸️ [상단 스크롤] 스킵 - 로딩 중 또는 데이터 없음');
+            return;
+        }
+        
+        // ✅ 비활성 뷰에서 트리거된 경우 무시
+        if (isWeekly) {
+            console.log('⏸️ [상단 스크롤] 스킵 - 주간뷰 활성 중 (월간뷰 이벤트 무시)');
+            return;
+        }
+        
+        console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+        console.log('🔼 [상단 스크롤] 트리거됨');
+        setIsLoadingPast(true);
+        
+        const startTime = performance.now();
+        
+        // 1️⃣ 현재 상태 확인
+        const currentVisibleIdx = visibleWeekIndexRef.current;
+        const currentWeeksLength = weeks.length;
+        console.log(`1️⃣ [현재 상태]`);
+        console.log(`   - 현재 보는 인덱스: ${currentVisibleIdx}`);
+        console.log(`   - 현재 스크롤 오프셋: ${currentOffset.toFixed(2)}px`);
+        console.log(`   - 현재 총 주 수: ${currentWeeksLength}주`);
+        
+        // 2️⃣ 새 데이터 생성
+        const firstWeek = weeks[0];
+        const firstDate = firstWeek[0].dateObj;
+        const newEnd = firstDate.subtract(1, 'day');
+        const newStart = newEnd.subtract(12, 'month').startOf('month');
+        
+        console.log(`2️⃣ [데이터 생성]`);
+        console.log(`   - 기존 첫 주: ${firstWeek[0]?.dateString} ~ ${firstWeek[6]?.dateString}`);
+        console.log(`   - 생성 범위: ${newStart.format('YYYY-MM-DD')} ~ ${newEnd.format('YYYY-MM-DD')}`);
+        
+        const { weeks: newWeeks } = generateCalendarData(
+            today,
+            startDayOfWeek,
+            newStart,
+            newEnd
+        );
+        
+        // 3️⃣ 중복 체크
+        if (newWeeks.length > 0 && newWeeks[newWeeks.length - 1][0].dateString === firstWeek[0].dateString) {
+            console.log(`3️⃣ [중복 제거] 마지막 주 제거됨`);
+            newWeeks.pop();
+        } else {
+            console.log(`3️⃣ [중복 체크] 중복 없음 ✓`);
+        }
+        
+        const addedCount = newWeeks.length;
+        console.log(`   - 추가될 주 수: ${addedCount}주`);
+        console.log(`   - 추가 첫 주: ${newWeeks[0]?.[0]?.dateString} ~ ${newWeeks[0]?.[6]?.dateString}`);
+        console.log(`   - 추가 마지막 주: ${newWeeks[addedCount-1]?.[0]?.dateString} ~ ${newWeeks[addedCount-1]?.[6]?.dateString}`);
+        
+        // 4️⃣ ref 업데이트 (동기)
+        const newTargetIndex = currentVisibleIdx + addedCount;
+        visibleWeekIndexRef.current = newTargetIndex;
+        console.log(`4️⃣ [ref 업데이트]`);
+        console.log(`   - 새 인덱스: ${newTargetIndex} (${currentVisibleIdx} + ${addedCount})`);
+        
+        // 5️⃣ 오프셋 계산
+        const addedHeight = addedCount * CELL_HEIGHT;
+        const newOffset = currentOffset + addedHeight;
+        console.log(`5️⃣ [오프셋 계산]`);
+        console.log(`   - 추가된 높이: ${addedHeight}px (${addedCount}주 × ${CELL_HEIGHT}px)`);
+        console.log(`   - 새 오프셋: ${newOffset.toFixed(2)}px (${currentOffset.toFixed(2)} + ${addedHeight})`);
+        
+        // 6️⃣ 상태 업데이트 + Virtual Window (배열 크기 제한)
+        console.log(`6️⃣ [상태 업데이트 + Virtual Window] 배열 크기 제한...`);
+        
+        setWeeks(prev => {
+            const combined = [...newWeeks, ...prev];
+            
+            // ✅ Virtual Window: 최대 156주(3년)로 제한
+            if (combined.length > MAX_WEEKS) {
+                const trimmed = combined.slice(0, MAX_WEEKS);
+                console.log(`   ✂️ 배열 크기 제한: ${combined.length}주 → ${trimmed.length}주`);
+                
+                // 스크롤 보정 (즉시)
+                setTimeout(() => {
+                    if (monthlyRef.current) {
+                        monthlyRef.current.scrollToOffset(newOffset, false);
+                        console.log(`   ✅ 월간뷰 오프셋 보정 완료: ${newOffset.toFixed(2)}px`);
+                    }
+                }, 0);
+                
+                return trimmed;
+            }
+            
+            // 스크롤 보정 (즉시)
+            setTimeout(() => {
+                if (monthlyRef.current) {
+                    monthlyRef.current.scrollToOffset(newOffset, false);
+                    console.log(`   ✅ 월간뷰 오프셋 보정 완료: ${newOffset.toFixed(2)}px`);
+                }
+            }, 0);
+            
+            return combined;
+        });
+        
+        setLoadedRange(prev => ({ ...prev, start: newStart }));
+        setTodayWeekIndex(prev => prev + addedCount);
+        setVisibleWeekIndex(newTargetIndex);
+        
+        const endTime = performance.now();
+        console.log(`✅ [완료] ${addedCount}주 추가 완료 (${(endTime - startTime).toFixed(2)}ms)`);
+        console.log(`   - 새 총 주 수: ${currentWeeksLength + addedCount}주`);
+        console.log(`   - 버벅임: Content Offset 보정으로 방지`);
+        console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+        
+        setTimeout(() => setIsLoadingPast(false), 100);
+    }, [loadedRange, isLoadingMore, isLoadingPast, weeks, today, startDayOfWeek, isWeekly]);
 
     // Reanimated Values
     const height = useSharedValue(CALENDAR_HEIGHT_WEEK);
@@ -99,18 +333,26 @@ export default function UltimateCalendar({ eventsByDate = {} }) {
     }, [isWeekly]);
 
     // ⚡️ [핵심 수정 1] 양방향 그림자 동기화 (Shadow Sync)
-    // 어느 한쪽 모드에 있더라도, 날짜가 바뀌면 반대쪽 뷰를 미리 이동시켜 둡니다.
+    // ✅ 사용자 스크롤 중에는 동기화 비활성화 (충돌 방지)
     useEffect(() => {
-        // 1. 주간 모드일 때 -> 숨겨진 월간 뷰 동기화
+        // ✅ 사용자가 스크롤 중이면 동기화 스킵
+        if (isUserScrolling.current) {
+            console.log('⏸️ [동기화] 사용자 스크롤 중 - 동기화 스킵');
+            return;
+        }
+        
+        // 1. 주간 모드일 때 -> 숨겨진 월간 뷰 동기화 (visibleWeekIndex 사용)
         if (isWeekly && hasLoadedMonthly && monthlyRef.current) {
-            monthlyRef.current.scrollToIndex(currentWeekIndex, false);
+            console.log(`🔄 [동기화] 주간→월간 동기화: ${visibleWeekIndex}`);
+            monthlyRef.current.scrollToIndex(visibleWeekIndex, false);
         }
 
-        // 2. 월간 모드일 때 -> 숨겨진 주간 뷰 동기화 (이게 빠져있어서 늦었던 것!)
+        // 2. 월간 모드일 때 -> 숨겨진 주간 뷰 동기화 (visibleWeekIndex 사용)
         if (!isWeekly && weeklyRef.current) {
-            weeklyRef.current.scrollToIndex(currentWeekIndex, false);
+            console.log(`🔄 [동기화] 월간→주간 동기화: ${visibleWeekIndex}`);
+            weeklyRef.current.scrollToIndex(visibleWeekIndex, false);
         }
-    }, [currentWeekIndex, isWeekly, hasLoadedMonthly]);
+    }, [visibleWeekIndex, isWeekly, hasLoadedMonthly]);
 
 
     const animatedStyle = useAnimatedStyle(() => ({
@@ -137,19 +379,35 @@ export default function UltimateCalendar({ eventsByDate = {} }) {
     const switchToMonthly = useCallback(() => {
         setIsWeekly(false);
         setHasLoadedMonthly(true);
-        // 확인 사살용 (이미 useEffect가 했겠지만)
+        // 확인 사살용 (이미 useEffect가 했겠지만) - visibleWeekIndex 사용
         setTimeout(() => {
-            monthlyRef.current?.scrollToIndex(currentWeekIndex, false);
+            monthlyRef.current?.scrollToIndex(visibleWeekIndex, false);
         }, 0);
-    }, [currentWeekIndex]);
+    }, [visibleWeekIndex]);
 
     const switchToWeekly = useCallback(() => {
         setIsWeekly(true);
+        
+        // ✅ Selected Date가 화면에 보이는지 체크 (월간뷰는 ±3주 범위)
+        const isSelectedVisible = Math.abs(currentWeekIndex - visibleWeekIndex) <= 3;
+        
+        // Selected Date가 보이면 해당 주로, 아니면 현재 보는 주로
+        const targetIndex = isSelectedVisible ? currentWeekIndex : visibleWeekIndex;
+        
+        console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+        console.log('📅 [모드 전환] 월간 → 주간');
+        console.log(`   - 현재 보는 주 (visibleWeekIndex): ${visibleWeekIndex}`);
+        console.log(`   - Selected Date 주 (currentWeekIndex): ${currentWeekIndex}`);
+        console.log(`   - 거리: ${Math.abs(currentWeekIndex - visibleWeekIndex)}주`);
+        console.log(`   - Selected 화면에 보임: ${isSelectedVisible ? 'YES' : 'NO'}`);
+        console.log(`   - 이동할 인덱스: ${targetIndex} ${isSelectedVisible ? '(Selected 주)' : '(현재 보는 주)'}`);
+        console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+        
         // 확인 사살용
         setTimeout(() => {
-            weeklyRef.current?.scrollToIndex(currentWeekIndex, false); // false로 변경 (즉시 이동)
+            weeklyRef.current?.scrollToIndex(targetIndex, false);
         }, 0);
-    }, [currentWeekIndex]);
+    }, [visibleWeekIndex, currentWeekIndex]);
 
     const toggleMode = useCallback(() => {
         if (isWeekly) {
@@ -162,33 +420,200 @@ export default function UltimateCalendar({ eventsByDate = {} }) {
     const handleDatePress = useCallback((dateString) => {
         setCurrentDate(dateString);
         setHeaderDate(dayjs(dateString));
-        // useEffect가 currentWeekIndex 변경을 감지해서 양쪽 뷰를 자동 동기화함
-    }, [setCurrentDate]);
+        
+        // ✅ 클릭한 날짜가 속한 주의 인덱스 찾기
+        const clickedWeekIndex = weeks.findIndex(week => 
+            week.some(d => d.dateString === dateString)
+        );
+        
+        if (clickedWeekIndex !== -1 && clickedWeekIndex !== visibleWeekIndex) {
+            const yearMonth = dayjs(dateString).format('YYYY-MM');
+            console.log(`📅 [날짜 클릭] ${dateString} (${yearMonth}) → 인덱스 ${clickedWeekIndex}`);
+            
+            // ✅ 스크롤 플래그 설정 (동기화 방지)
+            isUserScrolling.current = true;
+            
+            visibleWeekIndexRef.current = clickedWeekIndex;
+            setVisibleWeekIndex(clickedWeekIndex);
+            
+            // ✅ 즉시 이동 (애니메이션 없음) - 스와이프 충돌 방지
+            if (weeklyRef.current) weeklyRef.current.scrollToIndex(clickedWeekIndex, false);
+            if (hasLoadedMonthly && monthlyRef.current) monthlyRef.current.scrollToIndex(clickedWeekIndex, false);
+            
+            // ✅ 플래그 해제 (300ms 후)
+            setTimeout(() => {
+                isUserScrolling.current = false;
+                console.log('✅ [날짜 클릭] 이동 완료 - 동기화 재활성화');
+            }, 300);
+        }
+    }, [setCurrentDate, weeks, hasLoadedMonthly, visibleWeekIndex]);
 
     const handleTodayPress = useCallback(() => {
         const todayStr = dayjs().format('YYYY-MM-DD');
+        
+        console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+        console.log('🏠 [오늘 버튼] 클릭됨');
+        console.log(`   - 현재 visibleWeekIndex: ${visibleWeekIndexRef.current}`);
+        console.log(`   - todayWeekIndex: ${todayWeekIndex}`);
+        console.log(`   - 이동: ${visibleWeekIndexRef.current} → ${todayWeekIndex}`);
+        
         setCurrentDate(todayStr);
+        setHeaderDate(today);
+        
+        // ✅ Arrow 네비게이션 플래그 설정 (스크롤 이벤트 무시)
+        isArrowNavigating.current = true;
+        
+        // ✅ visibleWeekIndex 업데이트 (모드 전환 시 올바른 위치 유지)
+        visibleWeekIndexRef.current = todayWeekIndex;
+        setVisibleWeekIndex(todayWeekIndex);
+        
         if (weeklyRef.current) weeklyRef.current.scrollToIndex(todayWeekIndex, true);
         if (hasLoadedMonthly && monthlyRef.current) monthlyRef.current.scrollToIndex(todayWeekIndex, true);
-    }, [setCurrentDate, todayWeekIndex, hasLoadedMonthly]);
+        
+        console.log('✅ [오늘 버튼] 이동 완료');
+        console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+        
+        // ✅ 애니메이션 완료 후 플래그 해제 (500ms)
+        setTimeout(() => {
+            isArrowNavigating.current = false;
+        }, 500);
+    }, [setCurrentDate, todayWeekIndex, hasLoadedMonthly, today]);
 
-    const handleWeekChange = useCallback((dateObj) => { if (dateObj) setHeaderDate(dateObj); }, []);
-    const handleVisibleWeeksChange = useCallback((dateObj) => { if (dateObj) setHeaderDate(dateObj); }, []);
-    const isTodaySelected = currentDate === today.format('YYYY-MM-DD');
+    // ✅ Arrow 네비게이션 핸들러 (옵션 2: Current Date 고정, 헤더만 변경)
+    const handlePrevious = useCallback(() => {
+        const targetIndex = visibleWeekIndex - 1;
+        if (targetIndex < 0) return;
+        
+        console.log(`⬅️ [Arrow] 이전 주로 이동: ${visibleWeekIndex} → ${targetIndex}`);
+        
+        // ✅ Arrow 네비게이션 시작 플래그
+        isArrowNavigating.current = true;
+        
+        // ✅ ref와 state 즉시 업데이트 (스크롤 이벤트를 기다리지 않음)
+        visibleWeekIndexRef.current = targetIndex;
+        setVisibleWeekIndex(targetIndex);
+        
+        if (isWeekly && weeklyRef.current) {
+            weeklyRef.current.scrollToIndex(targetIndex, true);
+        } else if (!isWeekly && monthlyRef.current) {
+            monthlyRef.current.scrollToIndex(targetIndex, true);
+        }
+        
+        // ✅ 헤더만 업데이트 (Current Date는 변경하지 않음)
+        if (weeks[targetIndex]) {
+            const firstDate = weeks[targetIndex][0].dateObj;
+            setHeaderDate(firstDate);
+        }
+        
+        // ✅ 애니메이션 완료 후 플래그 해제 (500ms)
+        setTimeout(() => {
+            isArrowNavigating.current = false;
+        }, 500);
+    }, [visibleWeekIndex, isWeekly, weeks]);
+
+    const handleNext = useCallback(() => {
+        const targetIndex = visibleWeekIndex + 1;
+        if (targetIndex >= weeks.length) return;
+        
+        console.log(`➡️ [Arrow] 다음 주로 이동: ${visibleWeekIndex} → ${targetIndex}`);
+        
+        // ✅ Arrow 네비게이션 시작 플래그
+        isArrowNavigating.current = true;
+        
+        // ✅ ref와 state 즉시 업데이트 (스크롤 이벤트를 기다리지 않음)
+        visibleWeekIndexRef.current = targetIndex;
+        setVisibleWeekIndex(targetIndex);
+        
+        if (isWeekly && weeklyRef.current) {
+            weeklyRef.current.scrollToIndex(targetIndex, true);
+        } else if (!isWeekly && monthlyRef.current) {
+            monthlyRef.current.scrollToIndex(targetIndex, true);
+        }
+        
+        // ✅ 헤더만 업데이트 (Current Date는 변경하지 않음)
+        if (weeks[targetIndex]) {
+            const firstDate = weeks[targetIndex][0].dateObj;
+            setHeaderDate(firstDate);
+        }
+        
+        // ✅ 애니메이션 완료 후 플래그 해제 (500ms)
+        setTimeout(() => {
+            isArrowNavigating.current = false;
+        }, 500);
+    }, [visibleWeekIndex, weeks.length, isWeekly, weeks]);
+
+    // ✅ 스와이프 시 헤더만 업데이트 (Current Date는 변경하지 않음)
+    const handleWeekChange = useCallback((dateObj, index) => {
+        // ✅ Arrow 네비게이션 중에는 스크롤 이벤트 무시
+        if (isArrowNavigating.current) {
+            console.log(`⏭️ [주간뷰] Arrow 네비게이션 중 - 스크롤 이벤트 무시 (${index})`);
+            return;
+        }
+        
+        // ✅ 사용자 스크롤 시작 플래그 설정
+        isUserScrolling.current = true;
+        
+        if (dateObj) setHeaderDate(dateObj); 
+        if (index !== undefined) {
+            const weekInfo = weeks[index];
+            const weekRange = weekInfo ? `${weekInfo[0].dateString} ~ ${weekInfo[6].dateString}` : 'N/A';
+            const yearMonth = weekInfo ? dayjs(weekInfo[0].dateString).format('YYYY-MM') : 'N/A';
+            console.log(`📍 [주간뷰] 인덱스 변경: ${visibleWeekIndexRef.current} → ${index}`);
+            console.log(`   📅 년월: ${yearMonth}, 주 범위: ${weekRange}`);
+            setVisibleWeekIndex(index);
+            visibleWeekIndexRef.current = index;
+        }
+        
+        // ✅ 스크롤 완료 후 플래그 해제 (500ms 후)
+        setTimeout(() => {
+            isUserScrolling.current = false;
+            console.log('✅ [주간뷰] 스크롤 완료 - 동기화 재활성화');
+        }, 500);
+    }, [weeks]);
+    
+    const handleVisibleWeeksChange = useCallback((dateObj, index) => {
+        // ✅ Arrow 네비게이션 중에는 스크롤 이벤트 무시
+        if (isArrowNavigating.current) {
+            console.log(`⏭️ [월간뷰] Arrow 네비게이션 중 - 스크롤 이벤트 무시 (${index})`);
+            return;
+        }
+        
+        // ✅ 사용자 스크롤 시작 플래그 설정
+        isUserScrolling.current = true;
+        
+        if (dateObj) setHeaderDate(dateObj); 
+        if (index !== undefined) {
+            const weekInfo = weeks[index];
+            const weekRange = weekInfo ? `${weekInfo[0].dateString} ~ ${weekInfo[6].dateString}` : 'N/A';
+            const yearMonth = weekInfo ? dayjs(weekInfo[0].dateString).format('YYYY-MM') : 'N/A';
+            console.log(`📍 [월간뷰] 인덱스 변경: ${visibleWeekIndexRef.current} → ${index}`);
+            console.log(`   📅 년월: ${yearMonth}, 주 범위: ${weekRange}`);
+            setVisibleWeekIndex(index);
+            visibleWeekIndexRef.current = index;
+        }
+        
+        // ✅ 스크롤 완료 후 플래그 해제 (500ms 후)
+        setTimeout(() => {
+            isUserScrolling.current = false;
+            console.log('✅ [월간뷰] 스크롤 완료 - 동기화 재활성화');
+        }, 500);
+    }, [weeks]);
+    // ✅ [오늘] 버튼 표시 조건: 오늘이 속한 주가 화면에 안 보일 때
+    const isTodayVisible = Math.abs(visibleWeekIndex - todayWeekIndex) <= 2; // 2주 이내면 보이는 것으로 간주
 
 
-    // ⚡️ [핵심 추가 2] 터치 시작 시 강제 동기화 함수들
+    // ⚡️ [핵심 추가 2] 터치 시작 시 강제 동기화 함수들 (visibleWeekIndex 사용)
     const preSyncMonthlyPosition = useCallback(() => {
         if (hasLoadedMonthly && monthlyRef.current) {
-            monthlyRef.current.scrollToIndex(currentWeekIndex, false);
+            monthlyRef.current.scrollToIndex(visibleWeekIndex, false);
         }
-    }, [currentWeekIndex, hasLoadedMonthly]);
+    }, [visibleWeekIndex, hasLoadedMonthly]);
 
     const preSyncWeeklyPosition = useCallback(() => {
         if (weeklyRef.current) {
-            weeklyRef.current.scrollToIndex(currentWeekIndex, false);
+            weeklyRef.current.scrollToIndex(visibleWeekIndex, false);
         }
-    }, [currentWeekIndex]);
+    }, [visibleWeekIndex]);
 
 
     // =================================================================
@@ -260,7 +685,9 @@ export default function UltimateCalendar({ eventsByDate = {} }) {
                     isWeekly={isWeekly}
                     onToggleMode={toggleMode}
                     onTodayPress={handleTodayPress}
-                    isTodayVisible={isTodaySelected}
+                    isTodayVisible={isTodayVisible}
+                    onPrevious={handlePrevious}
+                    onNext={handleNext}
                 />
 
                 {/* Week Days Header */}
@@ -296,8 +723,10 @@ export default function UltimateCalendar({ eventsByDate = {} }) {
                                 weeks={weeks}
                                 onDatePress={handleDatePress}
                                 onVisibleWeeksChange={handleVisibleWeeksChange}
-                                initialIndex={currentWeekIndex}
+                                initialIndex={visibleWeekIndex}
                                 eventsByDate={eventsByDate}
+                                onEndReached={handleEndReached}
+                                onStartReached={handleStartReached}
                             />
                         </Animated.View>
                     )}
@@ -308,9 +737,11 @@ export default function UltimateCalendar({ eventsByDate = {} }) {
                             ref={weeklyRef}
                             weeks={weeks}
                             onDatePress={handleDatePress}
-                            initialIndex={currentWeekIndex}
+                            initialIndex={visibleWeekIndex}
                             onWeekChange={handleWeekChange}
                             eventsByDate={eventsByDate}
+                            onEndReached={handleEndReached}
+                            onStartReached={handleStartReached}
                         />
                     </Animated.View>
 

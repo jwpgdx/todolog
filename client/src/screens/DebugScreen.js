@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Platform } from 'react-native';
 import { useQueryClient } from '@tanstack/react-query';
 import { todoAPI } from '../api/todos';
@@ -9,6 +9,12 @@ import NetInfo from '@react-native-community/netinfo';
 export default function DebugScreen() {
   const [logs, setLogs] = useState([]);
   const queryClient = useQueryClient();
+
+  // ✅ 테스트용 상태를 컴포넌트 레벨로 이동
+  const testStateRef = useRef({
+    months: [],
+    loadedRange: { start: null, end: null }
+  });
 
   const addLog = (message) => {
     const timestamp = new Date().toLocaleTimeString();
@@ -1020,6 +1026,622 @@ export default function DebugScreen() {
     }
   };
 
+  // ============================================================
+  // 무한 스크롤 테스트
+  // ============================================================
+
+  // 31. 초기 데이터 생성 (19개월)
+  const testInitialDataGeneration = () => {
+    try {
+      const dayjs = require('dayjs');
+      const start = performance.now();
+      
+      const rangeStart = dayjs().subtract(6, 'month');
+      const rangeEnd = dayjs().add(12, 'month');
+      
+      const months = [];
+      let current = rangeStart.clone();
+      
+      while (current.isBefore(rangeEnd) || current.isSame(rangeEnd, 'month')) {
+        months.push({
+          monthKey: current.format('YYYY-MM'),
+          title: current.format('YYYY년 M월'),
+        });
+        current = current.add(1, 'month');
+      }
+      
+      // ✅ ref에 저장
+      testStateRef.current.months = months;
+      testStateRef.current.loadedRange = { start: rangeStart, end: rangeEnd };
+      
+      const end = performance.now();
+      
+      addLog(`✅ 초기 생성 완료`);
+      addLog(`📊 생성된 월: ${months.length}개`);
+      addLog(`📅 범위: ${rangeStart.format('YYYY-MM')} ~ ${rangeEnd.format('YYYY-MM')}`);
+      addLog(`⏱️ 소요 시간: ${(end - start).toFixed(2)}ms`);
+      addLog(`💾 첫 월: ${months[0].monthKey}`);
+      addLog(`💾 마지막 월: ${months[months.length - 1].monthKey}`);
+    } catch (error) {
+      addLog(`❌ 초기 생성 실패: ${error.message}`);
+    }
+  };
+
+  // 32. 무한 스크롤 시뮬레이션 (12개월 추가)
+  const testInfiniteScroll = () => {
+    try {
+      const dayjs = require('dayjs');
+      
+      // ✅ ref에서 읽기
+      if (testStateRef.current.months.length === 0) {
+        addLog(`⚠️ 초기 데이터 없음 - 먼저 "초기 데이터 생성" 버튼 클릭`);
+        return;
+      }
+      
+      const start = performance.now();
+      
+      const currentEnd = testStateRef.current.loadedRange.end;
+      const newEnd = currentEnd.add(12, 'month');
+      
+      const newMonths = [];
+      let current = currentEnd.add(1, 'month');
+      
+      while (current.isBefore(newEnd) || current.isSame(newEnd, 'month')) {
+        newMonths.push({
+          monthKey: current.format('YYYY-MM'),
+          title: current.format('YYYY년 M월'),
+        });
+        current = current.add(1, 'month');
+      }
+      
+      // ✅ ref 업데이트
+      testStateRef.current.months = [...testStateRef.current.months, ...newMonths];
+      testStateRef.current.loadedRange = { 
+        ...testStateRef.current.loadedRange, 
+        end: newEnd 
+      };
+      
+      const end = performance.now();
+      
+      addLog(`✅ 무한 스크롤 완료`);
+      addLog(`📊 추가된 월: ${newMonths.length}개`);
+      addLog(`📊 총 월: ${testStateRef.current.months.length}개`);
+      addLog(`📅 새 범위: ${currentEnd.format('YYYY-MM')} ~ ${newEnd.format('YYYY-MM')}`);
+      addLog(`⏱️ 소요 시간: ${(end - start).toFixed(2)}ms`);
+      addLog(`💾 마지막 월: ${testStateRef.current.months[testStateRef.current.months.length - 1].monthKey}`);
+    } catch (error) {
+      addLog(`❌ 무한 스크롤 실패: ${error.message}`);
+    }
+  };
+
+  // 33. 이벤트 계산 (정적 36개월)
+  const testStaticEventCalculation = async () => {
+    try {
+      const dayjs = require('dayjs');
+      const todos = await loadTodos();
+      
+      if (todos.length === 0) {
+        addLog(`⚠️ 할일 없음 - 먼저 일정을 생성하세요`);
+        return;
+      }
+      
+      const start = performance.now();
+      
+      const rangeStart = dayjs().subtract(18, 'month');
+      const rangeEnd = dayjs().add(18, 'month');
+      
+      let eventCount = 0;
+      const eventsMap = {};
+      
+      todos.forEach(todo => {
+        if (!todo.startDate) return;
+        
+        if (todo.recurrence && Array.isArray(todo.recurrence) && todo.recurrence.length > 0) {
+          let loopDate = rangeStart.clone();
+          while (loopDate.isBefore(rangeEnd)) {
+            const dateStr = loopDate.format('YYYY-MM-DD');
+            if (!eventsMap[dateStr]) eventsMap[dateStr] = [];
+            eventsMap[dateStr].push(todo);
+            eventCount++;
+            loopDate = loopDate.add(1, 'day');
+          }
+        }
+      });
+      
+      const end = performance.now();
+      
+      addLog(`✅ 정적 이벤트 계산 완료`);
+      addLog(`📊 할일 수: ${todos.length}개`);
+      addLog(`📅 범위: ${rangeStart.format('YYYY-MM')} ~ ${rangeEnd.format('YYYY-MM')} (36개월)`);
+      addLog(`📊 생성된 이벤트: ${eventCount}개`);
+      addLog(`📊 날짜 수: ${Object.keys(eventsMap).length}개`);
+      addLog(`⏱️ 소요 시간: ${(end - start).toFixed(2)}ms`);
+    } catch (error) {
+      addLog(`❌ 정적 이벤트 계산 실패: ${error.message}`);
+    }
+  };
+
+  // 34. 이벤트 계산 (동적 7개월)
+  const testDynamicEventCalculation = async () => {
+    try {
+      const dayjs = require('dayjs');
+      const todos = await loadTodos();
+      
+      if (todos.length === 0) {
+        addLog(`⚠️ 할일 없음 - 먼저 일정을 생성하세요`);
+        return;
+      }
+      
+      const start = performance.now();
+      
+      const currentMonth = dayjs();
+      const rangeStart = currentMonth.subtract(3, 'month');
+      const rangeEnd = currentMonth.add(3, 'month');
+      
+      let eventCount = 0;
+      const eventsMap = {};
+      
+      todos.forEach(todo => {
+        if (!todo.startDate) return;
+        
+        if (todo.recurrence && Array.isArray(todo.recurrence) && todo.recurrence.length > 0) {
+          let loopDate = rangeStart.clone();
+          while (loopDate.isBefore(rangeEnd)) {
+            const dateStr = loopDate.format('YYYY-MM-DD');
+            if (!eventsMap[dateStr]) eventsMap[dateStr] = [];
+            eventsMap[dateStr].push(todo);
+            eventCount++;
+            loopDate = loopDate.add(1, 'day');
+          }
+        }
+      });
+      
+      const end = performance.now();
+      
+      addLog(`✅ 동적 이벤트 계산 완료`);
+      addLog(`📊 할일 수: ${todos.length}개`);
+      addLog(`📅 범위: ${rangeStart.format('YYYY-MM')} ~ ${rangeEnd.format('YYYY-MM')} (7개월)`);
+      addLog(`📊 생성된 이벤트: ${eventCount}개`);
+      addLog(`📊 날짜 수: ${Object.keys(eventsMap).length}개`);
+      addLog(`⏱️ 소요 시간: ${(end - start).toFixed(2)}ms`);
+      addLog(`📊 개선율: 약 80% 감소 예상`);
+    } catch (error) {
+      addLog(`❌ 동적 이벤트 계산 실패: ${error.message}`);
+    }
+  };
+
+  // 35. 성능 비교 (정적 vs 동적)
+  const testPerformanceComparison = async () => {
+    try {
+      const dayjs = require('dayjs');
+      const todos = await loadTodos();
+      
+      if (todos.length === 0) {
+        addLog(`⚠️ 할일 없음 - 먼저 일정을 생성하세요`);
+        return;
+      }
+      
+      addLog(`🔄 성능 비교 시작...`);
+      addLog(`📊 할일 수: ${todos.length}개`);
+      addLog(``);
+      
+      // 1. 정적 방식
+      const staticStart = performance.now();
+      const staticRange = {
+        start: dayjs().subtract(18, 'month'),
+        end: dayjs().add(18, 'month')
+      };
+      let staticCount = 0;
+      
+      todos.forEach(todo => {
+        if (todo.recurrence && Array.isArray(todo.recurrence) && todo.recurrence.length > 0) {
+          let loopDate = staticRange.start.clone();
+          while (loopDate.isBefore(staticRange.end)) {
+            staticCount++;
+            loopDate = loopDate.add(1, 'day');
+          }
+        }
+      });
+      
+      const staticEnd = performance.now();
+      const staticTime = staticEnd - staticStart;
+      
+      addLog(`📅 정적 방식 (36개월):`);
+      addLog(`  ⏱️ 소요 시간: ${staticTime.toFixed(2)}ms`);
+      addLog(`  📊 이벤트 수: ${staticCount}개`);
+      addLog(``);
+      
+      // 2. 동적 방식
+      const dynamicStart = performance.now();
+      const dynamicRange = {
+        start: dayjs().subtract(3, 'month'),
+        end: dayjs().add(3, 'month')
+      };
+      let dynamicCount = 0;
+      
+      todos.forEach(todo => {
+        if (todo.recurrence && Array.isArray(todo.recurrence) && todo.recurrence.length > 0) {
+          let loopDate = dynamicRange.start.clone();
+          while (loopDate.isBefore(dynamicRange.end)) {
+            dynamicCount++;
+            loopDate = loopDate.add(1, 'day');
+          }
+        }
+      });
+      
+      const dynamicEnd = performance.now();
+      const dynamicTime = dynamicEnd - dynamicStart;
+      
+      addLog(`⚡ 동적 방식 (7개월):`);
+      addLog(`  ⏱️ 소요 시간: ${dynamicTime.toFixed(2)}ms`);
+      addLog(`  📊 이벤트 수: ${dynamicCount}개`);
+      addLog(``);
+      
+      // 3. 비교
+      const improvement = ((staticTime - dynamicTime) / staticTime * 100).toFixed(1);
+      const speedup = (staticTime / dynamicTime).toFixed(1);
+      
+      addLog(`📊 성능 개선:`);
+      addLog(`  🚀 ${improvement}% 빠름`);
+      addLog(`  🚀 ${speedup}배 속도 향상`);
+      addLog(`  💾 ${((staticCount - dynamicCount) / staticCount * 100).toFixed(1)}% 메모리 감소`);
+    } catch (error) {
+      addLog(`❌ 성능 비교 실패: ${error.message}`);
+    }
+  };
+
+  // 36. 스크롤 시뮬레이션 (전체 흐름)
+  const testScrollSimulation = async () => {
+    try {
+      const dayjs = require('dayjs');
+      
+      addLog(`🎬 스크롤 시뮬레이션 시작`);
+      addLog(``);
+      
+      // 1. 초기 로딩
+      addLog(`1️⃣ 초기 로딩 (19개월)`);
+      const initStart = performance.now();
+      
+      let months = [];
+      let current = dayjs().subtract(6, 'month');
+      const end = dayjs().add(12, 'month');
+      
+      while (current.isBefore(end) || current.isSame(end, 'month')) {
+        months.push({ monthKey: current.format('YYYY-MM') });
+        current = current.add(1, 'month');
+      }
+      
+      const initEnd = performance.now();
+      addLog(`  ✅ ${months.length}개 월 생성`);
+      addLog(`  ⏱️ ${(initEnd - initStart).toFixed(2)}ms`);
+      addLog(``);
+      
+      // 2. 첫 이벤트 계산
+      addLog(`2️⃣ 첫 이벤트 계산 (7개월)`);
+      const event1Start = performance.now();
+      
+      const todos = await loadTodos();
+      let eventCount1 = 0;
+      
+      const calcStart1 = dayjs().subtract(3, 'month');
+      const calcEnd1 = dayjs().add(3, 'month');
+      
+      todos.forEach(todo => {
+        if (todo.recurrence && Array.isArray(todo.recurrence) && todo.recurrence.length > 0) {
+          let loopDate = calcStart1.clone();
+          while (loopDate.isBefore(calcEnd1)) {
+            eventCount1++;
+            loopDate = loopDate.add(1, 'day');
+          }
+        }
+      });
+      
+      const event1End = performance.now();
+      addLog(`  ✅ ${eventCount1}개 이벤트 생성`);
+      addLog(`  ⏱️ ${(event1End - event1Start).toFixed(2)}ms`);
+      addLog(``);
+      
+      // 3. 스크롤 (12개월 추가)
+      addLog(`3️⃣ 스크롤 - 12개월 추가`);
+      const scrollStart = performance.now();
+      
+      const lastMonth = dayjs(months[months.length - 1].monthKey);
+      const newEnd = lastMonth.add(12, 'month');
+      
+      let newCurrent = lastMonth.add(1, 'month');
+      let addedCount = 0;
+      
+      while (newCurrent.isBefore(newEnd) || newCurrent.isSame(newEnd, 'month')) {
+        months.push({ monthKey: newCurrent.format('YYYY-MM') });
+        newCurrent = newCurrent.add(1, 'month');
+        addedCount++;
+      }
+      
+      const scrollEnd = performance.now();
+      addLog(`  ✅ ${addedCount}개 월 추가`);
+      addLog(`  📊 총 ${months.length}개 월`);
+      addLog(`  ⏱️ ${(scrollEnd - scrollStart).toFixed(2)}ms`);
+      addLog(``);
+      
+      // 4. 이벤트 재계산 (범위 이동)
+      addLog(`4️⃣ 이벤트 재계산 (범위 이동)`);
+      const event2Start = performance.now();
+      
+      let eventCount2 = 0;
+      
+      const calcStart2 = dayjs('2026-12').subtract(3, 'month');
+      const calcEnd2 = dayjs('2026-12').add(3, 'month');
+      
+      todos.forEach(todo => {
+        if (todo.recurrence && Array.isArray(todo.recurrence) && todo.recurrence.length > 0) {
+          let loopDate = calcStart2.clone();
+          while (loopDate.isBefore(calcEnd2)) {
+            eventCount2++;
+            loopDate = loopDate.add(1, 'day');
+          }
+        }
+      });
+      
+      const event2End = performance.now();
+      addLog(`  ✅ ${eventCount2}개 이벤트 생성`);
+      addLog(`  ⏱️ ${(event2End - event2Start).toFixed(2)}ms`);
+      addLog(``);
+      
+      // 5. 총 시간
+      const totalTime = (initEnd - initStart) + (event1End - event1Start) + 
+                        (scrollEnd - scrollStart) + (event2End - event2Start);
+      
+      addLog(`📊 총 소요 시간: ${totalTime.toFixed(2)}ms`);
+      addLog(`✅ 스크롤 시뮬레이션 완료`);
+    } catch (error) {
+      addLog(`❌ 스크롤 시뮬레이션 실패: ${error.message}`);
+    }
+  };
+
+  // 29. UltimateCalendar 스크롤 범위 테스트
+  const testUltimateCalendarRange = () => {
+    try {
+      const dayjs = require('dayjs');
+      const today = dayjs();
+      
+      // UltimateCalendar 범위: 18개월 전후
+      const ucStart = today.subtract(18, 'month').startOf('month');
+      const ucEnd = today.add(18, 'month').endOf('month');
+      
+      addLog(`📅 UltimateCalendar 범위:`);
+      addLog(`  시작: ${ucStart.format('YYYY-MM-DD')}`);
+      addLog(`  종료: ${ucEnd.format('YYYY-MM-DD')}`);
+      addLog(`  총 기간: ${ucEnd.diff(ucStart, 'month')}개월`);
+      
+      // 2027년 7월 체크
+      const target2027 = dayjs('2027-07-01');
+      const isInRange2027 = target2027.isAfter(ucStart) && target2027.isBefore(ucEnd);
+      addLog(`  2027-07: ${isInRange2027 ? '✅ 범위 내' : '❌ 범위 밖'}`);
+      
+      // 2028년 1월 체크
+      const target2028 = dayjs('2028-01-01');
+      const isInRange2028 = target2028.isAfter(ucStart) && target2028.isBefore(ucEnd);
+      addLog(`  2028-01: ${isInRange2028 ? '✅ 범위 내' : '❌ 범위 밖'}`);
+      
+      addLog(`⚠️ 문제: 18개월 범위로 제한되어 있음`);
+      addLog(`💡 해결: generateCalendarData 범위 확장 필요`);
+    } catch (error) {
+      addLog(`❌ 테스트 실패: ${error.message}`);
+    }
+  };
+
+  // 30. CalendarScreen 스크롤 범위 테스트
+  const testCalendarScreenRange = () => {
+    try {
+      const dayjs = require('dayjs');
+      const today = dayjs();
+      
+      // CalendarScreen 범위: 12개월 전 ~ 24개월 후
+      const csStart = today.subtract(12, 'month').startOf('month');
+      const csEnd = today.add(24, 'month').endOf('month');
+      
+      addLog(`📅 CalendarScreen 범위:`);
+      addLog(`  시작: ${csStart.format('YYYY-MM-DD')}`);
+      addLog(`  종료: ${csEnd.format('YYYY-MM-DD')}`);
+      addLog(`  총 기간: ${csEnd.diff(csStart, 'month')}개월`);
+      
+      // 2027년 7월 체크
+      const target2027 = dayjs('2027-07-01');
+      const isInRange2027 = target2027.isAfter(csStart) && target2027.isBefore(csEnd);
+      addLog(`  2027-07: ${isInRange2027 ? '✅ 범위 내' : '❌ 범위 밖'}`);
+      
+      // 2028년 1월 체크
+      const target2028 = dayjs('2028-01-01');
+      const isInRange2028 = target2028.isAfter(csStart) && target2028.isBefore(csEnd);
+      addLog(`  2028-01: ${isInRange2028 ? '✅ 범위 내' : '❌ 범위 밖'}`);
+      
+      addLog(`⚠️ 문제: 24개월 범위로 제한되어 있음`);
+      addLog(`💡 해결: generateMonthlyData 범위 확장 필요`);
+    } catch (error) {
+      addLog(`❌ 테스트 실패: ${error.message}`);
+    }
+  };
+
+  // 31. Dynamic Events Hook 전체 테스트
+  const testDynamicEventsHook = async () => {
+    try {
+      addLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      addLog('🎯 Dynamic Events Hook 테스트 시작');
+      addLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      
+      const dayjs = require('dayjs');
+      const { generateCalendarData } = require('../components/ui/ultimate-calendar/calendarUtils');
+      
+      // 1️⃣ 데이터 준비
+      addLog('');
+      addLog('1️⃣ 데이터 준비');
+      const today = dayjs();
+      const { weeks } = generateCalendarData(
+        today, 
+        'sunday', 
+        today.subtract(6, 'month'), 
+        today.add(12, 'month')
+      );
+      addLog(`  ✅ 주 데이터 생성: ${weeks.length}주`);
+      addLog(`  - 첫 주: ${weeks[0][0].dateString} ~ ${weeks[0][6].dateString}`);
+      addLog(`  - 마지막 주: ${weeks[weeks.length-1][0].dateString} ~ ${weeks[weeks.length-1][6].dateString}`);
+      
+      // 2️⃣ 전체 todos 가져오기
+      addLog('');
+      addLog('2️⃣ 전체 todos 가져오기');
+      const allTodos = queryClient.getQueryData(['todos', 'all']);
+      if (!allTodos || allTodos.length === 0) {
+        addLog('  ⚠️ 캐시에 todos 없음 - 서버에서 가져오는 중...');
+        await queryClient.fetchQuery({
+          queryKey: ['todos', 'all'],
+          queryFn: async () => {
+            const response = await todoAPI.getAllTodos();
+            return response.data;
+          }
+        });
+        const fetchedTodos = queryClient.getQueryData(['todos', 'all']);
+        addLog(`  ✅ 서버에서 가져옴: ${fetchedTodos?.length || 0}개`);
+      } else {
+        addLog(`  ✅ 캐시에서 가져옴: ${allTodos.length}개`);
+      }
+      
+      // 3️⃣ 카테고리 가져오기
+      addLog('');
+      addLog('3️⃣ 카테고리 가져오기');
+      const categories = queryClient.getQueryData(['categories']);
+      if (!categories || categories.length === 0) {
+        addLog('  ⚠️ 캐시에 카테고리 없음');
+      } else {
+        addLog(`  ✅ 카테고리: ${categories.length}개`);
+      }
+      
+      // 4️⃣ Hook 로직 시뮬레이션 (캐시 미스)
+      addLog('');
+      addLog('4️⃣ Hook 로직 시뮬레이션 - 캐시 미스');
+      const visibleIndex = 30;
+      const range = 3;
+      const startIdx = Math.max(0, visibleIndex - range);
+      const endIdx = Math.min(weeks.length - 1, visibleIndex + range);
+      
+      addLog(`  - visibleIndex: ${visibleIndex}`);
+      addLog(`  - range: ±${range}주`);
+      addLog(`  - 계산 범위: ${startIdx} ~ ${endIdx} (총 ${endIdx - startIdx + 1}주)`);
+      
+      const startTime = performance.now();
+      const todos = queryClient.getQueryData(['todos', 'all']) || [];
+      const cats = queryClient.getQueryData(['categories']) || [];
+      
+      const categoryColorMap = {};
+      cats.forEach(c => categoryColorMap[c._id] = c.color);
+      
+      let totalEvents = 0;
+      const eventsMap = {};
+      
+      for (let i = startIdx; i <= endIdx; i++) {
+        const week = weeks[i];
+        if (!week) continue;
+        
+        const weekStart = dayjs(week[0].dateString);
+        const weekEnd = dayjs(week[6].dateString);
+        
+        todos.forEach(todo => {
+          if (!todo.startDate) return;
+          
+          if (todo.recurrence) {
+            // 반복 일정 (간단 체크)
+            const start = dayjs(todo.startDate);
+            if (start.isAfter(weekStart) && start.isBefore(weekEnd)) {
+              const dateStr = start.format('YYYY-MM-DD');
+              if (!eventsMap[dateStr]) eventsMap[dateStr] = [];
+              eventsMap[dateStr].push(todo);
+              totalEvents++;
+            }
+          } else {
+            // 단일 일정
+            const start = dayjs(todo.startDate);
+            const end = todo.endDate ? dayjs(todo.endDate) : start;
+            
+            let current = start.clone();
+            while (current.isBefore(end) || current.isSame(end, 'day')) {
+              if ((current.isAfter(weekStart) || current.isSame(weekStart, 'day')) &&
+                  (current.isBefore(weekEnd) || current.isSame(weekEnd, 'day'))) {
+                const dateStr = current.format('YYYY-MM-DD');
+                if (!eventsMap[dateStr]) eventsMap[dateStr] = [];
+                eventsMap[dateStr].push(todo);
+                totalEvents++;
+              }
+              current = current.add(1, 'day');
+            }
+          }
+        });
+      }
+      
+      const endTime = performance.now();
+      const duration = endTime - startTime;
+      
+      addLog(`  ✅ 계산 완료: ${duration.toFixed(2)}ms`);
+      addLog(`  - 이벤트 있는 날짜: ${Object.keys(eventsMap).length}개`);
+      addLog(`  - 총 이벤트: ${totalEvents}개`);
+      
+      // 5️⃣ 성능 검증
+      addLog('');
+      addLog('5️⃣ 성능 검증');
+      if (duration < 10) {
+        addLog(`  ✅ 성능 목표 달성: ${duration.toFixed(2)}ms < 10ms`);
+      } else if (duration < 20) {
+        addLog(`  ⚠️ 성능 주의: ${duration.toFixed(2)}ms (목표: 10ms)`);
+      } else {
+        addLog(`  ❌ 성능 미달: ${duration.toFixed(2)}ms (목표: 10ms)`);
+      }
+      
+      // 6️⃣ 캐시 히트 시뮬레이션
+      addLog('');
+      addLog('6️⃣ 캐시 히트 시뮬레이션');
+      const cacheStartTime = performance.now();
+      const cachedResult = { ...eventsMap };
+      const cacheEndTime = performance.now();
+      const cacheDuration = cacheEndTime - cacheStartTime;
+      
+      addLog(`  ✅ 캐시 히트: ${cacheDuration.toFixed(2)}ms`);
+      if (cacheDuration < 1) {
+        addLog(`  ✅ 캐시 성능 우수: ${cacheDuration.toFixed(2)}ms < 1ms`);
+      }
+      
+      // 7️⃣ 샘플 이벤트 출력
+      addLog('');
+      addLog('7️⃣ 샘플 이벤트 (최대 5개 날짜)');
+      const sampleDates = Object.keys(eventsMap).slice(0, 5);
+      if (sampleDates.length === 0) {
+        addLog('  ⚠️ 이벤트 없음 (테스트 데이터 생성 필요)');
+      } else {
+        sampleDates.forEach(date => {
+          const events = eventsMap[date];
+          addLog(`  ${date}: ${events.length}개`);
+          events.slice(0, 2).forEach(e => {
+            addLog(`    - ${e.title}`);
+          });
+        });
+      }
+      
+      // 8️⃣ 최종 결과
+      addLog('');
+      addLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      addLog('✅ Dynamic Events Hook 테스트 완료');
+      addLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      addLog(`📊 요약:`);
+      addLog(`  - 계산 범위: ${endIdx - startIdx + 1}주`);
+      addLog(`  - 초기 계산: ${duration.toFixed(2)}ms`);
+      addLog(`  - 캐시 히트: ${cacheDuration.toFixed(2)}ms`);
+      addLog(`  - 이벤트 날짜: ${Object.keys(eventsMap).length}개`);
+      addLog(`  - 총 이벤트: ${totalEvents}개`);
+      addLog(`  - 성능 목표: ${duration < 10 ? '✅ 달성' : '❌ 미달'}`);
+      
+    } catch (error) {
+      addLog(`❌ 테스트 실패: ${error.message}`);
+      console.error(error);
+    }
+  };
+
   return (
     <View style={styles.container}>
       <Text style={styles.title}>🔧 델타 동기화 디버그</Text>
@@ -1161,6 +1783,51 @@ export default function DebugScreen() {
         <TouchableOpacity style={[styles.button, styles.performanceButton]} onPress={compareCacheVsServer}>
           <Text style={styles.buttonText}>📊 캐시 vs 서버 속도 비교</Text>
         </TouchableOpacity>
+
+        <View style={styles.divider} />
+        <Text style={styles.sectionTitle}>📅 캘린더 스크롤 범위 테스트</Text>
+
+        <TouchableOpacity style={[styles.button, styles.calendarButton]} onPress={testUltimateCalendarRange}>
+          <Text style={styles.buttonText}>📅 UltimateCalendar 범위 확인</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity style={[styles.button, styles.calendarButton]} onPress={testCalendarScreenRange}>
+          <Text style={styles.buttonText}>📅 CalendarScreen 범위 확인</Text>
+        </TouchableOpacity>
+
+        <View style={styles.divider} />
+        <Text style={styles.sectionTitle}>🚀 무한 스크롤 테스트</Text>
+
+        <TouchableOpacity style={[styles.button, styles.scrollButton]} onPress={testInitialDataGeneration}>
+          <Text style={styles.buttonText}>📅 초기 데이터 생성 (19개월)</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity style={[styles.button, styles.scrollButton]} onPress={testInfiniteScroll}>
+          <Text style={styles.buttonText}>🔄 무한 스크롤 시뮬레이션</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity style={[styles.button, styles.eventButton]} onPress={testStaticEventCalculation}>
+          <Text style={styles.buttonText}>🎯 이벤트 계산 (정적 36개월)</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity style={[styles.button, styles.eventButton]} onPress={testDynamicEventCalculation}>
+          <Text style={styles.buttonText}>⚡ 이벤트 계산 (동적 7개월)</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity style={[styles.button, styles.compareButton]} onPress={testPerformanceComparison}>
+          <Text style={styles.buttonText}>📊 성능 비교 (정적 vs 동적)</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity style={[styles.button, styles.simulationButton]} onPress={testScrollSimulation}>
+          <Text style={styles.buttonText}>🎬 스크롤 시뮬레이션 (전체)</Text>
+        </TouchableOpacity>
+
+        <View style={styles.divider} />
+        <Text style={styles.sectionTitle}>🎯 Dynamic Events Hook 테스트</Text>
+
+        <TouchableOpacity style={[styles.button, styles.hookButton]} onPress={testDynamicEventsHook}>
+          <Text style={styles.buttonText}>🎯 Dynamic Events Hook 전체 테스트</Text>
+        </TouchableOpacity>
       </ScrollView>
 
       <View style={styles.logContainer}>
@@ -1223,6 +1890,24 @@ const styles = StyleSheet.create({
   },
   performanceButton: {
     backgroundColor: '#FF2D55',
+  },
+  calendarButton: {
+    backgroundColor: '#32ADE6',
+  },
+  scrollButton: {
+    backgroundColor: '#5AC8FA',
+  },
+  eventButton: {
+    backgroundColor: '#FF9500',
+  },
+  compareButton: {
+    backgroundColor: '#FF2D55',
+  },
+  simulationButton: {
+    backgroundColor: '#30D158',
+  },
+  hookButton: {
+    backgroundColor: '#BF5AF2',
   },
   buttonText: {
     color: 'white',

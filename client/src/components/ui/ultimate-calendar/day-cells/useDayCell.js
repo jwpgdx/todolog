@@ -8,7 +8,7 @@ import { THEME } from '../constants';
  * 모든 DayCell 변형(Compact, List, Timetable)에서 공유하는 로직:
  * - 선택 상태 계산
  * - 텍스트 색상 결정
- * - 이벤트 슬라이싱 (최대 3개)
+ * - 이벤트 카테고리별 그룹화 (중복 제거)
  * - 추가 이벤트 개수 계산
  */
 export const useDayCell = (day, events = [], maxVisibleEvents = 3) => {
@@ -26,15 +26,29 @@ export const useDayCell = (day, events = [], maxVisibleEvents = 3) => {
         return THEME.text;
     }, [isSelected, day.isToday, day.isSunday, day.isSaturday]);
 
-    // 이벤트 슬라이싱
+    // ✅ 카테고리별로 그룹화 (중복 제거)
+    const uniqueEventsByCategory = useMemo(() => {
+        const categoryMap = new Map();
+        
+        events.forEach(event => {
+            const categoryId = event.todo?.categoryId || 'no-category';
+            if (!categoryMap.has(categoryId)) {
+                categoryMap.set(categoryId, event);
+            }
+        });
+        
+        return Array.from(categoryMap.values());
+    }, [events]);
+
+    // 이벤트 슬라이싱 (카테고리 중복 제거 후)
     const visibleEvents = useMemo(() =>
-        events.slice(0, maxVisibleEvents),
-        [events, maxVisibleEvents]
+        uniqueEventsByCategory.slice(0, maxVisibleEvents),
+        [uniqueEventsByCategory, maxVisibleEvents]
     );
 
     // 추가 이벤트 계산
-    const hasMore = events.length > maxVisibleEvents;
-    const remainingCount = hasMore ? events.length - maxVisibleEvents : 0;
+    const hasMore = uniqueEventsByCategory.length > maxVisibleEvents;
+    const remainingCount = hasMore ? uniqueEventsByCategory.length - maxVisibleEvents : 0;
 
     return {
         isSelected,
@@ -42,6 +56,8 @@ export const useDayCell = (day, events = [], maxVisibleEvents = 3) => {
         visibleEvents,
         hasMore,
         remainingCount,
+        totalCategories: uniqueEventsByCategory.length,
+        totalEvents: events.length,
         // 편의를 위해 day 속성들도 전달
         isToday: day.isToday,
         isSunday: day.isSunday,

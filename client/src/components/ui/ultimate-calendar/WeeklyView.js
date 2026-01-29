@@ -5,25 +5,63 @@ import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import WeekRow from './WeekRow';
 import { SCREEN_WIDTH, CELL_HEIGHT } from './constants';
 
-const WeeklyView = forwardRef(({ weeks, onDatePress, initialIndex, onWeekChange, eventsByDate = {} }, ref) => {
+const WeeklyView = forwardRef(({ 
+    weeks, 
+    onDatePress, 
+    initialIndex, 
+    onWeekChange, 
+    eventsByDate = {},
+    onEndReached,
+    onStartReached 
+}, ref) => {
     const listRef = useRef(null);
     const scrollOffset = useRef(initialIndex * SCREEN_WIDTH);
+    const visibleIndexRef = useRef(initialIndex);
+    
+    // ✅ 초기 인덱스를 ref로 저장 (첫 유효한 값만 사용)
+    const initialIndexRef = useRef(initialIndex);
+    const hasScrolledToInitial = useRef(false);
+    
+    // ✅ initialIndex가 유효한 값으로 변경되면 업데이트 (한 번만)
+    if (!hasScrolledToInitial.current && initialIndex > 0 && initialIndexRef.current === 0) {
+        console.log(`🔄 [WeeklyView] initialIndex 업데이트: ${initialIndexRef.current} → ${initialIndex}`);
+        initialIndexRef.current = initialIndex;
+    }
+    
+    // ✅ 로딩 상태 추적 (부모에서 전달받지만 로컬에서도 체크)
+    const isLoadingMore = useRef(false);
+    const isLoadingPast = useRef(false);
 
     // ⚡️ 부모에서 호출 가능한 메소드 노출
     useImperativeHandle(ref, () => ({
         scrollToIndex: (index, animated = true) => {
             listRef.current?.scrollToIndex({ index, animated });
             scrollOffset.current = index * SCREEN_WIDTH;
+            visibleIndexRef.current = index;
         }
     }));
 
     // ✨ 핵심 안정성 로직: 렌더링 전 초기 인덱스로 즉시 이동하여 깜빡임 방지
     useLayoutEffect(() => {
-        if (listRef.current && initialIndex !== -1) {
-            listRef.current.scrollToIndex({ index: initialIndex, animated: false });
-            scrollOffset.current = initialIndex * SCREEN_WIDTH;
+        console.log(`🎬 [WeeklyView] useLayoutEffect 실행`);
+        console.log(`   - initialIndex: ${initialIndexRef.current}`);
+        console.log(`   - weeks.length: ${weeks.length}`);
+        console.log(`   - listRef.current: ${listRef.current ? 'OK' : 'NULL'}`);
+        console.log(`   - hasScrolledToInitial: ${hasScrolledToInitial.current}`);
+        
+        if (listRef.current && initialIndexRef.current > 0 && weeks.length > 0 && !hasScrolledToInitial.current) {
+            // 약간의 지연을 주어 FlatList가 완전히 마운트되도록 함
+            setTimeout(() => {
+                if (listRef.current && !hasScrolledToInitial.current) {
+                    console.log(`📍 [WeeklyView] scrollToIndex 호출: ${initialIndexRef.current}`);
+                    listRef.current.scrollToIndex({ index: initialIndexRef.current, animated: false });
+                    scrollOffset.current = initialIndexRef.current * SCREEN_WIDTH;
+                    visibleIndexRef.current = initialIndexRef.current;
+                    hasScrolledToInitial.current = true;
+                }
+            }, 0);
         }
-    }, []);
+    }, [weeks.length]);
 
     // ⚡️ 성능 최적화: currentDate는 WeekRow에서 직접 store 구독하므로 dependency에서 제거
     const renderItem = useCallback(({ item }) => (
@@ -42,12 +80,25 @@ const WeeklyView = forwardRef(({ weeks, onDatePress, initialIndex, onWeekChange,
         const offsetX = e.nativeEvent.contentOffset.x;
         const index = Math.round(offsetX / SCREEN_WIDTH);
         scrollOffset.current = offsetX;
+        visibleIndexRef.current = index;
+
+        // ✅ 무한 스크롤 트리거 (끝에서 5주 이내, 로딩 중이 아닐 때만)
+        if (onEndReached && index >= weeks.length - 5 && !isLoadingMore.current) {
+            isLoadingMore.current = true;
+            onEndReached();
+            setTimeout(() => { isLoadingMore.current = false; }, 1000);
+        }
+        if (onStartReached && index <= 5 && !isLoadingPast.current) {
+            isLoadingPast.current = true;
+            onStartReached();
+            setTimeout(() => { isLoadingPast.current = false; }, 1000);
+        }
 
         // 부모 컴포넌트에 새로운 주 정보 알림 (헤더 업데이트용)
         if (weeks[index] && onWeekChange) {
             onWeekChange(weeks[index][0].dateObj, index);
         }
-    }, [weeks, onWeekChange]);
+    }, [weeks, onWeekChange, onEndReached, onStartReached]);
 
     // 🖱️ 웹 마우스 드래그 지원
     const isWeb = Platform.OS === 'web';
@@ -117,7 +168,7 @@ const WeeklyView = forwardRef(({ weeks, onDatePress, initialIndex, onWeekChange,
                     renderItem={renderItem}
                     keyExtractor={(item, index) => `week-${index}`}
                     estimatedItemSize={SCREEN_WIDTH}
-                    initialScrollIndex={initialIndex}
+                    initialScrollIndex={initialIndexRef.current}
 
                     horizontal
                     pagingEnabled
