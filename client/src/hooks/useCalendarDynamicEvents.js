@@ -103,6 +103,10 @@ export function useCalendarDynamicEvents({
     const categoryColorMap = {};
     categories.forEach(c => categoryColorMap[c._id] = c.color);
     
+    // ✅ Fallback: categoryId가 null일 때 사용할 기본 카테고리
+    const defaultCategoryId = categories[0]?._id;
+    const defaultColor = categories[0]?.color || '#CCCCCC';
+    
     // console.log('🎨 [카테고리 색상 맵]', categoryColorMap);
     // console.log('📝 [전체 todos]', todos.length, '개');
     
@@ -170,7 +174,7 @@ export function useCalendarDynamicEvents({
               periodEvents[dateStr].push({
                 _id: todo._id,
                 title: todo.title,
-                color: categoryColorMap[todo.categoryId] || '#808080',
+                color: categoryColorMap[todo.categoryId] || defaultColor,
                 isRecurring: true,
                 event: todo,
               });
@@ -192,7 +196,7 @@ export function useCalendarDynamicEvents({
               periodEvents[dateStr].push({
                 _id: todo._id,
                 title: todo.title,
-                color: categoryColorMap[todo.categoryId] || '#808080',
+                color: categoryColorMap[todo.categoryId] || defaultColor,
                 isRecurring: false,
                 event: todo,
               });

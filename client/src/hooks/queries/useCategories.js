@@ -1,5 +1,4 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useEffect } from 'react';
 import { useAuthStore } from '../../store/authStore';
 import * as categoryApi from '../../api/categories';
 import {
@@ -10,7 +9,7 @@ import {
 } from '../../storage/categoryStorage';
 
 /**
- * 카테고리 목록 조회 (로컬 우선 + 서버 동기화)
+ * 카테고리 목록 조회 (Cache-First 전략)
  */
 export const useCategories = () => {
   const { user } = useAuthStore();
@@ -19,31 +18,45 @@ export const useCategories = () => {
   const query = useQuery({
     queryKey: ['categories'],
     queryFn: async () => {
-      // 서버에서 가져온 후 로컬에 저장
-      const categories = await categoryApi.getCategories();
-      await saveCategories(categories);
-      return categories;
+      // ⚡ Cache-First: 캐시 먼저 확인
+      const cachedCategories = queryClient.getQueryData(['categories']);
+      if (cachedCategories) {
+        // 백그라운드에서 서버 요청 (비동기)
+        categoryApi.getCategories()
+          .then(categories => {
+            saveCategories(categories);
+            queryClient.setQueryData(['categories'], categories);
+            console.log('🔄 [useCategories] 백그라운드 업데이트 완료');
+          })
+          .catch(() => {
+            // 백그라운드 업데이트 실패는 무시 (캐시 데이터 사용 중)
+          });
+        
+        // 즉시 반환
+        console.log('⚡ [useCategories] 캐시 즉시 반환:', cachedCategories.length, '개');
+        return cachedCategories;
+      }
+      
+      // 캐시 없으면 서버 요청
+      try {
+        console.log('🌐 [useCategories] 캐시 없음 - 서버 요청');
+        const categories = await categoryApi.getCategories();
+        await saveCategories(categories);
+        return categories;
+      } catch (error) {
+        console.log('⚠️ [useCategories] 서버 요청 실패 - AsyncStorage 확인');
+        
+        // 서버 실패하면 AsyncStorage
+        const storedCategories = await loadCategories();
+        queryClient.setQueryData(['categories'], storedCategories);
+        
+        console.log('✅ [useCategories] AsyncStorage에서 로드:', storedCategories.length, '개');
+        return storedCategories;
+      }
     },
     enabled: !!user,
     staleTime: 1000 * 60 * 5, // 5분간 캐시 유지
   });
-
-  // 초기 로드: 로컬 데이터 먼저 표시
-  useEffect(() => {
-    const loadLocalFirst = async () => {
-      const cached = queryClient.getQueryData(['categories']);
-      if (!cached) {
-        const local = await loadCategories();
-        if (local.length > 0) {
-          console.log('📱 [useCategories] 로컬 카테고리 로드:', local.length);
-          queryClient.setQueryData(['categories'], local);
-        }
-      }
-    };
-    if (user) {
-      loadLocalFirst();
-    }
-  }, [user, queryClient]);
 
   return query;
 };

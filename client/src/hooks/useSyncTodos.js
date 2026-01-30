@@ -16,6 +16,7 @@ import {
     upsertTodo,
     removeTodo,
 } from '../storage/todoStorage';
+import { loadCategories } from '../storage/categoryStorage';
 import { occursOnDate } from '../utils/recurrenceUtils';
 import {
     getPendingChanges,
@@ -299,12 +300,22 @@ export const useSyncTodos = () => {
     useEffect(() => {
         const prepareCache = async () => {
             try {
+                // Todos
                 const localTodos = await loadTodos();
                 if (localTodos.length > 0) {
-                    console.log('⚡ [useSyncTodos] 초기 캐시 즉시 준비:', localTodos.length, '개');
+                    console.log('⚡ [useSyncTodos] 초기 Todos 캐시 준비:', localTodos.length, '개');
                     populateCache(localTodos);
                 } else {
-                    console.log('⚠️ [useSyncTodos] 로컬 데이터 없음 - 캐시 준비 스킵');
+                    console.log('⚠️ [useSyncTodos] 로컬 Todos 없음');
+                }
+                
+                // Categories
+                const localCategories = await loadCategories();
+                if (localCategories.length > 0) {
+                    console.log('⚡ [useSyncTodos] 초기 Categories 캐시 준비:', localCategories.length, '개');
+                    queryClient.setQueryData(['categories'], localCategories);
+                } else {
+                    console.log('⚠️ [useSyncTodos] 로컬 Categories 없음');
                 }
             } catch (error) {
                 console.error('❌ [useSyncTodos] 초기 캐시 준비 실패:', error);
