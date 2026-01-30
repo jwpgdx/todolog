@@ -11,7 +11,7 @@ import { THEME } from '../constants';
  * - 이벤트 카테고리별 그룹화 (중복 제거)
  * - 추가 이벤트 개수 계산
  */
-export const useDayCell = (day, events = [], maxVisibleEvents = 3) => {
+export const useDayCell = (day, events = [], maxVisibleEvents = 5) => {
     const currentDate = useDateStore(state => state.currentDate);
 
     // 선택 상태
@@ -31,14 +31,16 @@ export const useDayCell = (day, events = [], maxVisibleEvents = 3) => {
         const categoryMap = new Map();
         
         events.forEach(event => {
-            const categoryId = event.todo?.categoryId || 'no-category';
+            // 여러 경로 시도
+            const categoryId = event.event?.categoryId || event.categoryId || event.todo?.categoryId || 'no-category';
+            
             if (!categoryMap.has(categoryId)) {
                 categoryMap.set(categoryId, event);
             }
         });
         
         return Array.from(categoryMap.values());
-    }, [events]);
+    }, [events, day.dateString]);
 
     // 이벤트 슬라이싱 (카테고리 중복 제거 후)
     const visibleEvents = useMemo(() =>

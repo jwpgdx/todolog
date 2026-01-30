@@ -20,26 +20,16 @@
 - [x] 헤더 타이틀 동기화
 - [x] 카테고리 색상 동기화
 
+### Phase 4: CalendarScreen 리팩토링 (2026-01-30 완료)
+- [x] CalendarScreen에서 `useCalendarDynamicEvents` 적용
+- [x] 기존 이벤트 계산 로직 제거 (~110줄)
+- [x] 코드 통합 완료 (단일 소스)
+
 ---
 
 ## 🚀 다음 작업 (우선순위)
 
-### 1. CalendarScreen 리팩토링 (선택)
-**목적**: UltimateCalendar와 동일한 동적 이벤트 Hook 사용
-
-**작업**:
-- [ ] CalendarScreen에서 `useCalendarDynamicEvents` 적용
-- [ ] 기존 이벤트 계산 로직 제거
-- [ ] 성능 비교 테스트
-
-**예상 시간**: 1-2시간
-
-**파일**:
-- `client/src/screens/CalendarScreen.js`
-
----
-
-### 2. 테스트 코드 정리
+### 1. 테스트 코드 정리
 **목적**: 디버그 로그 제거 및 테스트 파일 정리
 
 **작업**:

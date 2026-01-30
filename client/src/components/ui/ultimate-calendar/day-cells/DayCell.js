@@ -11,8 +11,8 @@ import { useDayCell } from './useDayCell';
  * 사용처: Weekly View, Monthly View (UltimateCalendar)
  * 특징:
  * - 날짜 가운데 정렬
- * - 이벤트를 점(Dot)으로 표시 (최대 3개)
- * - 3개 초과 시 ... 표시
+ * - 이벤트를 점(Dot)으로 표시 (최대 5개 카테고리)
+ * - 5개 초과 시 ... 표시
  */
 const DayCell = React.memo(({
     day,
@@ -68,7 +68,7 @@ const DayCell = React.memo(({
                 </Text>
                 {!isSelected && isToday && <View style={styles.todayDot} />}
             </View>
-            {/* 이벤트 dot 표시 (최대 3개 + ... 표시) */}
+            {/* 이벤트 dot 표시 (최대 5개 카테고리 + ... 표시) */}
             {(visibleEvents.length > 0 || hasMore) && (
                 <View style={styles.eventDotsContainer}>
                     {visibleEvents.map((event, idx) => (

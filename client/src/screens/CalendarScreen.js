@@ -8,13 +8,10 @@ import 'dayjs/locale/ko';
 import { useTranslation } from 'react-i18next';
 
 import MonthSection from '../components/ui/ultimate-calendar/MonthSection';
-import { generateMonthlyData } from '../components/ui/ultimate-calendar/calendarUtils';
 import { SCREEN_WIDTH, CELL_HEIGHT, THEME } from '../components/ui/ultimate-calendar/constants';
-import { useAllTodos } from '../hooks/queries/useAllTodos';
-import { useCategories } from '../hooks/queries/useCategories';
 import { useDateStore } from '../store/dateStore';
 import { useAuthStore } from '../store/authStore';
-import { isDateInRRule } from '../utils/routineUtils';
+import { useCalendarDynamicEvents } from '../hooks/useCalendarDynamicEvents';
 
 export default function CalendarScreen() {
     const { t, i18n } = useTranslation();
@@ -23,20 +20,20 @@ export default function CalendarScreen() {
     const { user } = useAuthStore();
     const startDayOfWeek = user?.settings?.startDayOfWeek || 'sunday';
 
-    const { data: todos, isLoading: isTodosLoading } = useAllTodos();
-    const { data: categories, isLoading: isCatsLoading } = useCategories();
-
     const flatListRef = useRef(null);
-    const eventsCacheRef = useRef({}); // ✅ 월별 이벤트 캐시
-    const [cacheVersion, setCacheVersion] = useState(0); // ✅ 캐시 버전 (상태로 변경)
+    const scrollOffsetRef = useRef(0); // ✅ 스크롤 오프셋 추적
+    const loadedRangeRef = useRef({
+        start: dayjs().subtract(6, 'month').startOf('month'),
+        end: dayjs().add(12, 'month').endOf('month')
+    }); // ✅ loadedRange ref 추가
     const [currentViewIndex, setCurrentViewIndex] = useState(6); // 현재 월 인덱스 (초기 6개월 후)
     
     // ✅ 무한 스크롤을 위한 상태 추가
     const [months, setMonths] = useState([]);
     const [todayMonthIndex, setTodayMonthIndex] = useState(6);
     const [loadedRange, setLoadedRange] = useState({
-        start: dayjs().subtract(6, 'month'),
-        end: dayjs().add(12, 'month')
+        start: dayjs().subtract(6, 'month').startOf('month'),
+        end: dayjs().add(12, 'month').endOf('month')
     });
     const [visibleRange, setVisibleRange] = useState({ start: 0, end: 0 });
     const [isLoadingMore, setIsLoadingMore] = useState(false);
@@ -48,17 +45,19 @@ export default function CalendarScreen() {
         const startTime = performance.now();
         
         const initialMonths = [];
-        let current = loadedRange.start.clone().startOf('month'); // ✅ startOf('month') 추가
+        let current = loadedRangeRef.current.start.clone().startOf('month'); // ✅ ref 사용
         let todayIdx = 0;
         let currentIdx = 0;
         
-        while (current.isBefore(loadedRange.end) || current.isSame(loadedRange.end, 'month')) {
+        while (current.isBefore(loadedRangeRef.current.end) || current.isSame(loadedRangeRef.current.end, 'month')) {
             const monthData = createMonthData(current, startDayOfWeek);
             
             // 오늘이 포함된 월 인덱스 저장
             if (current.isSame(dayjs(), 'month')) {
                 todayIdx = currentIdx;
             }
+            
+            console.log(`📦 [초기데이터] 인덱스 ${currentIdx}: ${monthData.monthKey} (주: ${monthData.weeks.length})`);
             
             initialMonths.push(monthData);
             current = current.add(1, 'month').startOf('month'); // ✅ startOf('month') 추가
@@ -71,7 +70,7 @@ export default function CalendarScreen() {
         
         const endTime = performance.now();
         console.log(`✅ [CalendarScreen] 초기 생성 완료: ${initialMonths.length}개 월 (${(endTime - startTime).toFixed(2)}ms)`);
-        console.log(`📅 [CalendarScreen] 범위: ${loadedRange.start.format('YYYY-MM')} ~ ${loadedRange.end.format('YYYY-MM')}`);
+        console.log(`📅 [CalendarScreen] 범위: ${loadedRangeRef.current.start.format('YYYY-MM')} ~ ${loadedRangeRef.current.end.format('YYYY-MM')}`);
         console.log(`📍 [CalendarScreen] 오늘 인덱스: ${todayIdx}`);
     }, [startDayOfWeek]);
 
@@ -94,7 +93,7 @@ export default function CalendarScreen() {
         setIsLoadingMore(true);
         
         const startTime = performance.now();
-        const currentEnd = loadedRange.end;
+        const currentEnd = loadedRangeRef.current.end; // ✅ ref 사용
         const newEnd = currentEnd.add(12, 'month');
         
         console.log(`📅 [무한스크롤-하단] 12개월 추가 시작: ${currentEnd.format('YYYY-MM')} ~ ${newEnd.format('YYYY-MM')}`);
@@ -109,30 +108,32 @@ export default function CalendarScreen() {
         
         setMonths(prev => [...prev, ...newMonths]);
         setLoadedRange(prev => ({ ...prev, end: newEnd }));
+        loadedRangeRef.current = { ...loadedRangeRef.current, end: newEnd }; // ✅ ref 동기화
         
         const endTime = performance.now();
         console.log(`✅ [무한스크롤-하단] 완료: ${newMonths.length}개 월 추가 (총 ${months.length + newMonths.length}개) (${(endTime - startTime).toFixed(2)}ms)`);
         
         setIsLoadingMore(false);
-    }, [loadedRange, isLoadingMore, isLoadingPast, startDayOfWeek, months.length]);
+    }, [isLoadingMore, isLoadingPast, startDayOfWeek, months.length]);
 
-    // ✅ 무한 스크롤 핸들러 (위로 스크롤 시 12개월 추가)
+    // ✅ 무한 스크롤 핸들러 (위로 스크롤 시 12개월 추가) - Option A: maintainVisibleContentPosition
     const handleStartReached = useCallback(() => {
         if (isLoadingMore || isLoadingPast) {
             console.log('⚠️ [무한스크롤-상단] 이미 로딩 중 - 스킵');
             return;
         }
         
-        // 상단 3개월 이내로 스크롤 시 트리거
-        if (visibleRange.start > 3) {
-            return;
-        }
-        
+        console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
         console.log('🔄 [무한스크롤-상단] 상단 도달 감지');
+        console.log(`📊 [상태-BEFORE] currentOffset: ${scrollOffsetRef.current.toFixed(2)}px`);
+        console.log(`📊 [상태-BEFORE] visibleRange: ${visibleRange.start} ~ ${visibleRange.end}`);
+        console.log(`📊 [상태-BEFORE] currentViewIndex: ${currentViewIndex}`);
+        console.log(`📊 [상태-BEFORE] 현재 총 월 수: ${months.length}개`);
+        
         setIsLoadingPast(true);
         
         const startTime = performance.now();
-        const currentStart = loadedRange.start;
+        const currentStart = loadedRangeRef.current.start; // ✅ ref 사용
         const newStart = currentStart.subtract(12, 'month');
         
         console.log(`📅 [무한스크롤-상단] 12개월 추가 시작: ${newStart.format('YYYY-MM')} ~ ${currentStart.format('YYYY-MM')}`);
@@ -140,155 +141,48 @@ export default function CalendarScreen() {
         const newMonths = [];
         let current = newStart.clone().startOf('month');
         
+        // ⚠️ currentStart는 이미 존재하는 첫 번째 월이므로 제외해야 함
         while (current.isBefore(currentStart)) {
             newMonths.push(createMonthData(current, startDayOfWeek));
             current = current.add(1, 'month').startOf('month');
         }
         
-        // 앞에 추가하고 인덱스 조정
         const addedCount = newMonths.length;
+        
+        console.log(`📦 [데이터] 추가될 월 수: ${addedCount}개`);
+        console.log(`📦 [데이터] 첫 월: ${newMonths[0]?.monthKey}`);
+        console.log(`📦 [데이터] 마지막 월: ${newMonths[addedCount-1]?.monthKey}`);
+        console.log(`📦 [데이터] 기존 첫 월: ${months[0]?.monthKey} (중복 방지 확인)`);
+        
+        // ✅ maintainVisibleContentPosition이 자동으로 처리하므로
+        // 수동 스크롤 조정 불필요!
         setMonths(prev => [...newMonths, ...prev]);
         setLoadedRange(prev => ({ ...prev, start: newStart }));
+        loadedRangeRef.current = { ...loadedRangeRef.current, start: newStart }; // ✅ ref 동기화
         setTodayMonthIndex(prev => prev + addedCount);
         setCurrentViewIndex(prev => prev + addedCount);
         
         const endTime = performance.now();
         console.log(`✅ [무한스크롤-상단] 완료: ${addedCount}개 월 추가 (총 ${months.length + addedCount}개) (${(endTime - startTime).toFixed(2)}ms)`);
         console.log(`📍 [무한스크롤-상단] 인덱스 조정: +${addedCount}`);
+        console.log(`📍 [loadedRange] 업데이트: ${newStart.format('YYYY-MM')} ~ ${loadedRangeRef.current.end.format('YYYY-MM')}`);
+        console.log(`🎯 [maintainVisibleContentPosition] 자동 위치 유지 활성화`);
         
-        // 스크롤 위치 유지 (현재 보던 위치로 이동)
+        // ✅ 짧은 딜레이 후 로딩 상태 해제
         setTimeout(() => {
-            const newIndex = visibleRange.start + addedCount;
-            flatListRef.current?.scrollToIndex({ 
-                index: newIndex, 
-                animated: false 
-            });
             setIsLoadingPast(false);
-        }, 50);
-    }, [loadedRange, isLoadingMore, isLoadingPast, startDayOfWeek, months.length, visibleRange]);
+            console.log(`✅ [완료] 로딩 상태 해제`);
+            console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+        }, 100);
+    }, [isLoadingMore, isLoadingPast, startDayOfWeek, months.length, visibleRange, currentViewIndex]);
 
-    // ✅ todos 변경 시 캐시 무효화 (상태 업데이트로 강제 재렌더링)
-    useEffect(() => {
-        if (todos) {
-            eventsCacheRef.current = {};
-            setCacheVersion(prev => prev + 1);
-            console.log('🔄 [캐시] todos 변경 감지 - 캐시 초기화');
-        }
-    }, [todos]);
-
-    // ✅ 동적 이벤트 계산 (보이는 범위 ±3개월만, 월별 캐싱)
-    const eventsByDate = useMemo(() => {
-        if (!todos || !categories || months.length === 0) return {};
-
-        const startTime = performance.now();
-        
-        // 보이는 범위 확장 (±3개월)
-        const startIdx = Math.max(0, visibleRange.start - 3);
-        const endIdx = Math.min(months.length - 1, visibleRange.end + 3);
-        
-        const startMonth = months[startIdx];
-        const endMonth = months[endIdx];
-        
-        if (!startMonth || !endMonth) return {};
-        
-        console.log(`🎯 [이벤트계산] 범위: ${startMonth.monthKey} ~ ${endMonth.monthKey} (인덱스: ${startIdx} ~ ${endIdx})`);
-
-        const categoryColorMap = {};
-        categories.forEach(c => categoryColorMap[c._id] = c.color);
-
-        const eventsMap = {};
-        let cacheHits = 0;
-        let cacheMisses = 0;
-
-        // ✅ 월별로 캐시 확인 및 계산
-        for (let i = startIdx; i <= endIdx; i++) {
-            const month = months[i];
-            if (!month) continue;
-            
-            const monthKey = month.monthKey;
-            
-            // 캐시 확인
-            if (eventsCacheRef.current[monthKey]) {
-                // 캐시 히트
-                Object.assign(eventsMap, eventsCacheRef.current[monthKey]);
-                cacheHits++;
-                continue;
-            }
-            
-            // 캐시 미스 - 계산 필요
-            cacheMisses++;
-            const monthStart = dayjs(monthKey).startOf('month');
-            const monthEnd = monthStart.endOf('month');
-            const monthEvents = {};
-
-            todos.forEach(todo => {
-                if (!todo.startDate) return;
-
-                // 반복 일정 처리
-                if (todo.recurrence) {
-                    const rruleString = todo.recurrence?.[0];
-                    if (!rruleString) return;
-
-                    const todoStartDate = new Date(todo.startDate);
-                    const todoEndDate = todo.recurrenceEndDate ? new Date(todo.recurrenceEndDate) : null;
-
-                    let loopDate = monthStart.clone();
-                    while (loopDate.isBefore(monthEnd) || loopDate.isSame(monthEnd, 'day')) {
-                        if (isDateInRRule(loopDate.toDate(), rruleString, todoStartDate, todoEndDate)) {
-                            const dateStr = loopDate.format('YYYY-MM-DD');
-                            if (!monthEvents[dateStr]) monthEvents[dateStr] = [];
-                            monthEvents[dateStr].push({
-                                title: todo.title,
-                                color: categoryColorMap[todo.categoryId] || '#ccc',
-                                todo,
-                            });
-                        }
-                        loopDate = loopDate.add(1, 'day');
-                    }
-                } else {
-                    // 단일 일정
-                    const start = dayjs(todo.startDate);
-                    const end = todo.endDate ? dayjs(todo.endDate) : start;
-
-                    let current = start.clone();
-                    while (current.isBefore(end) || current.isSame(end, 'day')) {
-                        // 해당 월에 포함되는지 체크
-                        if ((current.isAfter(monthStart) || current.isSame(monthStart, 'day')) &&
-                            (current.isBefore(monthEnd) || current.isSame(monthEnd, 'day'))) {
-                            const dateStr = current.format('YYYY-MM-DD');
-                            if (!monthEvents[dateStr]) monthEvents[dateStr] = [];
-                            monthEvents[dateStr].push({
-                                title: todo.title,
-                                color: categoryColorMap[todo.categoryId] || '#ccc',
-                                todo,
-                            });
-                        }
-                        current = current.add(1, 'day');
-                    }
-                }
-            });
-
-            // 캐시 저장
-            eventsCacheRef.current[monthKey] = monthEvents;
-            Object.assign(eventsMap, monthEvents);
-        }
-
-        // ✅ 캐시 메모리 관리 (최근 24개월만 유지)
-        const cacheKeys = Object.keys(eventsCacheRef.current);
-        if (cacheKeys.length > 24) {
-            const sortedKeys = cacheKeys.sort();
-            const keysToDelete = sortedKeys.slice(0, cacheKeys.length - 24);
-            keysToDelete.forEach(key => delete eventsCacheRef.current[key]);
-            console.log(`🗑️ [캐시] 오래된 캐시 삭제: ${keysToDelete.length}개`);
-        }
-
-        const endTime = performance.now();
-        const eventCount = Object.keys(eventsMap).length;
-        console.log(`✅ [이벤트계산] 완료: ${eventCount}개 날짜 (${(endTime - startTime).toFixed(2)}ms)`);
-        console.log(`📊 [캐시] 히트: ${cacheHits}개, 미스: ${cacheMisses}개, 총 캐시: ${Object.keys(eventsCacheRef.current).length}개, 버전: ${cacheVersion}`);
-
-        return eventsMap;
-    }, [todos, categories, months, visibleRange, cacheVersion]);
+    // ✅ 동적 이벤트 계산 (useCalendarDynamicEvents Hook 사용)
+    const eventsByDate = useCalendarDynamicEvents({
+        months,
+        visibleIndex: currentViewIndex,
+        range: 3,
+        cacheType: 'month'
+    });
 
     // 헤더 타이틀 포맷팅 (months 생성 이후에 위치해야 함)
     const currentMonthTitle = useMemo(() => {
@@ -304,15 +198,30 @@ export default function CalendarScreen() {
     }, [setCurrentDate, navigation]);
 
     // 4. 월 렌더링
-    const renderMonth = useCallback(({ item }) => (
-        <MonthSection
-            monthData={item}
-            eventsByDate={eventsByDate}
-            onDatePress={handleDatePress}
-            startDayOfWeek={startDayOfWeek}
-            showWeekDays={false}
-        />
-    ), [eventsByDate, handleDatePress, startDayOfWeek]);
+    const renderMonth = useCallback(({ item, index }) => {
+        // Hook이 반환하는 이벤트 형식을 MonthSection이 기대하는 형식으로 변환
+        const formattedEvents = {};
+        Object.keys(eventsByDate).forEach(dateStr => {
+            formattedEvents[dateStr] = eventsByDate[dateStr].map(event => ({
+                title: event.title,
+                color: event.color,
+                todo: event.event, // Hook의 'event' 필드를 'todo'로 매핑
+            }));
+        });
+        
+        // ✅ 렌더링 로그 (주석 처리)
+        // console.log(`🎨 [renderMonth] 인덱스 ${index}: ${item.monthKey} (주 수: ${item.weeks?.length || 0})`);
+        
+        return (
+            <MonthSection
+                monthData={item}
+                eventsByDate={formattedEvents}
+                onDatePress={handleDatePress}
+                startDayOfWeek={startDayOfWeek}
+                showWeekDays={false}
+            />
+        );
+    }, [eventsByDate, handleDatePress, startDayOfWeek]);
 
     // 5. 아이템 높이 계산 (FlashList 최적화)
     const getItemLayout = useCallback((data, index) => {
@@ -331,13 +240,23 @@ export default function CalendarScreen() {
         return { length: height, offset, index };
     }, [months]);
 
+    // ✅ 스크롤 오프셋 추적
+    const onScroll = useCallback((e) => {
+        scrollOffsetRef.current = e.nativeEvent.contentOffset.y;
+    }, []);
+
     // 6. 스크롤 시 현재 월 업데이트 + 보이는 범위 추적 + 상단 무한 스크롤
     const onViewableItemsChanged = useRef(({ viewableItems }) => {
         if (viewableItems.length > 0) {
             const firstIdx = viewableItems[0].index;
             const lastIdx = viewableItems[viewableItems.length - 1].index;
             
+            // ✅ 보이는 월 정보 상세 로그
+            const visibleMonths = viewableItems.map(v => `${v.index}:${v.item.monthKey}`).join(', ');
+            
             console.log(`👁️ [보이는범위] ${firstIdx} ~ ${lastIdx}`);
+            console.log(`📅 [보이는월] ${visibleMonths}`);
+            console.log(`📊 [디버그] currentViewIndex: ${currentViewIndex}, scrollOffset: ${scrollOffsetRef.current.toFixed(2)}px`);
             
             setCurrentViewIndex(firstIdx);
             setVisibleRange({ start: firstIdx, end: lastIdx });
@@ -364,15 +283,6 @@ export default function CalendarScreen() {
     const scrollToToday = useCallback(() => {
         flatListRef.current?.scrollToIndex({ index: todayMonthIndex, animated: true });
     }, [todayMonthIndex]);
-
-    // 로딩 상태
-    if (isTodosLoading || isCatsLoading) {
-        return (
-            <View style={styles.loadingContainer}>
-                <ActivityIndicator size="large" color={THEME.primary} />
-            </View>
-        );
-    }
 
     return (
         <View style={styles.container}>
@@ -422,10 +332,16 @@ export default function CalendarScreen() {
                 estimatedItemSize={400}
                 initialScrollIndex={todayMonthIndex}
                 showsVerticalScrollIndicator={false}
+                onScroll={onScroll}
+                scrollEventThrottle={16}
                 onViewableItemsChanged={onViewableItemsChanged}
                 viewabilityConfig={viewabilityConfig}
                 onEndReached={handleEndReached}
                 onEndReachedThreshold={0.5}
+                maintainVisibleContentPosition={{
+                    minIndexForVisible: 0,
+                }}
+                drawDistance={SCREEN_WIDTH * 3}
                 onScrollToIndexFailed={(info) => {
                     flatListRef.current?.scrollToOffset({
                         offset: info.averageItemLength * info.index,

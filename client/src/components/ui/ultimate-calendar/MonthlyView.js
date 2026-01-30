@@ -66,7 +66,7 @@ const MonthlyView = forwardRef(({
             }
             if (onStartReached && firstIndex <= 15 && !isLoadingPast.current) {
                 isLoadingPast.current = true;
-                onStartReached(scrollOffsetRef.current); // ✅ 현재 오프셋 전달
+                onStartReached(); // ✅ 오프셋 전달 제거 (maintainVisibleContentPosition 사용)
                 setTimeout(() => { isLoadingPast.current = false; }, 1000);
             }
             
@@ -88,7 +88,7 @@ const MonthlyView = forwardRef(({
                 ref={listRef}
                 data={weeks}
                 renderItem={renderItem}
-                keyExtractor={(item, index) => `month-week-${index}`}
+                keyExtractor={(item, index) => item[0]?.dateString || `week-${index}`}
                 estimatedItemSize={CELL_HEIGHT}
                 initialScrollIndex={initialIndex}
 
@@ -99,6 +99,11 @@ const MonthlyView = forwardRef(({
                 onViewableItemsChanged={onViewableItemsChanged}
                 viewabilityConfig={viewabilityConfig}
                 removeClippedSubviews={false} // Android: sometimes rendering issues with true inside complex views
+                
+                // ✅ maintainVisibleContentPosition 추가
+                maintainVisibleContentPosition={{
+                    minIndexForVisible: 0,
+                }}
             />
         </View>
     );
