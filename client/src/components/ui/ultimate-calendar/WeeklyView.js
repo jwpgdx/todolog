@@ -24,7 +24,6 @@ const WeeklyView = forwardRef(({
     
     // ✅ initialIndex가 유효한 값으로 변경되면 업데이트 (한 번만)
     if (!hasScrolledToInitial.current && initialIndex > 0 && initialIndexRef.current === 0) {
-        console.log(`🔄 [WeeklyView] initialIndex 업데이트: ${initialIndexRef.current} → ${initialIndex}`);
         initialIndexRef.current = initialIndex;
     }
     
@@ -43,17 +42,11 @@ const WeeklyView = forwardRef(({
 
     // ✨ 핵심 안정성 로직: 렌더링 전 초기 인덱스로 즉시 이동하여 깜빡임 방지
     useLayoutEffect(() => {
-        console.log(`🎬 [WeeklyView] useLayoutEffect 실행`);
-        console.log(`   - initialIndex: ${initialIndexRef.current}`);
-        console.log(`   - weeks.length: ${weeks.length}`);
-        console.log(`   - listRef.current: ${listRef.current ? 'OK' : 'NULL'}`);
-        console.log(`   - hasScrolledToInitial: ${hasScrolledToInitial.current}`);
         
         if (listRef.current && initialIndexRef.current > 0 && weeks.length > 0 && !hasScrolledToInitial.current) {
             // 약간의 지연을 주어 FlatList가 완전히 마운트되도록 함
             setTimeout(() => {
                 if (listRef.current && !hasScrolledToInitial.current) {
-                    console.log(`📍 [WeeklyView] scrollToIndex 호출: ${initialIndexRef.current}`);
                     listRef.current.scrollToIndex({ index: initialIndexRef.current, animated: false });
                     scrollOffset.current = initialIndexRef.current * SCREEN_WIDTH;
                     visibleIndexRef.current = initialIndexRef.current;

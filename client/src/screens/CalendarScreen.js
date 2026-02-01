@@ -41,7 +41,6 @@ export default function CalendarScreen() {
 
     // ✅ 초기 데이터 생성 (19개월: 6 past + current + 12 future)
     useEffect(() => {
-        console.log('📅 [CalendarScreen] 초기 데이터 생성 시작...');
         const startTime = performance.now();
         
         const initialMonths = [];
@@ -57,7 +56,6 @@ export default function CalendarScreen() {
                 todayIdx = currentIdx;
             }
             
-            console.log(`📦 [초기데이터] 인덱스 ${currentIdx}: ${monthData.monthKey} (주: ${monthData.weeks.length})`);
             
             initialMonths.push(monthData);
             current = current.add(1, 'month').startOf('month'); // ✅ startOf('month') 추가
@@ -69,9 +67,6 @@ export default function CalendarScreen() {
         setCurrentViewIndex(todayIdx);
         
         const endTime = performance.now();
-        console.log(`✅ [CalendarScreen] 초기 생성 완료: ${initialMonths.length}개 월 (${(endTime - startTime).toFixed(2)}ms)`);
-        console.log(`📅 [CalendarScreen] 범위: ${loadedRangeRef.current.start.format('YYYY-MM')} ~ ${loadedRangeRef.current.end.format('YYYY-MM')}`);
-        console.log(`📍 [CalendarScreen] 오늘 인덱스: ${todayIdx}`);
     }, [startDayOfWeek]);
 
     // 요일 헤더 (고정)
@@ -85,18 +80,15 @@ export default function CalendarScreen() {
     // ✅ 무한 스크롤 핸들러 (아래로 스크롤 시 12개월 추가)
     const handleEndReached = useCallback(() => {
         if (isLoadingMore || isLoadingPast) {
-            console.log('⚠️ [무한스크롤-하단] 이미 로딩 중 - 스킵');
             return;
         }
         
-        console.log('🔄 [무한스크롤-하단] onEndReached 트리거됨');
         setIsLoadingMore(true);
         
         const startTime = performance.now();
         const currentEnd = loadedRangeRef.current.end; // ✅ ref 사용
         const newEnd = currentEnd.add(12, 'month');
         
-        console.log(`📅 [무한스크롤-하단] 12개월 추가 시작: ${currentEnd.format('YYYY-MM')} ~ ${newEnd.format('YYYY-MM')}`);
         
         const newMonths = [];
         let current = currentEnd.add(1, 'month').startOf('month');
@@ -111,7 +103,6 @@ export default function CalendarScreen() {
         loadedRangeRef.current = { ...loadedRangeRef.current, end: newEnd }; // ✅ ref 동기화
         
         const endTime = performance.now();
-        console.log(`✅ [무한스크롤-하단] 완료: ${newMonths.length}개 월 추가 (총 ${months.length + newMonths.length}개) (${(endTime - startTime).toFixed(2)}ms)`);
         
         setIsLoadingMore(false);
     }, [isLoadingMore, isLoadingPast, startDayOfWeek, months.length]);
@@ -119,16 +110,9 @@ export default function CalendarScreen() {
     // ✅ 무한 스크롤 핸들러 (위로 스크롤 시 12개월 추가) - Option A: maintainVisibleContentPosition
     const handleStartReached = useCallback(() => {
         if (isLoadingMore || isLoadingPast) {
-            console.log('⚠️ [무한스크롤-상단] 이미 로딩 중 - 스킵');
             return;
         }
         
-        console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-        console.log('🔄 [무한스크롤-상단] 상단 도달 감지');
-        console.log(`📊 [상태-BEFORE] currentOffset: ${scrollOffsetRef.current.toFixed(2)}px`);
-        console.log(`📊 [상태-BEFORE] visibleRange: ${visibleRange.start} ~ ${visibleRange.end}`);
-        console.log(`📊 [상태-BEFORE] currentViewIndex: ${currentViewIndex}`);
-        console.log(`📊 [상태-BEFORE] 현재 총 월 수: ${months.length}개`);
         
         setIsLoadingPast(true);
         
@@ -136,7 +120,6 @@ export default function CalendarScreen() {
         const currentStart = loadedRangeRef.current.start; // ✅ ref 사용
         const newStart = currentStart.subtract(12, 'month');
         
-        console.log(`📅 [무한스크롤-상단] 12개월 추가 시작: ${newStart.format('YYYY-MM')} ~ ${currentStart.format('YYYY-MM')}`);
         
         const newMonths = [];
         let current = newStart.clone().startOf('month');
@@ -149,10 +132,6 @@ export default function CalendarScreen() {
         
         const addedCount = newMonths.length;
         
-        console.log(`📦 [데이터] 추가될 월 수: ${addedCount}개`);
-        console.log(`📦 [데이터] 첫 월: ${newMonths[0]?.monthKey}`);
-        console.log(`📦 [데이터] 마지막 월: ${newMonths[addedCount-1]?.monthKey}`);
-        console.log(`📦 [데이터] 기존 첫 월: ${months[0]?.monthKey} (중복 방지 확인)`);
         
         // ✅ maintainVisibleContentPosition이 자동으로 처리하므로
         // 수동 스크롤 조정 불필요!
@@ -163,16 +142,10 @@ export default function CalendarScreen() {
         setCurrentViewIndex(prev => prev + addedCount);
         
         const endTime = performance.now();
-        console.log(`✅ [무한스크롤-상단] 완료: ${addedCount}개 월 추가 (총 ${months.length + addedCount}개) (${(endTime - startTime).toFixed(2)}ms)`);
-        console.log(`📍 [무한스크롤-상단] 인덱스 조정: +${addedCount}`);
-        console.log(`📍 [loadedRange] 업데이트: ${newStart.format('YYYY-MM')} ~ ${loadedRangeRef.current.end.format('YYYY-MM')}`);
-        console.log(`🎯 [maintainVisibleContentPosition] 자동 위치 유지 활성화`);
         
         // ✅ 짧은 딜레이 후 로딩 상태 해제
         setTimeout(() => {
             setIsLoadingPast(false);
-            console.log(`✅ [완료] 로딩 상태 해제`);
-            console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
         }, 100);
     }, [isLoadingMore, isLoadingPast, startDayOfWeek, months.length, visibleRange, currentViewIndex]);
 
@@ -209,8 +182,6 @@ export default function CalendarScreen() {
             }));
         });
         
-        // ✅ 렌더링 로그 (주석 처리)
-        // console.log(`🎨 [renderMonth] 인덱스 ${index}: ${item.monthKey} (주 수: ${item.weeks?.length || 0})`);
         
         return (
             <MonthSection
@@ -253,10 +224,6 @@ export default function CalendarScreen() {
             
             // ✅ 보이는 월 정보 상세 로그
             const visibleMonths = viewableItems.map(v => `${v.index}:${v.item.monthKey}`).join(', ');
-            
-            console.log(`👁️ [보이는범위] ${firstIdx} ~ ${lastIdx}`);
-            console.log(`📅 [보이는월] ${visibleMonths}`);
-            console.log(`📊 [디버그] currentViewIndex: ${currentViewIndex}, scrollOffset: ${scrollOffsetRef.current.toFixed(2)}px`);
             
             setCurrentViewIndex(firstIdx);
             setVisibleRange({ start: firstIdx, end: lastIdx });

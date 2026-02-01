@@ -432,6 +432,7 @@ exports.getMonthEvents = async (req, res) => {
       recurrence: todo.recurrence,
       recurrenceEndDate: todo.recurrenceEndDate,
       exdates: todo.exdates || [],
+      categoryId: todo.categoryId?._id || todo.categoryId,
       color: todo.categoryId?.color || '#808080',
       categoryName: todo.categoryId?.name || null,
     }));
@@ -544,7 +545,7 @@ exports.getDeltaSync = async (req, res) => {
         _id: todo._id,
         title: todo.title,
         memo: todo.memo,
-        categoryId: todo.categoryId,
+        categoryId: todo.categoryId?._id || todo.categoryId,
         startDate: todo.startDate,
         endDate: todo.endDate,
         startDateTime: todo.startDateTime,

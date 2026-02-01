@@ -93,15 +93,11 @@ export default function UltimateCalendar() {
 
     // ✅ 초기 데이터 생성 (19개월: 6 past + current + 12 future)
     useEffect(() => {
-        console.log('📅 [UltimateCalendar] 초기 데이터 생성 시작...');
         const startTime = performance.now();
         
         const { weeks: initialWeeks, todayWeekIndex: initialTodayIdx } = 
             generateCalendarData(today, startDayOfWeek, loadedRangeRef.current.start, loadedRangeRef.current.end);
         
-        // console.log(`🔍 [디버그] 초기 데이터:`);
-        // console.log(`  - 첫 주: ${initialWeeks[0]?.[0]?.dateString} ~ ${initialWeeks[0]?.[6]?.dateString}`);
-        // console.log(`  - 마지막 주: ${initialWeeks[initialWeeks.length-1]?.[0]?.dateString} ~ ${initialWeeks[initialWeeks.length-1]?.[6]?.dateString}`);
         
         setWeeks(initialWeeks);
         setTodayWeekIndex(initialTodayIdx);
@@ -109,9 +105,6 @@ export default function UltimateCalendar() {
         visibleWeekIndexRef.current = initialTodayIdx; // ✅ ref도 초기화
         
         const endTime = performance.now();
-        console.log(`✅ [UltimateCalendar] 초기 생성 완료: ${initialWeeks.length}주 (${(endTime - startTime).toFixed(2)}ms)`);
-        console.log(`📅 [UltimateCalendar] 범위: ${loadedRangeRef.current.start.format('YYYY-MM')} ~ ${loadedRangeRef.current.end.format('YYYY-MM')}`);
-        console.log(`📍 [UltimateCalendar] 오늘 인덱스: ${initialTodayIdx}`);
     }, [today, startDayOfWeek]);
 
     // Generate Data (제거 - useState로 대체)
@@ -136,36 +129,26 @@ export default function UltimateCalendar() {
     // ✅ 무한 스크롤 핸들러 (하단)
     const handleEndReached = useCallback(() => {
         if (isLoadingMore || isLoadingPast || weeks.length === 0) {
-            console.log('⏸️ [하단 스크롤] 스킵 - 로딩 중 또는 데이터 없음');
             return;
         }
         
         // ✅ 비활성 뷰에서 트리거된 경우 무시
         if (isWeekly) {
-            console.log('⏸️ [하단 스크롤] 스킵 - 주간뷰 활성 중 (월간뷰 이벤트 무시)');
             return;
         }
         
-        console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-        console.log('🔽 [하단 스크롤] 트리거됨');
         setIsLoadingMore(true);
         
         const startTime = performance.now();
         
         // 1️⃣ 현재 상태 확인
         const currentWeeksLength = weeks.length;
-        console.log(`1️⃣ [현재 상태]`);
-        console.log(`   - 현재 총 주 수: ${currentWeeksLength}주`);
         
         // 2️⃣ 새 데이터 생성
         const lastWeek = weeks[weeks.length - 1];
         const lastDate = lastWeek[6].dateObj;
         const newStart = lastDate.add(1, 'day');
         const newEnd = newStart.add(12, 'month').endOf('month');
-        
-        console.log(`2️⃣ [데이터 생성]`);
-        console.log(`   - 기존 마지막 주: ${lastWeek[0]?.dateString} ~ ${lastWeek[6]?.dateString}`);
-        console.log(`   - 생성 범위: ${newStart.format('YYYY-MM-DD')} ~ ${newEnd.format('YYYY-MM-DD')}`);
         
         const { weeks: newWeeks } = generateCalendarData(
             today, 
@@ -176,27 +159,17 @@ export default function UltimateCalendar() {
         
         // 3️⃣ 중복 체크
         if (newWeeks.length > 0 && newWeeks[0][0].dateString === lastWeek[0].dateString) {
-            console.log(`3️⃣ [중복 제거] 첫 주 제거됨`);
             newWeeks.shift();
         } else {
-            console.log(`3️⃣ [중복 체크] 중복 없음 ✓`);
         }
         
         const addedCount = newWeeks.length;
-        console.log(`   - 추가될 주 수: ${addedCount}주`);
-        console.log(`   - 추가 첫 주: ${newWeeks[0]?.[0]?.dateString} ~ ${newWeeks[0]?.[6]?.dateString}`);
-        console.log(`   - 추가 마지막 주: ${newWeeks[addedCount-1]?.[0]?.dateString} ~ ${newWeeks[addedCount-1]?.[6]?.dateString}`);
         
         // 4️⃣ 상태 업데이트 (하단은 인덱스 변경 없음)
-        console.log(`4️⃣ [상태 업데이트] 배열 뒤에 추가 (인덱스 불변)`);
         setWeeks(prev => [...prev, ...newWeeks]);
         setLoadedRange(prev => ({ ...prev, end: newEnd.startOf('month') }));
         
         const endTime = performance.now();
-        console.log(`✅ [완료] ${addedCount}주 추가 완료 (${(endTime - startTime).toFixed(2)}ms)`);
-        console.log(`   - 새 총 주 수: ${currentWeeksLength + addedCount}주`);
-        console.log(`   - 버벅임: 없음 (하단 추가는 원래 부드러움)`);
-        console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
         
         setTimeout(() => setIsLoadingMore(false), 100);
     }, [loadedRange, isLoadingMore, isLoadingPast, weeks.length, today, startDayOfWeek, isWeekly]);
@@ -204,18 +177,14 @@ export default function UltimateCalendar() {
     // ✅ 무한 스크롤 핸들러 (상단) - maintainVisibleContentPosition 사용
     const handleStartReached = useCallback(() => {
         if (isLoadingMore || isLoadingPast || weeks.length === 0) {
-            // console.log('⏸️ [상단 스크롤] 스킵 - 로딩 중 또는 데이터 없음');
             return;
         }
         
         // ✅ 비활성 뷰에서 트리거된 경우 무시
         if (isWeekly) {
-            // console.log('⏸️ [상단 스크롤] 스킵 - 주간뷰 활성 중 (월간뷰 이벤트 무시)');
             return;
         }
         
-        console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-        console.log('🔼 [상단 스크롤] 트리거됨');
         setIsLoadingPast(true);
         
         const startTime = performance.now();
@@ -223,9 +192,6 @@ export default function UltimateCalendar() {
         // 1️⃣ 현재 상태 확인
         const currentVisibleIdx = visibleWeekIndexRef.current;
         const currentWeeksLength = weeks.length;
-        console.log(`1️⃣ [현재 상태]`);
-        console.log(`   - 현재 보는 인덱스: ${currentVisibleIdx}`);
-        console.log(`   - 현재 총 주 수: ${currentWeeksLength}주`);
         
         // 2️⃣ 새 데이터 생성
         const firstWeek = weeks[0];
@@ -233,9 +199,6 @@ export default function UltimateCalendar() {
         const newEnd = firstDate.subtract(1, 'day');
         const newStart = newEnd.subtract(12, 'month').startOf('month');
         
-        console.log(`2️⃣ [데이터 생성]`);
-        console.log(`   - 기존 첫 주: ${firstWeek[0]?.dateString} ~ ${firstWeek[6]?.dateString}`);
-        console.log(`   - 생성 범위: ${newStart.format('YYYY-MM-DD')} ~ ${newEnd.format('YYYY-MM-DD')}`);
         
         const { weeks: newWeeks } = generateCalendarData(
             today,
@@ -246,22 +209,15 @@ export default function UltimateCalendar() {
         
         // 3️⃣ 중복 체크
         if (newWeeks.length > 0 && newWeeks[newWeeks.length - 1][0].dateString === firstWeek[0].dateString) {
-            console.log(`3️⃣ [중복 제거] 마지막 주 제거됨`);
             newWeeks.pop();
         } else {
-            console.log(`3️⃣ [중복 체크] 중복 없음 ✓`);
         }
         
         const addedCount = newWeeks.length;
-        console.log(`   - 추가될 주 수: ${addedCount}주`);
-        console.log(`   - 추가 첫 주: ${newWeeks[0]?.[0]?.dateString} ~ ${newWeeks[0]?.[6]?.dateString}`);
-        console.log(`   - 추가 마지막 주: ${newWeeks[addedCount-1]?.[0]?.dateString} ~ ${newWeeks[addedCount-1]?.[6]?.dateString}`);
         
         // 4️⃣ ref 업데이트 (동기)
         const newTargetIndex = currentVisibleIdx + addedCount;
         visibleWeekIndexRef.current = newTargetIndex;
-        console.log(`4️⃣ [ref 업데이트]`);
-        console.log(`   - 새 인덱스: ${newTargetIndex} (${currentVisibleIdx} + ${addedCount})`);
         
         // 5️⃣ 상태 업데이트 (Virtual Window 비활성화 - CalendarScreen과 동일)
         setWeeks(prev => [...newWeeks, ...prev]);
@@ -272,10 +228,6 @@ export default function UltimateCalendar() {
         setVisibleWeekIndex(newTargetIndex);
         
         const endTime = performance.now();
-        console.log(`✅ [완료] ${addedCount}주 추가 완료 (${(endTime - startTime).toFixed(2)}ms)`);
-        console.log(`   - 새 총 주 수: ${currentWeeksLength + addedCount}주`);
-        console.log(`   - maintainVisibleContentPosition이 자동 위치 유지`);
-        console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
         
         setTimeout(() => setIsLoadingPast(false), 100);
     }, [isLoadingMore, isLoadingPast, weeks, today, startDayOfWeek, isWeekly]);
@@ -304,19 +256,16 @@ export default function UltimateCalendar() {
     useEffect(() => {
         // ✅ 사용자가 스크롤 중이면 동기화 스킵
         if (isUserScrolling.current) {
-            // console.log('⏸️ [동기화] 사용자 스크롤 중 - 동기화 스킵');
             return;
         }
         
         // 1. 주간 모드일 때 -> 숨겨진 월간 뷰 동기화 (visibleWeekIndex 사용)
         if (isWeekly && hasLoadedMonthly && monthlyRef.current) {
-            // console.log(`🔄 [동기화] 주간→월간 동기화: ${visibleWeekIndex}`);
             monthlyRef.current.scrollToIndex(visibleWeekIndex, false);
         }
 
         // 2. 월간 모드일 때 -> 숨겨진 주간 뷰 동기화 (visibleWeekIndex 사용)
         if (!isWeekly && weeklyRef.current) {
-            // console.log(`🔄 [동기화] 월간→주간 동기화: ${visibleWeekIndex}`);
             weeklyRef.current.scrollToIndex(visibleWeekIndex, false);
         }
     }, [visibleWeekIndex, isWeekly, hasLoadedMonthly]);
@@ -361,14 +310,6 @@ export default function UltimateCalendar() {
         // Selected Date가 보이면 해당 주로, 아니면 현재 보는 주로
         const targetIndex = isSelectedVisible ? currentWeekIndex : visibleWeekIndex;
         
-        // console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-        // console.log('📅 [모드 전환] 월간 → 주간');
-        // console.log(`   - 현재 보는 주 (visibleWeekIndex): ${visibleWeekIndex}`);
-        // console.log(`   - Selected Date 주 (currentWeekIndex): ${currentWeekIndex}`);
-        // console.log(`   - 거리: ${Math.abs(currentWeekIndex - visibleWeekIndex)}주`);
-        // console.log(`   - Selected 화면에 보임: ${isSelectedVisible ? 'YES' : 'NO'}`);
-        // console.log(`   - 이동할 인덱스: ${targetIndex} ${isSelectedVisible ? '(Selected 주)' : '(현재 보는 주)'}`);
-        // console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
         
         // 확인 사살용
         setTimeout(() => {
@@ -394,8 +335,6 @@ export default function UltimateCalendar() {
         );
         
         if (clickedWeekIndex !== -1 && clickedWeekIndex !== visibleWeekIndex) {
-            // const yearMonth = dayjs(dateString).format('YYYY-MM');
-            // console.log(`📅 [날짜 클릭] ${dateString} (${yearMonth}) → 인덱스 ${clickedWeekIndex}`);
             
             // ✅ 스크롤 플래그 설정 (동기화 방지)
             isUserScrolling.current = true;
@@ -410,7 +349,6 @@ export default function UltimateCalendar() {
             // ✅ 플래그 해제 (300ms 후)
             setTimeout(() => {
                 isUserScrolling.current = false;
-                // console.log('✅ [날짜 클릭] 이동 완료 - 동기화 재활성화');
             }, 300);
         }
     }, [setCurrentDate, weeks, hasLoadedMonthly, visibleWeekIndex]);
@@ -418,11 +356,6 @@ export default function UltimateCalendar() {
     const handleTodayPress = useCallback(() => {
         const todayStr = dayjs().format('YYYY-MM-DD');
         
-        // console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-        // console.log('🏠 [오늘 버튼] 클릭됨');
-        // console.log(`   - 현재 visibleWeekIndex: ${visibleWeekIndexRef.current}`);
-        // console.log(`   - todayWeekIndex: ${todayWeekIndex}`);
-        // console.log(`   - 이동: ${visibleWeekIndexRef.current} → ${todayWeekIndex}`);
         
         setCurrentDate(todayStr);
         setHeaderDate(today);
@@ -437,8 +370,6 @@ export default function UltimateCalendar() {
         if (weeklyRef.current) weeklyRef.current.scrollToIndex(todayWeekIndex, true);
         if (hasLoadedMonthly && monthlyRef.current) monthlyRef.current.scrollToIndex(todayWeekIndex, true);
         
-        // console.log('✅ [오늘 버튼] 이동 완료');
-        // console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
         
         // ✅ 애니메이션 완료 후 플래그 해제 (500ms)
         setTimeout(() => {
@@ -451,7 +382,6 @@ export default function UltimateCalendar() {
         const targetIndex = visibleWeekIndex - 1;
         if (targetIndex < 0) return;
         
-        // console.log(`⬅️ [Arrow] 이전 주로 이동: ${visibleWeekIndex} → ${targetIndex}`);
         
         // ✅ Arrow 네비게이션 시작 플래그
         isArrowNavigating.current = true;
@@ -482,7 +412,6 @@ export default function UltimateCalendar() {
         const targetIndex = visibleWeekIndex + 1;
         if (targetIndex >= weeks.length) return;
         
-        // console.log(`➡️ [Arrow] 다음 주로 이동: ${visibleWeekIndex} → ${targetIndex}`);
         
         // ✅ Arrow 네비게이션 시작 플래그
         isArrowNavigating.current = true;
@@ -513,7 +442,6 @@ export default function UltimateCalendar() {
     const handleWeekChange = useCallback((dateObj, index) => {
         // ✅ Arrow 네비게이션 중에는 스크롤 이벤트 무시
         if (isArrowNavigating.current) {
-            // console.log(`⏭️ [주간뷰] Arrow 네비게이션 중 - 스크롤 이벤트 무시 (${index})`);
             return;
         }
         
@@ -522,11 +450,6 @@ export default function UltimateCalendar() {
         
         if (dateObj) setHeaderDate(dateObj); 
         if (index !== undefined) {
-            const weekInfo = weeks[index];
-            const weekRange = weekInfo ? `${weekInfo[0].dateString} ~ ${weekInfo[6].dateString}` : 'N/A';
-            const yearMonth = weekInfo ? dayjs(weekInfo[0].dateString).format('YYYY-MM') : 'N/A';
-            console.log(`📍 [주간뷰] 인덱스 변경: ${visibleWeekIndexRef.current} → ${index}`);
-            console.log(`   📅 년월: ${yearMonth}, 주 범위: ${weekRange}`);
             setVisibleWeekIndex(index);
             visibleWeekIndexRef.current = index;
         }
@@ -534,14 +457,12 @@ export default function UltimateCalendar() {
         // ✅ 스크롤 완료 후 플래그 해제 (500ms 후)
         setTimeout(() => {
             isUserScrolling.current = false;
-            // console.log('✅ [주간뷰] 스크롤 완료 - 동기화 재활성화');
         }, 500);
     }, [weeks]);
     
     const handleVisibleWeeksChange = useCallback((dateObj, index) => {
         // ✅ Arrow 네비게이션 중에는 스크롤 이벤트 무시
         if (isArrowNavigating.current) {
-            // console.log(`⏭️ [월간뷰] Arrow 네비게이션 중 - 스크롤 이벤트 무시 (${index})`);
             return;
         }
         
@@ -550,16 +471,6 @@ export default function UltimateCalendar() {
         
         if (dateObj) setHeaderDate(dateObj); 
         if (index !== undefined) {
-            const weekInfo = weeks[index];
-            const weekRange = weekInfo ? `${weekInfo[0].dateString} ~ ${weekInfo[6].dateString}` : 'N/A';
-            const yearMonth = weekInfo ? dayjs(weekInfo[0].dateString).format('YYYY-MM') : 'N/A';
-            
-            console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-            console.log(`📍 [월간뷰] 인덱스 변경: ${visibleWeekIndexRef.current} → ${index}`);
-            console.log(`   📅 년월: ${yearMonth}`);
-            console.log(`   📆 주 범위: ${weekRange}`);
-            console.log(`   📊 총 주 수: ${weeks.length}주`);
-            console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
             
             setVisibleWeekIndex(index);
             visibleWeekIndexRef.current = index;
@@ -568,7 +479,6 @@ export default function UltimateCalendar() {
         // ✅ 스크롤 완료 후 플래그 해제 (500ms 후)
         setTimeout(() => {
             isUserScrolling.current = false;
-            // console.log('✅ [월간뷰] 스크롤 완료 - 동기화 재활성화');
         }, 500);
     }, [weeks]);
     // ✅ [오늘] 버튼 표시 조건: 오늘이 속한 주가 화면에 안 보일 때

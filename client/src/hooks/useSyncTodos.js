@@ -16,6 +16,11 @@ import {
     upsertTodo,
     removeTodo,
 } from '../storage/todoStorage';
+import {
+    loadCompletions,
+    saveCompletions,
+    mergeCompletionDelta,
+} from '../storage/completionStorage';
 import { loadCategories } from '../storage/categoryStorage';
 import { occursOnDate } from '../utils/recurrenceUtils';
 import {
@@ -115,6 +120,24 @@ export const useSyncTodos = () => {
                         await todoAPI.deleteTodo(change.todoId);
                         console.log('✅ [useSyncTodos] 서버 삭제 완료:', change.todoId);
                         break;
+
+                    case 'createCompletion':
+                        // Completion 생성 (완료 처리)
+                        await api.post('/completions/toggle', {
+                            todoId: change.todoId,
+                            date: change.date,
+                        });
+                        console.log('✅ [useSyncTodos] Completion 생성 완료:', change.todoId, change.date);
+                        break;
+
+                    case 'deleteCompletion':
+                        // Completion 삭제 (완료 취소)
+                        await api.post('/completions/toggle', {
+                            todoId: change.todoId,
+                            date: change.date,
+                        });
+                        console.log('✅ [useSyncTodos] Completion 삭제 완료:', change.todoId, change.date);
+                        break;
                 }
 
                 await removePendingChange(change.id);
@@ -126,6 +149,14 @@ export const useSyncTodos = () => {
         }
 
         console.log('✅ [useSyncTodos] Pending changes 처리 완료:', { success, failed });
+        
+        // Pending Changes 처리 후 Completion 캐시 업데이트
+        if (success > 0) {
+            const updatedCompletions = await loadCompletions();
+            queryClient.setQueryData(['completions'], updatedCompletions);
+            console.log('💾 [useSyncTodos] Completion 캐시 업데이트 완료');
+        }
+        
         return { success, failed };
     }, []);
 
@@ -158,6 +189,7 @@ export const useSyncTodos = () => {
         try {
             // 1. 로컬 데이터 먼저 로드 (즉시 화면 표시)
             const localTodos = await loadTodos();
+            const localCompletions = await loadCompletions();
             const metadata = await loadSyncMetadata();
 
             // 1-1. 설정도 서버에서 가져오기 (백그라운드)
@@ -172,11 +204,15 @@ export const useSyncTodos = () => {
             }
 
             if (localTodos.length > 0) {
-                console.log('📱 [useSyncTodos] 로컬 데이터 로드:', localTodos.length, '개');
-                console.log('📱 [useSyncTodos] 로컬 데이터 샘플:', localTodos.slice(0, 2).map(t => t.title));
+                console.log('📱 [useSyncTodos] 로컬 Todos 로드:', localTodos.length, '개');
                 populateCache(localTodos);
             } else {
-                console.log('⚠️ [useSyncTodos] 로컬 데이터 없음!');
+                console.log('⚠️ [useSyncTodos] 로컬 Todos 없음!');
+            }
+
+            if (Object.keys(localCompletions).length > 0) {
+                console.log('📱 [useSyncTodos] 로컬 Completions 로드:', Object.keys(localCompletions).length, '개');
+                queryClient.setQueryData(['completions'], localCompletions);
             }
 
             // 2. 네트워크 확인
@@ -197,50 +233,120 @@ export const useSyncTodos = () => {
             if (pendingResult.success > 0) {
                 console.log('🔄 [useSyncTodos] Pending changes 처리 완료 - 로컬 데이터 재로드');
                 const updatedLocalTodos = await loadTodos();
+                const updatedLocalCompletions = await loadCompletions();
                 populateCache(updatedLocalTodos);
                 
                 // lastSyncTime을 현재 시간으로 업데이트 (방금 생성한 항목이 델타에서 중복으로 안 들어오도록)
                 const now = new Date().toISOString();
-                await saveSyncMetadata({ lastSyncTime: now });
+                await saveSyncMetadata({ 
+                    lastSyncTime: now,
+                    lastCompletionSyncTime: metadata.lastCompletionSyncTime || now,
+                });
                 metadata.lastSyncTime = now;
+                metadata.lastCompletionSyncTime = metadata.lastCompletionSyncTime || now;
                 console.log('✅ [useSyncTodos] lastSyncTime 업데이트:', now);
             }
 
-            // 4. 서버와 동기화
+            // 4. Todo 델타 동기화
             if (!metadata.lastSyncTime || forceFullSync) {
                 // 최초 동기화: 전체 데이터 받기
-                console.log('🌐 [useSyncTodos] 최초 동기화 - 전체 데이터 로드');
+                console.log('🌐 [useSyncTodos] 최초 Todo 동기화 - 전체 데이터 로드');
                 const response = await todoAPI.getAllTodos();
                 const allTodos = response.data;
 
                 await saveTodos(allTodos);
-                await saveSyncMetadata({ lastSyncTime: new Date().toISOString() });
+                const now = new Date().toISOString();
+                await saveSyncMetadata({ 
+                    lastSyncTime: now,
+                    lastCompletionSyncTime: metadata.lastCompletionSyncTime || now,
+                });
                 populateCache(allTodos);
 
                 setLastSyncTime(new Date());
-                console.log('✅ [useSyncTodos] 최초 동기화 완료:', allTodos.length, '개');
+                console.log('✅ [useSyncTodos] 최초 Todo 동기화 완료:', allTodos.length, '개');
             } else {
                 // 델타 동기화: 변경사항만
-                console.log('🔄 [useSyncTodos] 델타 동기화 시작:', metadata.lastSyncTime);
+                console.log('🔄 [useSyncTodos] Todo 델타 동기화 시작:', metadata.lastSyncTime);
                 const response = await todoAPI.getDeltaSync(metadata.lastSyncTime);
                 const delta = response.data;
 
                 if (delta.updated.length > 0 || delta.deleted.length > 0) {
-                    console.log('📥 [useSyncTodos] 델타 수신:', {
+                    console.log('📥 [useSyncTodos] Todo 델타 수신:', {
                         updated: delta.updated.length,
                         deleted: delta.deleted.length
                     });
 
                     const merged = mergeDelta(localTodos, delta);
                     await saveTodos(merged);
-                    await saveSyncMetadata({ lastSyncTime: delta.syncTime });
+                    await saveSyncMetadata({ 
+                        lastSyncTime: delta.syncTime,
+                        lastCompletionSyncTime: metadata.lastCompletionSyncTime,
+                    });
                     populateCache(merged);
                 } else {
-                    console.log('✨ [useSyncTodos] 변경사항 없음');
-                    await saveSyncMetadata({ lastSyncTime: delta.syncTime });
+                    console.log('✨ [useSyncTodos] Todo 변경사항 없음');
+                    await saveSyncMetadata({ 
+                        lastSyncTime: delta.syncTime,
+                        lastCompletionSyncTime: metadata.lastCompletionSyncTime,
+                    });
                 }
 
                 setLastSyncTime(new Date());
+            }
+
+            // 5. Completion 델타 동기화 (Phase 4)
+            if (metadata.lastCompletionSyncTime) {
+                console.log('🔄 [useSyncTodos] Completion 델타 동기화 시작:', metadata.lastCompletionSyncTime);
+                
+                try {
+                    const completionResponse = await api.get(
+                        `/completions/delta-sync?lastSyncTime=${metadata.lastCompletionSyncTime}`
+                    );
+                    const completionDelta = completionResponse.data;
+
+                    if (completionDelta.updated.length > 0 || completionDelta.deleted.length > 0) {
+                        console.log('📥 [useSyncTodos] Completion 델타 수신:', {
+                            updated: completionDelta.updated.length,
+                            deleted: completionDelta.deleted.length
+                        });
+
+                        const mergedCompletions = mergeCompletionDelta(localCompletions, completionDelta);
+                        await saveCompletions(mergedCompletions);
+                        
+                        // React Query 캐시에도 저장
+                        queryClient.setQueryData(['completions'], mergedCompletions);
+                        
+                        // lastCompletionSyncTime 업데이트
+                        await saveSyncMetadata({
+                            lastSyncTime: metadata.lastSyncTime,
+                            lastCompletionSyncTime: completionDelta.syncTime,
+                        });
+                        
+                        console.log('✅ [useSyncTodos] Completion 델타 동기화 완료');
+                        
+                        // 캐시 무효화 (Completion 변경 반영)
+                        queryClient.invalidateQueries({
+                            predicate: (query) => query.queryKey[0] === 'todos'
+                        });
+                    } else {
+                        console.log('✨ [useSyncTodos] Completion 변경사항 없음');
+                        await saveSyncMetadata({
+                            lastSyncTime: metadata.lastSyncTime,
+                            lastCompletionSyncTime: completionDelta.syncTime,
+                        });
+                    }
+                } catch (completionError) {
+                    console.error('❌ [useSyncTodos] Completion 델타 동기화 실패:', completionError.message);
+                    // Completion 동기화 실패해도 Todo 동기화는 성공했으므로 계속 진행
+                }
+            } else {
+                // 최초 Completion 동기화: lastCompletionSyncTime 초기화
+                console.log('🌐 [useSyncTodos] 최초 Completion 동기화 - lastCompletionSyncTime 초기화');
+                const now = new Date().toISOString();
+                await saveSyncMetadata({
+                    lastSyncTime: metadata.lastSyncTime,
+                    lastCompletionSyncTime: now,
+                });
             }
         } catch (err) {
             console.error('❌ [useSyncTodos] 동기화 실패:', err);
@@ -249,7 +355,7 @@ export const useSyncTodos = () => {
             setIsSyncing(false);
             isSyncingRef.current = false;
         }
-    }, [isLoggedIn, populateCache, processPendingChanges]);
+    }, [isLoggedIn, populateCache, processPendingChanges, queryClient]);
 
     /**
      * 강제 전체 동기화
@@ -309,6 +415,15 @@ export const useSyncTodos = () => {
                     console.log('⚠️ [useSyncTodos] 로컬 Todos 없음');
                 }
                 
+                // Completions
+                const localCompletions = await loadCompletions();
+                if (Object.keys(localCompletions).length > 0) {
+                    console.log('⚡ [useSyncTodos] 초기 Completions 캐시 준비:', Object.keys(localCompletions).length, '개');
+                    queryClient.setQueryData(['completions'], localCompletions);
+                } else {
+                    console.log('⚠️ [useSyncTodos] 로컬 Completions 없음');
+                }
+                
                 // Categories
                 const localCategories = await loadCategories();
                 if (localCategories.length > 0) {
@@ -324,7 +439,7 @@ export const useSyncTodos = () => {
         
         // 즉시 캐시 준비 (로그인 여부 무관)
         prepareCache();
-    }, []);
+    }, [populateCache, queryClient]);
 
     /**
      * 로그인 후 동기화
