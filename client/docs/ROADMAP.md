@@ -41,6 +41,26 @@
 
 ## 🚀 다음 작업 (우선순위)
 
+### 0. Expo SDK 54 빌드 에러 수정 🔴 긴급 (최우선)
+**목적**: Android/iOS 네이티브 빌드 복구
+
+**문제**:
+- Expo SDK 54 업그레이드 후 빌드 실패
+- react-native-reanimated 관련 에러
+- react-native-worklets 관련 에러
+
+**작업**:
+- [ ] 에러 로그 분석
+- [ ] react-native-reanimated 버전 확인 및 수정
+- [ ] react-native-worklets 의존성 확인
+- [ ] babel.config.js 설정 확인
+- [ ] Android 빌드 테스트
+- [ ] iOS 빌드 테스트
+
+**예상 시간**: 1-2시간
+
+---
+
 ### 1. 기능 테스트 및 디버깅 🔴 높음 (긴급)
 **목적**: SQLite 마이그레이션 후 모든 기능 검증
 
