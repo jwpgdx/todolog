@@ -17,17 +17,17 @@ export const useDeleteTodo = () => {
       const deleteLocally = async () => {
         console.log('📵 [useDeleteTodo] 오프라인/서버실패 - SQLite 삭제');
         console.log('📦 [useDeleteTodo] 삭제 대상:', { id: todo._id, title: todo.title });
-        
+
         await ensureDatabase();
         await deleteTodo(todo._id);
         console.log('✅ [useDeleteTodo] SQLite에서 삭제 완료');
-        
+
         await addPendingChange({
-          type: 'delete',
-          todoId: todo._id,
+          type: 'deleteTodo',
+          entityId: todo._id,
         });
         console.log('✅ [useDeleteTodo] Pending queue 추가 완료');
-        
+
         return { message: 'SQLite 삭제 완료', deletedTodo: todo };
       };
 
@@ -45,12 +45,12 @@ export const useDeleteTodo = () => {
       try {
         const res = await todoAPI.deleteTodo(todo._id);
         console.log('✅ [useDeleteTodo] 서버 삭제 성공');
-        
+
         // 서버 삭제 성공 시 SQLite에서도 삭제
         await ensureDatabase();
         await deleteTodo(todo._id);
         console.log('✅ [useDeleteTodo] SQLite에서도 삭제 완료');
-        
+
         return { ...res.data, deletedTodo: todo };
       } catch (error) {
         console.error('⚠️ [useDeleteTodo] 서버 요청 실패 → SQLite 삭제로 fallback:', error.message);

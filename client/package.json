@@ -29,6 +29,7 @@
     "dayjs": "^1.11.19",
     "expo": "^54.0.33",
     "expo-build-properties": "~1.0.10",
+    "expo-crypto": "~15.0.8",
     "expo-haptics": "~15.0.8",
     "expo-localization": "~17.0.8",
     "expo-sqlite": "~16.0.10",

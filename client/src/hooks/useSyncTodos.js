@@ -87,87 +87,97 @@ export const useSyncTodos = () => {
 
     /**
      * Pending Changes 처리 (SQLite 기반)
+     * 
+     * UUID Migration:
+     * - tempId 스킵 로직 제거 (더 이상 tempId 없음)
+     * - 타입별 정렬: Category → Todo → Completion
+     * - 새 타입: createCategory, updateCategory, deleteCategory, createTodo, updateTodo, deleteTodo
      */
     const processPendingChanges = useCallback(async () => {
         await ensureDatabase();
         const pending = await sqliteGetPendingChanges();
         if (pending.length === 0) return { success: 0, failed: 0 };
 
-        console.log('🔄 [useSyncTodos] Pending changes 처리 시작:', pending.length);
+        // 🔧 타입별 정렬 (Category 먼저, Completion 마지막)
+        const typeOrder = {
+            createCategory: 1, updateCategory: 2, deleteCategory: 3,
+            create: 4, createTodo: 4, update: 5, updateTodo: 5, delete: 6, deleteTodo: 6,
+            createCompletion: 7, deleteCompletion: 8,
+        };
+
+        const sorted = [...pending].sort((a, b) => {
+            return (typeOrder[a.type] || 99) - (typeOrder[b.type] || 99);
+        });
+
+        console.log('🔄 [useSyncTodos] Pending changes 처리 시작 (정렬됨):', sorted.length);
 
         let success = 0;
         let failed = 0;
 
-        for (const change of pending) {
+        for (const change of sorted) {
             try {
+                const data = change.data;
+
                 switch (change.type) {
-                    case 'create':
-                        const data = JSON.parse(change.data);
+                    // === Category ===
+                    case 'createCategory':
+                        await api.post('/categories', data);
+                        console.log('✅ [useSyncTodos] Category 생성 완료:', change.entityId);
+                        break;
+                    case 'updateCategory':
+                        await api.put(`/categories/${change.entityId}`, data);
+                        console.log('✅ [useSyncTodos] Category 수정 완료:', change.entityId);
+                        break;
+                    case 'deleteCategory':
+                        await api.delete(`/categories/${change.entityId}`);
+                        console.log('✅ [useSyncTodos] Category 삭제 완료:', change.entityId);
+                        break;
+
+                    // === Todo (신규 타입) ===
+                    case 'createTodo':
                         const createRes = await todoAPI.createTodo(data);
-                        // tempId 삭제하고 서버 데이터 저장
-                        await sqliteDeleteTodo(change.todoId);
                         await sqliteUpsertTodo(createRes.data);
-                        console.log('✅ [useSyncTodos] 서버 생성 완료:', createRes.data._id);
+                        console.log('✅ [useSyncTodos] Todo 생성 완료:', createRes.data._id);
+                        break;
+                    case 'updateTodo':
+                        await todoAPI.updateTodo(change.entityId, data);
+                        console.log('✅ [useSyncTodos] Todo 수정 완료:', change.entityId);
+                        break;
+                    case 'deleteTodo':
+                        await todoAPI.deleteTodo(change.entityId);
+                        console.log('✅ [useSyncTodos] Todo 삭제 완료:', change.entityId);
                         break;
 
+                    // === Todo (레거시 타입 호환) ===
+                    case 'create':
+                        const legacyCreateRes = await todoAPI.createTodo(data);
+                        await sqliteUpsertTodo(legacyCreateRes.data);
+                        console.log('✅ [useSyncTodos] 레거시 Todo 생성 완료:', legacyCreateRes.data._id);
+                        break;
                     case 'update':
-                        if (change.todoId && change.todoId.startsWith('temp_')) {
-                            console.log('⏭️ [useSyncTodos] tempId 수정 스킵:', change.todoId);
-                            await sqliteRemovePendingChange(change.id);
-                            success++;
-                            continue;
-                        }
-                        const updateData = JSON.parse(change.data);
-                        await todoAPI.updateTodo(change.todoId, updateData);
-                        console.log('✅ [useSyncTodos] 서버 수정 완료:', change.todoId);
+                        await todoAPI.updateTodo(change.entityId || change.todoId, data);
+                        console.log('✅ [useSyncTodos] 레거시 Todo 수정 완료:', change.entityId || change.todoId);
                         break;
-
                     case 'delete':
-                        if (change.todoId && change.todoId.startsWith('temp_')) {
-                            console.log('⏭️ [useSyncTodos] tempId 삭제 스킵:', change.todoId);
-                            await sqliteRemovePendingChange(change.id);
-                            success++;
-                            continue;
-                        }
-                        await todoAPI.deleteTodo(change.todoId);
-                        console.log('✅ [useSyncTodos] 서버 삭제 완료:', change.todoId);
+                        await todoAPI.deleteTodo(change.entityId || change.todoId);
+                        console.log('✅ [useSyncTodos] 레거시 Todo 삭제 완료:', change.entityId || change.todoId);
                         break;
 
+                    // === Completion ===
                     case 'createCompletion':
-                        // 테스트 데이터 스킵
-                        if (change.todoId && change.todoId.includes('test')) {
-                            console.log('⏭️ [useSyncTodos] 테스트 데이터 스킵:', change.todoId);
-                            await sqliteRemovePendingChange(change.id);
-                            success++;
-                            continue;
-                        }
-                        await api.post('/completions/toggle', {
-                            todoId: change.todoId,
-                            date: change.date,
-                        });
-                        console.log('✅ [useSyncTodos] Completion 생성 완료:', change.todoId);
-                        break;
-
                     case 'deleteCompletion':
-                        // 테스트 데이터 스킵
-                        if (change.todoId && change.todoId.includes('test')) {
-                            console.log('⏭️ [useSyncTodos] 테스트 데이터 스킵:', change.todoId);
-                            await sqliteRemovePendingChange(change.id);
-                            success++;
-                            continue;
-                        }
                         await api.post('/completions/toggle', {
-                            todoId: change.todoId,
+                            todoId: change.entityId || change.todoId,
                             date: change.date,
                         });
-                        console.log('✅ [useSyncTodos] Completion 삭제 완료:', change.todoId);
+                        console.log('✅ [useSyncTodos] Completion 토글 완료:', change.entityId || change.todoId);
                         break;
                 }
 
                 await sqliteRemovePendingChange(change.id);
                 success++;
             } catch (err) {
-                console.error('❌ [useSyncTodos] Pending change 처리 실패:', change, err);
+                console.error('❌ [useSyncTodos] Pending change 처리 실패:', change.type, err.message);
                 failed++;
             }
         }

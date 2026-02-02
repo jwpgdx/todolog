@@ -56,48 +56,56 @@
 # PROJECT CONTEXT & KEY FILES
 
 ## Recently Completed (2026-02-03)
-- **SQLite Migration**: AsyncStorage → SQLite 전환 완료 (100%)
+- **UUID Migration (Phase 6)**: tempId → UUID v4 완전 전환
+  - 클라이언트: expo-crypto 기반 UUID 생성
+  - 서버: 모든 Model String _id로 전환
+  - Offline-First: Category hooks 오프라인 지원 추가
+  - tempId 매핑 로직 완전 제거
+  - pending_changes 스키마: todo_id → entity_id
+
+- **SQLite Migration (Phase 5)**: AsyncStorage → SQLite 전환 완료
   - 성능: 앱 시작 15배, Completion 토글 160배, 메모리 10배 감소
   - 모든 CRUD hooks SQLite 기반으로 전환
   - WASM 콜드 스타트 해결 (워밍업 로직)
+  
 - **UltimateCalendar**: Infinite scroll + dynamic events implementation
 - **Performance**: <10ms event calculation, 90%+ cache hit rate
 - **Cache Optimization**: range: 12 (±12주), maxCacheSize: 60주
-- **Files Modified**:
-  - `client/src/db/*` - SQLite service layer (database, todoService, completionService, etc.)
-  - `client/src/hooks/queries/*` - All hooks converted to SQLite
-  - `client/src/hooks/useSyncTodos.js` - Delta sync with SQLite
-  - `client/src/components/ui/ultimate-calendar/UltimateCalendar.js`
-  - `client/src/hooks/useCalendarDynamicEvents.js`
 
 ## Key Architecture Patterns
-1. **Data Storage**: SQLite as Source of Truth (AsyncStorage → SQLite migration complete)
+1. **ID Generation**: UUID v4 (클라이언트에서 생성)
+   - 클라이언트: `expo-crypto.randomUUID()`
+   - 서버: `crypto.randomUUID()` (fallback)
+   - Completion ID: `todoId_date` 형식
+2. **Data Storage**: SQLite as Source of Truth
    - Todos, Completions, Categories, Pending Changes all in SQLite
    - Settings remain in AsyncStorage (intentional)
-   - Automatic migration on first launch with rollback support
-2. **Cache Strategy**: Single-source cache (`['todos', 'all']`) with on-demand filtering
-   - React Query auto-caches filtered results
-   - Cache-first pattern for offline support
-3. **Database Optimization**:
-   - Indexes on date, range, category, updated_at columns
-   - Soft delete pattern (deleted_at column)
-   - WASM warmup to prevent cold start delays
-4. **Infinite Scroll**: Virtual Window (156 weeks) with bidirectional loading
-5. **Dynamic Events**: Range-based calculation (±12 weeks) with week-based caching (60 weeks)
-6. **Sync Conflicts**: Use ref flags (`isUserScrolling`, `isArrowNavigating`) to prevent conflicts
+3. **Pending Change Types**: 
+   - Category: `createCategory`, `updateCategory`, `deleteCategory`
+   - Todo: `createTodo`, `updateTodo`, `deleteTodo` (legacy: `create`, `update`, `delete`)
+   - Completion: `createCompletion`, `deleteCompletion`
+4. **Sync Order**: Category → Todo → Completion (의존성 순서)
+5. **Cache Strategy**: Single-source cache (`['todos', 'all']`) with on-demand filtering
+
+## Key Files (UUID Migration)
+- `client/src/utils/idGenerator.js` - UUID 생성 유틸리티
+- `client/src/db/pendingService.js` - entity_id 기반, 새 타입들
+- `client/src/hooks/queries/useCreate*.js` - UUID 생성, 오프라인 지원
+- `server/src/models/*.js` - 모두 String _id로 전환
+- `server/src/controllers/*.js` - 클라이언트 _id 수용
 
 ## Important Documentation
-- **README.md**: Architecture overview, cache strategy, UltimateCalendar details
-- **client/docs/IMPLEMENTATION_COMPLETE.md**: Completed features and performance metrics
+- **README.md**: Architecture overview, UUID strategy, performance
+- **UUID_MIGRATION_PLAN.md**: 마이그레이션 계획서 (완료됨)
 - **client/docs/ROADMAP.md**: Next tasks and priorities
 
 ## Next Session Start Guide
-When starting a new session, refer to:
-1. **ROADMAP.md** for next tasks (recommended: test code cleanup)
-2. **IMPLEMENTATION_COMPLETE.md** for context on completed work
-3. **README.md** for architecture patterns and conventions
+When starting a new session:
+1. **ROADMAP.md** for next tasks (UUID 테스트 필요)
+2. **UUID 테스트**: 회원가입 → Todo 생성 → 오프라인 동기화
+3. **서버 실행 후 테스트**: MongoDB 초기화 → 서버 시작 → 앱 테스트
 
 ## Debug & Testing
-- **Manual Tests**: `client/src/test/TestDashboard.js` - Entry point for manual tests
-- **Debug Logs**: Currently enabled in `useCalendarDynamicEvents.js` and `UltimateCalendar.js`
-- **Next Task**: Remove debug logs for production readiness
+- **Database Reset**: 클라이언트 SQLite + MongoDB 컬렉션 drop
+- **Manual Tests**: `client/src/test/TestDashboard.js`
+- **Next Task**: UUID 기반 CRUD 전체 테스트

@@ -76,10 +76,9 @@ CREATE INDEX IF NOT EXISTS idx_completions_todo ON completions(todo_id);
 CREATE TABLE IF NOT EXISTS pending_changes (
   id TEXT PRIMARY KEY,
   type TEXT NOT NULL,
-  todo_id TEXT,
+  entity_id TEXT,
   data TEXT,
   date TEXT,
-  temp_id TEXT,
   created_at TEXT NOT NULL
 );
 

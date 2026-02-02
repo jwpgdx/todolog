@@ -6,6 +6,7 @@ import { invalidateAffectedMonths } from '../../utils/cacheUtils';
 import { upsertTodo } from '../../db/todoService';
 import { addPendingChange } from '../../db/pendingService';
 import { ensureDatabase } from '../../db/database';
+import { generateId } from '../../utils/idGenerator';
 
 export const useCreateTodo = () => {
   const queryClient = useQueryClient();
@@ -14,75 +15,65 @@ export const useCreateTodo = () => {
     mutationFn: async (data) => {
       console.log('🚀 [useCreateTodo] 할일 생성 요청:', data);
 
-      // 로컬 저장 헬퍼 함수
-      const saveLocally = async () => {
-        console.log('📵 [useCreateTodo] 오프라인/서버실패 - SQLite 저장');
-        await ensureDatabase();
-        
-        const tempId = `temp_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-        const tempTodo = {
-          _id: tempId,
-          ...data,
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-          syncStatus: 'pending',
-        };
+      await ensureDatabase();
 
-        console.log('📦 [useCreateTodo] SQLite 저장 데이터:', { tempId, title: tempTodo.title, startDate: tempTodo.startDate });
-
-        // SQLite에 저장
-        await upsertTodo(tempTodo);
-        console.log('✅ [useCreateTodo] SQLite 저장 완료');
-
-        // Pending changes에 추가
-        await addPendingChange({
-          type: 'create',
-          tempId,
-          data,
-        });
-        console.log('✅ [useCreateTodo] Pending queue 추가 완료');
-
-        return tempTodo;
+      // UUID 생성 (클라이언트에서)
+      const todoId = generateId();
+      const todo = {
+        _id: todoId,
+        ...data,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        syncStatus: 'pending',
       };
 
-      // 네트워크 상태 확인
+      // SQLite에 즉시 저장
+      await upsertTodo(todo);
+      console.log('✅ [useCreateTodo] SQLite 저장 완료:', todoId);
+
+      // 네트워크 확인
       const netInfo = await NetInfo.fetch();
-      console.log('🌐 [useCreateTodo] 네트워크 상태:', { isConnected: netInfo.isConnected, type: netInfo.type });
+      console.log('🌐 [useCreateTodo] 네트워크 상태:', { isConnected: netInfo.isConnected });
 
       if (!netInfo.isConnected) {
-        console.log('🚫 [useCreateTodo] 오프라인 감지 → 로컬 저장');
-        return await saveLocally();
+        console.log('📵 [useCreateTodo] 오프라인 - Pending 추가');
+        await addPendingChange({
+          type: 'createTodo',
+          entityId: todoId,
+          data: { _id: todoId, ...data },
+        });
+        return todo;
       }
 
-      // 온라인이면 서버로 전송 시도
-      console.log('🚀 [useCreateTodo] 온라인 → 서버 요청 시도');
+      // 온라인: 서버 전송
       try {
-        const res = await todoAPI.createTodo(data);
-        console.log('✅ [useCreateTodo] 서버 저장 성공:', { id: res.data._id, title: res.data.title });
-        
-        // 서버 저장 성공 시 SQLite에도 저장
-        await ensureDatabase();
+        const res = await todoAPI.createTodo({ _id: todoId, ...data });
+        console.log('✅ [useCreateTodo] 서버 저장 성공:', res.data._id);
+
+        // 서버 응답으로 SQLite 업데이트
         await upsertTodo(res.data);
-        console.log('✅ [useCreateTodo] SQLite에도 저장 완료');
-        
         return res.data;
       } catch (error) {
-        console.error('⚠️ [useCreateTodo] 서버 요청 실패 → SQLite 저장으로 fallback:', error.message);
-        // 서버 요청 실패 시 오프라인 처리
-        return await saveLocally();
+        console.error('⚠️ [useCreateTodo] 서버 실패 → Pending 추가:', error.message);
+        await addPendingChange({
+          type: 'createTodo',
+          entityId: todoId,
+          data: { _id: todoId, ...data },
+        });
+        return todo;
       }
     },
     onSuccess: async (data, variables) => {
-      console.log('🎉 [useCreateTodo] onSuccess 호출됨:', { data, variables });
+      console.log('🎉 [useCreateTodo] onSuccess:', { id: data._id, title: data.title });
 
-      // 날짜별 캐시 무효화 (SQLite에서 다시 조회)
+      // 날짜별 캐시 무효화
       if (data.startDate) {
         queryClient.invalidateQueries({ queryKey: ['todos', data.startDate] });
       }
-      
+
       // 전체 캐시 무효화
       queryClient.invalidateQueries({ queryKey: ['todos', 'all'] });
-      
+
       // 카테고리 뷰 무효화
       if (data.categoryId) {
         queryClient.invalidateQueries({ queryKey: ['todos', 'category', data.categoryId] });
@@ -91,7 +82,7 @@ export const useCreateTodo = () => {
       // 캘린더 캐시 무효화
       invalidateAffectedMonths(queryClient, data);
 
-      // 사용자 편의를 위한 마지막 사용 정보 로컬 저장
+      // 사용자 편의를 위한 마지막 사용 정보 저장
       try {
         const todoType = variables.recurrence ? 'routine' : 'todo';
         await AsyncStorage.setItem('lastUsedTodoType', todoType);
@@ -99,11 +90,6 @@ export const useCreateTodo = () => {
         if (variables.categoryId) {
           await AsyncStorage.setItem('lastUsedCategoryId', variables.categoryId);
         }
-
-        console.log('✅ [useCreateTodo] 사용자 편의 정보 로컬 저장 완료:', {
-          type: todoType,
-          categoryId: variables.categoryId
-        });
       } catch (error) {
         console.error('❌ [useCreateTodo] 로컬 저장 실패:', error);
       }
@@ -113,4 +99,3 @@ export const useCreateTodo = () => {
     },
   });
 };
-

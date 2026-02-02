@@ -1,15 +1,23 @@
 const mongoose = require('mongoose');
 
 const userSchema = new mongoose.Schema({
-  email: {
+  _id: {
     type: String,
     required: true,
+  },
+  email: {
+    type: String,
+    sparse: true,  // 게스트는 이메일 없음
     unique: true,
     lowercase: true,
   },
   password: {
     type: String,
     // 소셜 로그인은 비밀번호 없음
+  },
+  isGuest: {
+    type: Boolean,
+    default: false,
   },
   name: {
     type: String,
@@ -105,6 +113,6 @@ const userSchema = new mongoose.Schema({
     }, { _id: false }),
     default: () => ({}),
   }
-}, { timestamps: true });
+}, { _id: false, timestamps: true });
 
 module.exports = mongoose.model('User', userSchema);

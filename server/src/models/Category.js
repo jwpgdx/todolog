@@ -1,8 +1,12 @@
 const mongoose = require('mongoose');
 
 const categorySchema = new mongoose.Schema({
+  _id: {
+    type: String,
+    required: true,
+  },
   userId: {
-    type: mongoose.Schema.Types.ObjectId,
+    type: String,  // ObjectId → String
     ref: 'User',
     required: true
   },
@@ -13,7 +17,7 @@ const categorySchema = new mongoose.Schema({
   },
   color: {
     type: String,
-    default: '#CCCCCC' // Default gray color
+    default: '#CCCCCC'
   },
   isDefault: {
     type: Boolean,
@@ -22,7 +26,15 @@ const categorySchema = new mongoose.Schema({
   order: {
     type: Number,
     default: 0
-  }
-}, { timestamps: true });
+  },
+  deletedAt: {
+    type: Date,
+    default: null,
+  },
+}, { _id: false, timestamps: true });
+
+// 인덱스
+categorySchema.index({ userId: 1, order: 1 });
+categorySchema.index({ userId: 1, deletedAt: 1 });
 
 module.exports = mongoose.model('Category', categorySchema);

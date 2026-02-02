@@ -31,13 +31,13 @@ export const useUpdateTodo = () => {
             updatedAt: new Date().toISOString(),
             syncStatus: 'pending',
           };
-          
+
           await upsertTodo(updatedTodo);
 
           // Pending changes에 추가
           await addPendingChange({
-            type: 'update',
-            todoId: id,
+            type: 'updateTodo',
+            entityId: id,
             data,
           });
 

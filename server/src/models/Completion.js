@@ -1,13 +1,17 @@
 const mongoose = require('mongoose');
 
 const completionSchema = new mongoose.Schema({
+  _id: {
+    type: String,
+    required: true,
+  },
   todoId: {
-    type: mongoose.Schema.Types.ObjectId,
+    type: String,  // ObjectId → String
     ref: 'Todo',
     required: true,
   },
   userId: {
-    type: mongoose.Schema.Types.ObjectId,
+    type: String,  // ObjectId → String
     ref: 'User',
     required: true,
   },
@@ -39,15 +43,15 @@ const completionSchema = new mongoose.Schema({
     type: Date,
     default: null,
   },
-});
+}, { _id: false });
 
 // Partial Index: deletedAt이 null인 경우에만 unique 제약
 // Soft Delete 후 재완료 시 Unique 제약 위반 방지
 completionSchema.index(
   { todoId: 1, date: 1 },
-  { 
-    unique: true, 
-    partialFilterExpression: { deletedAt: null, isRange: false } 
+  {
+    unique: true,
+    partialFilterExpression: { deletedAt: null, isRange: false }
   }
 );
 
@@ -59,18 +63,18 @@ completionSchema.index({ userId: 1, updatedAt: 1 });
 completionSchema.index({ userId: 1, deletedAt: 1 });
 
 // updatedAt 자동 업데이트
-completionSchema.pre('save', function() {
+completionSchema.pre('save', function () {
   this.updatedAt = new Date();
 });
 
 /**
  * 특정 날짜가 완료되었는지 확인 (Range 포함)
- * @param {ObjectId} todoId - Todo ID
- * @param {ObjectId} userId - User ID
+ * @param {string} todoId - Todo ID
+ * @param {string} userId - User ID
  * @param {string} targetDate - "YYYY-MM-DD"
  * @returns {Promise<boolean>}
  */
-completionSchema.statics.isCompletedOnDate = async function(todoId, userId, targetDate) {
+completionSchema.statics.isCompletedOnDate = async function (todoId, userId, targetDate) {
   const completion = await this.findOne({
     todoId,
     userId,
@@ -84,7 +88,7 @@ completionSchema.statics.isCompletedOnDate = async function(todoId, userId, targ
       },
     ],
   });
-  
+
   return !!completion;
 };
 

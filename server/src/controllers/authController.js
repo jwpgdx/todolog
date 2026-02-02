@@ -3,6 +3,7 @@ const jwt = require('jsonwebtoken');
 const { OAuth2Client } = require('google-auth-library');
 const User = require('../models/User');
 const Category = require('../models/Category');
+const { generateId, generateGuestId } = require('../utils/idGenerator');
 
 const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
@@ -68,20 +69,23 @@ exports.register = async (req, res) => {
     }
 
     const hashedPassword = await bcrypt.hash(password, 10);
+    const userId = generateId();  // UUID 생성
     const user = await User.create({
+      _id: userId,
       email,
       password: hashedPassword,
       name,
       handle: validatedHandle,
       settings: {
-        timeZone: timeZone || 'Asia/Seoul', // 타임존 저장
+        timeZone: timeZone || 'Asia/Seoul',
         theme: 'system',
         language: 'system'
       }
     });
 
-    // Inbox 카테고리 생성
+    // Inbox 카테고리 생성 (UUID)
     await Category.create({
+      _id: generateId(),
       userId: user._id,
       name: 'Inbox',
       isDefault: true,
@@ -137,6 +141,7 @@ exports.login = async (req, res) => {
     const existingCategory = await Category.findOne({ userId: user._id, isDefault: true });
     if (!existingCategory) {
       await Category.create({
+        _id: generateId(),
         userId: user._id,
         name: 'Inbox',
         isDefault: true,
@@ -184,12 +189,22 @@ exports.googleLogin = async (req, res) => {
     let user = await User.findOne({ email });
 
     if (!user) {
+      const userId = generateId();
       user = await User.create({
+        _id: userId,
         email,
         name,
         googleId,
         provider: 'google',
         picture,
+      });
+      // Inbox 카테고리 생성
+      await Category.create({
+        _id: generateId(),
+        userId: userId,
+        name: 'Inbox',
+        isDefault: true,
+        color: '#CCCCCC'
       });
     } else if (!user.googleId) {
       // 기존 이메일 계정에 구글 연동
@@ -197,17 +212,18 @@ exports.googleLogin = async (req, res) => {
       user.provider = 'google';
       user.picture = picture;
       await user.save();
-    }
 
-    // Inbox 카테고리 존재 확인 및 생성
-    const existingCategory = await Category.findOne({ userId: user._id, isDefault: true });
-    if (!existingCategory) {
-      await Category.create({
-        userId: user._id,
-        name: 'Inbox',
-        isDefault: true,
-        color: '#CCCCCC'
-      });
+      // Inbox 카테고리 존재 확인 및 생성
+      const existingCategory = await Category.findOne({ userId: user._id, isDefault: true });
+      if (!existingCategory) {
+        await Category.create({
+          _id: generateId(),
+          userId: user._id,
+          name: 'Inbox',
+          isDefault: true,
+          color: '#CCCCCC'
+        });
+      }
     }
 
     // JWT 토큰 생성

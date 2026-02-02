@@ -719,6 +719,212 @@ if (cacheKeys.length > maxCacheSize) {
 
 ---
 
+## 🆔 UUID Migration (Feb 2026)
+
+### The Problem: tempId/ObjectId Complexity
+
+**Symptoms**:
+- Complex tempId → server ID mapping logic
+- Race conditions during offline → online sync
+- Server-generated ObjectId incompatible with offline-first
+- Pending changes required extra mapping step
+
+**Root Cause**: MongoDB ObjectId is generated server-side, but offline-first requires client-side ID generation.
+
+---
+
+### The Solution: Client-Generated UUID v4
+
+**Architecture Change**:
+
+```
+Before (ObjectId + tempId):
+Client: Creates todo with tempId (temp_xxx)
+  ↓ Saves to SQLite with tempId
+  ↓ Queues pending change with tempId
+Server: Saves to MongoDB → Returns ObjectId
+  ↓ Client maps tempId → ObjectId
+  ↓ Updates SQLite with ObjectId
+  ↓ Confusion, race conditions
+
+After (UUID):
+Client: Creates todo with UUID (550e8400-e29b-41d4-a716-446655440000)
+  ↓ Saves to SQLite immediately
+  ↓ Queues pending change (if offline)
+Server: Accepts client UUID as _id
+  ↓ No mapping needed
+  ↓ Deterministic, no race conditions
+```
+
+---
+
+### Implementation Details
+
+#### 1. ID Generation (Client)
+
+```javascript
+// client/src/utils/idGenerator.js
+import * as Crypto from 'expo-crypto';
+
+export function generateId() {
+  return Crypto.randomUUID();  // e.g., "550e8400-e29b-41d4-a716-446655440000"
+}
+
+export function generateCompletionId(todoId, date) {
+  return `${todoId}_${date}`;  // e.g., "uuid_2026-02-03"
+}
+
+export function isValidUUID(str) {
+  const regex = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+  return regex.test(str);
+}
+```
+
+#### 2. Server Models (String _id)
+
+```javascript
+// server/src/models/Todo.js
+const todoSchema = new mongoose.Schema({
+  _id: { type: String, required: true },
+  userId: { type: String, ref: 'User', required: true },
+  categoryId: { type: String, ref: 'Category', required: true },
+  // ... other fields
+}, { _id: false, timestamps: true });
+```
+
+#### 3. Pending Changes Schema
+
+```sql
+-- Old
+CREATE TABLE pending_changes (
+  id TEXT PRIMARY KEY,
+  type TEXT NOT NULL,
+  todo_id TEXT,     -- Todo only
+  temp_id TEXT,     -- tempId mapping
+  ...
+);
+
+-- New
+CREATE TABLE pending_changes (
+  id TEXT PRIMARY KEY,
+  type TEXT NOT NULL,
+  entity_id TEXT,   -- Todo OR Category
+  data TEXT,
+  ...
+);
+```
+
+#### 4. Pending Change Types
+
+| Type | Entity | Description |
+|------|--------|-------------|
+| `createCategory` | Category | 새 카테고리 생성 |
+| `updateCategory` | Category | 카테고리 수정 |
+| `deleteCategory` | Category | 카테고리 삭제 |
+| `createTodo` | Todo | 새 할일 생성 |
+| `updateTodo` | Todo | 할일 수정 |
+| `deleteTodo` | Todo | 할일 삭제 |
+| `createCompletion` | Completion | 완료 처리 |
+| `deleteCompletion` | Completion | 완료 취소 |
+
+**Legacy 호환**: `create`, `update`, `delete` 타입도 계속 지원 (Todo용)
+
+#### 5. Sync Order (의존성 순서)
+
+```javascript
+// client/src/hooks/useSyncTodos.js
+const typeOrder = {
+  createCategory: 1, updateCategory: 2, deleteCategory: 3,  // Category 먼저
+  createTodo: 4, updateTodo: 5, deleteTodo: 6,              // Todo 다음
+  createCompletion: 7, deleteCompletion: 8,                  // Completion 마지막
+};
+
+const sorted = [...pending].sort((a, b) => 
+  (typeOrder[a.type] || 99) - (typeOrder[b.type] || 99)
+);
+```
+
+---
+
+### Controller Changes
+
+```javascript
+// server/src/controllers/categoryController.js
+exports.createCategory = async (req, res) => {
+  const { _id, name, color } = req.body;
+  
+  // Accept client _id or generate on server
+  const categoryId = _id || generateId();
+  
+  const category = new Category({
+    _id: categoryId,
+    userId: req.userId,
+    name, color, isDefault: false
+  });
+  
+  // Handle duplicate ID (409 Conflict)
+  try {
+    await category.save();
+    res.status(201).json(category);
+  } catch (error) {
+    if (error.code === 11000) {
+      return res.status(409).json({ message: 'Already exists' });
+    }
+    throw error;
+  }
+};
+```
+
+---
+
+### Files Modified
+
+#### Client
+| File | Change |
+|------|--------|
+| `utils/idGenerator.js` | NEW: UUID generation utilities |
+| `db/database.js` | Schema: `todo_id` → `entity_id`, removed `temp_id` |
+| `db/pendingService.js` | Added category types, uses `entityId` |
+| `hooks/queries/useCreateCategory.js` | Offline support, UUID generation |
+| `hooks/queries/useUpdateCategory.js` | Offline support |
+| `hooks/queries/useDeleteCategory.js` | Soft delete, offline support |
+| `hooks/queries/useCreateTodo.js` | `generateId()` instead of tempId |
+| `hooks/queries/useUpdateTodo.js` | `updateTodo` type, `entityId` |
+| `hooks/queries/useDeleteTodo.js` | `deleteTodo` type, `entityId` |
+| `hooks/useSyncTodos.js` | Type sorting, category handlers |
+
+#### Server
+| File | Change |
+|------|--------|
+| `utils/idGenerator.js` | NEW: Server UUID utilities |
+| `models/User.js` | `_id: String`, `isGuest`, sparse email |
+| `models/Todo.js` | `_id`, `userId`, `categoryId` → String |
+| `models/Category.js` | `_id`, `userId` → String, `deletedAt` |
+| `models/Completion.js` | `_id`, `todoId`, `userId` → String |
+| `controllers/authController.js` | `generateId()` for user/category |
+| `controllers/categoryController.js` | Accepts client `_id` |
+| `controllers/todoController.js` | Accepts client `_id` |
+
+---
+
+### Migration Notes
+
+**Database Reset Required**:
+```bash
+# Client: Reset SQLite
+# Delete app data or call database reset
+
+# Server: Drop MongoDB collections
+mongo todolog --eval "db.users.drop(); db.todos.drop(); db.categories.drop(); db.completions.drop()"
+```
+
+**Rollback**:
+```bash
+git checkout main
+```
+
+---
+
 ## 💾 Data Models & Schema Strategy
 
 ### `Todo` Model

@@ -1,10 +1,11 @@
 const Category = require('../models/Category');
 const Todo = require('../models/Todo');
+const { generateId, isValidUUID } = require('../utils/idGenerator');
 
 // Get all categories for a user
 exports.getCategories = async (req, res) => {
   try {
-    const categories = await Category.find({ userId: req.userId }).sort({ order: 1, createdAt: 1 });
+    const categories = await Category.find({ userId: req.userId, deletedAt: null }).sort({ order: 1, createdAt: 1 });
     res.json(categories);
   } catch (error) {
     res.status(500).json({ message: error.message });
@@ -14,8 +15,18 @@ exports.getCategories = async (req, res) => {
 // Create a new category
 exports.createCategory = async (req, res) => {
   try {
-    const { name, color } = req.body;
+    const { _id, name, color } = req.body;
+
+    // 클라이언트 _id 수용 또는 서버에서 생성
+    const categoryId = _id || generateId();
+
+    // UUID 검증 (클라이언트 제공 시)
+    if (_id && !isValidUUID(_id)) {
+      return res.status(400).json({ message: 'Invalid UUID format' });
+    }
+
     const category = new Category({
+      _id: categoryId,
       userId: req.userId,
       name,
       color,
@@ -24,6 +35,10 @@ exports.createCategory = async (req, res) => {
     const newCategory = await category.save();
     res.status(201).json(newCategory);
   } catch (error) {
+    // 중복 ID 처리
+    if (error.code === 11000) {
+      return res.status(409).json({ message: 'Category already exists' });
+    }
     res.status(400).json({ message: error.message });
   }
 };

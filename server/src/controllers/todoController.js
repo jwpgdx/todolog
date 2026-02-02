@@ -144,6 +144,7 @@ exports.createTodo = async (req, res) => {
     }
 
     const todoData = {
+      _id: req.body._id || require('../utils/idGenerator').generateId(),
       userId,
       title,
       startDateTime,

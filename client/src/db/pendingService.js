@@ -1,19 +1,16 @@
 /**
  * Pending Service - 오프라인 큐 관리
  * 
- * Phase 4: Pending Changes 관리
+ * UUID Migration: 모든 타입 통합
+ * - Category: createCategory, updateCategory, deleteCategory
+ * - Todo: createTodo, updateTodo, deleteTodo
+ * - Completion: createCompletion, deleteCompletion
+ * 
+ * 레거시 호환: create, update, delete (Todo용)
  */
 
 import { getDatabase } from './database';
-
-// UUID 생성 (간단한 구현)
-function generateId() {
-    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
-        const r = Math.random() * 16 | 0;
-        const v = c === 'x' ? r : (r & 0x3 | 0x8);
-        return v.toString(16);
-    });
-}
+import { generateId } from '../utils/idGenerator';
 
 // ============================================================
 // 조회
@@ -37,7 +34,7 @@ export async function getPendingChanges() {
 /**
  * 타입별 Pending Changes 조회
  * 
- * @param {string} type - create, update, delete, createCompletion, deleteCompletion
+ * @param {string} type
  * @returns {Promise<Array>}
  */
 export async function getPendingChangesByType(type) {
@@ -52,17 +49,17 @@ export async function getPendingChangesByType(type) {
 }
 
 /**
- * Todo별 Pending Changes 조회
+ * Entity별 Pending Changes 조회
  * 
- * @param {string} todoId
+ * @param {string} entityId - todoId 또는 categoryId
  * @returns {Promise<Array>}
  */
-export async function getPendingChangesByTodoId(todoId) {
+export async function getPendingChangesByEntityId(entityId) {
     const db = getDatabase();
 
     const result = await db.getAllAsync(
-        'SELECT * FROM pending_changes WHERE todo_id = ? ORDER BY created_at ASC',
-        [todoId]
+        'SELECT * FROM pending_changes WHERE entity_id = ? ORDER BY created_at ASC',
+        [entityId]
     );
 
     return result.map(deserializePendingChange);
@@ -104,11 +101,10 @@ export async function hasPendingChange(id) {
  * Pending Change 추가
  * 
  * @param {Object} change
- * @param {string} change.type - create, update, delete, createCompletion, deleteCompletion
- * @param {string} [change.todoId]
+ * @param {string} change.type - createTodo, updateTodo, deleteTodo, createCategory, updateCategory, deleteCategory, createCompletion, deleteCompletion
+ * @param {string} [change.entityId] - todoId 또는 categoryId
  * @param {Object} [change.data]
- * @param {string} [change.date]
- * @param {string} [change.tempId]
+ * @param {string} [change.date] - Completion용 날짜
  * @returns {Promise<string>} - 생성된 ID
  */
 export async function addPendingChange(change) {
@@ -117,15 +113,14 @@ export async function addPendingChange(change) {
 
     await db.runAsync(`
     INSERT INTO pending_changes 
-    (id, type, todo_id, data, date, temp_id, created_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
+    (id, type, entity_id, data, date, created_at)
+    VALUES (?, ?, ?, ?, ?, ?)
   `, [
         id,
         change.type,
-        change.todoId || null,
+        change.entityId || change.todoId || null,  // 레거시 호환
         change.data ? JSON.stringify(change.data) : null,
         change.date || null,
-        change.tempId || null,
         new Date().toISOString(),
     ]);
 
@@ -146,15 +141,14 @@ export async function addPendingChanges(changes) {
             const id = change.id || generateId();
             await db.runAsync(`
         INSERT INTO pending_changes 
-        (id, type, todo_id, data, date, temp_id, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+        (id, type, entity_id, data, date, created_at)
+        VALUES (?, ?, ?, ?, ?, ?)
       `, [
                 id,
                 change.type,
-                change.todoId || null,
+                change.entityId || change.todoId || null,
                 change.data ? JSON.stringify(change.data) : null,
                 change.date || null,
-                change.tempId || null,
                 new Date().toISOString(),
             ]);
         }
@@ -189,14 +183,14 @@ export async function removePendingChanges(ids) {
 }
 
 /**
- * Todo의 모든 Pending Changes 삭제
+ * Entity의 모든 Pending Changes 삭제
  * 
- * @param {string} todoId
+ * @param {string} entityId - todoId 또는 categoryId
  * @returns {Promise<void>}
  */
-export async function removePendingChangesByTodoId(todoId) {
+export async function removePendingChangesByEntityId(entityId) {
     const db = getDatabase();
-    await db.runAsync('DELETE FROM pending_changes WHERE todo_id = ?', [todoId]);
+    await db.runAsync('DELETE FROM pending_changes WHERE entity_id = ?', [entityId]);
 }
 
 /**
@@ -255,6 +249,36 @@ export async function processPendingChanges(processor) {
 }
 
 /**
+ * Category 관련 Pending Changes만 가져오기
+ */
+export async function getCategoryPendingChanges() {
+    const db = getDatabase();
+
+    const result = await db.getAllAsync(`
+    SELECT * FROM pending_changes 
+    WHERE type IN ('createCategory', 'updateCategory', 'deleteCategory')
+    ORDER BY created_at ASC
+  `);
+
+    return result.map(deserializePendingChange);
+}
+
+/**
+ * Todo CRUD 관련 Pending Changes만 가져오기 (레거시 + 신규 타입)
+ */
+export async function getTodoPendingChanges() {
+    const db = getDatabase();
+
+    const result = await db.getAllAsync(`
+    SELECT * FROM pending_changes 
+    WHERE type IN ('create', 'update', 'delete', 'createTodo', 'updateTodo', 'deleteTodo')
+    ORDER BY created_at ASC
+  `);
+
+    return result.map(deserializePendingChange);
+}
+
+/**
  * Completion 관련 Pending Changes만 가져오기
  */
 export async function getCompletionPendingChanges() {
@@ -269,21 +293,6 @@ export async function getCompletionPendingChanges() {
     return result.map(deserializePendingChange);
 }
 
-/**
- * Todo CRUD 관련 Pending Changes만 가져오기
- */
-export async function getTodoPendingChanges() {
-    const db = getDatabase();
-
-    const result = await db.getAllAsync(`
-    SELECT * FROM pending_changes 
-    WHERE type IN ('create', 'update', 'delete')
-    ORDER BY created_at ASC
-  `);
-
-    return result.map(deserializePendingChange);
-}
-
 // ============================================================
 // 직렬화/역직렬화
 // ============================================================
@@ -292,10 +301,10 @@ function deserializePendingChange(row) {
     return {
         id: row.id,
         type: row.type,
-        todoId: row.todo_id,
+        entityId: row.entity_id,
+        todoId: row.entity_id,  // 레거시 호환
         data: row.data ? JSON.parse(row.data) : null,
         date: row.date,
-        tempId: row.temp_id,
         createdAt: row.created_at,
         // 호환성 (기존 코드에서 timestamp 사용)
         timestamp: row.created_at,

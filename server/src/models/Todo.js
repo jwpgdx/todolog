@@ -1,8 +1,12 @@
 const mongoose = require('mongoose');
 
 const todoSchema = new mongoose.Schema({
+  _id: {
+    type: String,
+    required: true,
+  },
   userId: {
-    type: mongoose.Schema.Types.ObjectId,
+    type: String,  // ObjectId → String
     ref: 'User',
     required: true,
   },
@@ -16,7 +20,7 @@ const todoSchema = new mongoose.Schema({
     type: String, // Google: description
   },
   categoryId: {
-    type: mongoose.Schema.Types.ObjectId,
+    type: String,  // ObjectId → String
     ref: 'Category',
     required: true,
   },
@@ -113,7 +117,7 @@ const todoSchema = new mongoose.Schema({
     default: null,
   },
 
-}, { timestamps: true });
+}, { _id: false, timestamps: true });
 
 // --- 인덱스 전략 (성능 최적화) ---
 
