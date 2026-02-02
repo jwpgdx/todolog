@@ -138,11 +138,6 @@ export default function MainStack() {
           headerShown: true,
         }}
       />
-      <Stack.Screen
-        name="TestDashboard"
-        component={require('../test/TestDashboard').default}
-        options={{ title: 'Test Lab', headerShown: true }}
-      />
     </Stack.Navigator>
   );
 }

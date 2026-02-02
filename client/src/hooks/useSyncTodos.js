@@ -7,34 +7,31 @@ import { useAuthStore } from '../store/authStore';
 import { todoAPI } from '../api/todos';
 import api from '../api/axios';
 import { saveSettings } from '../storage/settingsStorage';
+// SQLite Services
+import { ensureDatabase, getMetadata, setMetadata } from '../db/database';
 import {
-    loadTodos,
-    saveTodos,
-    loadSyncMetadata,
-    saveSyncMetadata,
-    mergeDelta,
-    upsertTodo,
-    removeTodo,
-} from '../storage/todoStorage';
+    getAllTodos as sqliteGetAllTodos,
+    upsertTodo as sqliteUpsertTodo,
+    deleteTodo as sqliteDeleteTodo,
+    upsertTodos as bulkUpsertTodos,
+} from '../db/todoService';
 import {
-    loadCompletions,
-    saveCompletions,
-    mergeCompletionDelta,
-} from '../storage/completionStorage';
-import { loadCategories } from '../storage/categoryStorage';
-import { occursOnDate } from '../utils/recurrenceUtils';
+    getAllCompletions as sqliteGetAllCompletions,
+    createCompletion,
+    deleteCompletion,
+} from '../db/completionService';
 import {
-    getPendingChanges,
-    removePendingChange,
-    clearPendingChanges,
-    replaceTempIdInPending,
-} from '../storage/pendingChangesStorage';
+    getPendingChanges as sqliteGetPendingChanges,
+    removePendingChange as sqliteRemovePendingChange,
+    clearPendingChanges as sqliteClearPendingChanges,
+} from '../db/pendingService';
+import { getAllCategories as sqliteGetAllCategories } from '../db/categoryService';
 
 /**
- * 델타 동기화 핵심 훅
- * - 앱 시작 시 로컬 데이터 로드 후 서버와 동기화
+ * 델타 동기화 핵심 훅 (SQLite 기반)
+ * - 앱 시작 시 SQLite 데이터 → React Query 캐시
  * - 오프라인 → 온라인 전환 시 pending changes 처리
- * - TanStack Query 캐시에 자동 반영
+ * - 서버 델타 동기화 → SQLite 업데이트
  */
 export const useSyncTodos = () => {
     const queryClient = useQueryClient();
@@ -48,31 +45,52 @@ export const useSyncTodos = () => {
     const isSyncingRef = useRef(false);
 
     /**
-     * 로컬 데이터를 TanStack Query 캐시에 주입
-     * [최적화] 전체 캐시만 주입, 일별/월별은 필요할 때 필터링
+     * SQLite 데이터를 React Query 캐시에 주입
      */
-    const populateCache = useCallback((todos) => {
+    const populateCache = useCallback(async () => {
         const startTime = performance.now();
-        
-        if (!todos || todos.length === 0) {
-            console.log('⚠️ [useSyncTodos.populateCache] 데이터 없음');
-            return;
-        }
 
-        console.log('📦 [useSyncTodos.populateCache] 캐시 주입:', todos.length, '개');
-        
-        // 전체 캐시만 주입 (빠름!)
-        queryClient.setQueryData(['todos', 'all'], todos);
-        
-        const endTime = performance.now();
-        console.log(`✅ [useSyncTodos.populateCache] 완료 (${(endTime - startTime).toFixed(2)}ms)`);
+        try {
+            await ensureDatabase();
+
+            const todos = await sqliteGetAllTodos();
+            if (todos.length > 0) {
+                queryClient.setQueryData(['todos', 'all'], todos);
+                console.log('📦 [useSyncTodos] 캐시 주입:', todos.length, '개');
+            }
+
+            const endTime = performance.now();
+            console.log(`✅ [useSyncTodos.populateCache] 완료 (${(endTime - startTime).toFixed(2)}ms)`);
+        } catch (error) {
+            console.error('❌ [useSyncTodos.populateCache] 실패:', error.message);
+        }
     }, [queryClient]);
 
     /**
-     * Pending Changes 처리 (오프라인 수정 → 서버 반영)
+     * SQLite에 델타 병합
+     */
+    const mergeDeltaToSQLite = useCallback(async (delta) => {
+        // Updated todos
+        if (delta.updated && delta.updated.length > 0) {
+            await bulkUpsertTodos(delta.updated);
+            console.log(`📥 [useSyncTodos] ${delta.updated.length}개 Todo 업데이트`);
+        }
+
+        // Deleted todos
+        if (delta.deleted && delta.deleted.length > 0) {
+            for (const id of delta.deleted) {
+                await sqliteDeleteTodo(id);
+            }
+            console.log(`🗑️ [useSyncTodos] ${delta.deleted.length}개 Todo 삭제`);
+        }
+    }, []);
+
+    /**
+     * Pending Changes 처리 (SQLite 기반)
      */
     const processPendingChanges = useCallback(async () => {
-        const pending = await getPendingChanges();
+        await ensureDatabase();
+        const pending = await sqliteGetPendingChanges();
         if (pending.length === 0) return { success: 0, failed: 0 };
 
         console.log('🔄 [useSyncTodos] Pending changes 처리 시작:', pending.length);
@@ -84,63 +102,69 @@ export const useSyncTodos = () => {
             try {
                 switch (change.type) {
                     case 'create':
-                        const createRes = await todoAPI.createTodo(change.data);
-                        // tempId 제거하고 서버 데이터 저장
-                        await removeTodo(change.tempId);
-                        await upsertTodo(createRes.data);
-                        
-                        // 다른 pending changes에서 이 tempId를 참조하는 경우 실제 ID로 교체
-                        await replaceTempIdInPending(change.tempId, createRes.data._id);
-                        
-                        console.log('✅ [useSyncTodos] 서버 생성 완료, 로컬 저장:', createRes.data._id);
+                        const data = JSON.parse(change.data);
+                        const createRes = await todoAPI.createTodo(data);
+                        // tempId 삭제하고 서버 데이터 저장
+                        await sqliteDeleteTodo(change.todoId);
+                        await sqliteUpsertTodo(createRes.data);
+                        console.log('✅ [useSyncTodos] 서버 생성 완료:', createRes.data._id);
                         break;
 
                     case 'update':
-                        // tempId인 경우 스킵 (이미 create에서 처리됨)
                         if (change.todoId && change.todoId.startsWith('temp_')) {
-                            console.log('⏭️ [useSyncTodos] tempId 수정 스킵 (create에서 처리됨):', change.todoId);
-                            await removePendingChange(change.id);
+                            console.log('⏭️ [useSyncTodos] tempId 수정 스킵:', change.todoId);
+                            await sqliteRemovePendingChange(change.id);
                             success++;
-                            break;
+                            continue;
                         }
-                        
-                        await todoAPI.updateTodo(change.todoId, change.data);
+                        const updateData = JSON.parse(change.data);
+                        await todoAPI.updateTodo(change.todoId, updateData);
                         console.log('✅ [useSyncTodos] 서버 수정 완료:', change.todoId);
                         break;
 
                     case 'delete':
-                        // tempId인 경우 스킵 (로컬에서만 삭제)
                         if (change.todoId && change.todoId.startsWith('temp_')) {
-                            console.log('⏭️ [useSyncTodos] tempId 삭제 스킵 (로컬에서만 삭제):', change.todoId);
-                            await removePendingChange(change.id);
+                            console.log('⏭️ [useSyncTodos] tempId 삭제 스킵:', change.todoId);
+                            await sqliteRemovePendingChange(change.id);
                             success++;
-                            break;
+                            continue;
                         }
-                        
                         await todoAPI.deleteTodo(change.todoId);
                         console.log('✅ [useSyncTodos] 서버 삭제 완료:', change.todoId);
                         break;
 
                     case 'createCompletion':
-                        // Completion 생성 (완료 처리)
+                        // 테스트 데이터 스킵
+                        if (change.todoId && change.todoId.includes('test')) {
+                            console.log('⏭️ [useSyncTodos] 테스트 데이터 스킵:', change.todoId);
+                            await sqliteRemovePendingChange(change.id);
+                            success++;
+                            continue;
+                        }
                         await api.post('/completions/toggle', {
                             todoId: change.todoId,
                             date: change.date,
                         });
-                        console.log('✅ [useSyncTodos] Completion 생성 완료:', change.todoId, change.date);
+                        console.log('✅ [useSyncTodos] Completion 생성 완료:', change.todoId);
                         break;
 
                     case 'deleteCompletion':
-                        // Completion 삭제 (완료 취소)
+                        // 테스트 데이터 스킵
+                        if (change.todoId && change.todoId.includes('test')) {
+                            console.log('⏭️ [useSyncTodos] 테스트 데이터 스킵:', change.todoId);
+                            await sqliteRemovePendingChange(change.id);
+                            success++;
+                            continue;
+                        }
                         await api.post('/completions/toggle', {
                             todoId: change.todoId,
                             date: change.date,
                         });
-                        console.log('✅ [useSyncTodos] Completion 삭제 완료:', change.todoId, change.date);
+                        console.log('✅ [useSyncTodos] Completion 삭제 완료:', change.todoId);
                         break;
                 }
 
-                await removePendingChange(change.id);
+                await sqliteRemovePendingChange(change.id);
                 success++;
             } catch (err) {
                 console.error('❌ [useSyncTodos] Pending change 처리 실패:', change, err);
@@ -149,50 +173,40 @@ export const useSyncTodos = () => {
         }
 
         console.log('✅ [useSyncTodos] Pending changes 처리 완료:', { success, failed });
-        
-        // Pending Changes 처리 후 Completion 캐시 업데이트
-        if (success > 0) {
-            const updatedCompletions = await loadCompletions();
-            queryClient.setQueryData(['completions'], updatedCompletions);
-            console.log('💾 [useSyncTodos] Completion 캐시 업데이트 완료');
-        }
-        
         return { success, failed };
     }, []);
 
     /**
-     * 메인 동기화 함수
+     * 메인 동기화 함수 (SQLite 기반)
      */
     const syncTodos = useCallback(async (options = {}) => {
         const { forceFullSync = false } = options;
 
-        // 중복 실행 방지 (동기적으로 먼저 설정)
         if (isSyncingRef.current) {
             console.log('⏭️ [useSyncTodos] 이미 동기화 중 - 스킵');
             return;
         }
-        
-        // 즉시 플래그 설정 (race condition 방지)
+
         isSyncingRef.current = true;
         setIsSyncing(true);
         setError(null);
 
-        // 로그인 상태 확인 (Store 상태가 아직 업데이트되지 않았을 수 있으므로 토큰도 확인)
         const token = await AsyncStorage.getItem('token');
         if (!isLoggedIn && !token) {
-            console.log('⏭️ [useSyncTodos] 로그인 안됨 (토큰 없음) - 스킵');
+            console.log('⏭️ [useSyncTodos] 로그인 안됨 - 스킵');
             isSyncingRef.current = false;
             setIsSyncing(false);
             return;
         }
 
         try {
-            // 1. 로컬 데이터 먼저 로드 (즉시 화면 표시)
-            const localTodos = await loadTodos();
-            const localCompletions = await loadCompletions();
-            const metadata = await loadSyncMetadata();
+            await ensureDatabase();
 
-            // 1-1. 설정도 서버에서 가져오기 (백그라운드)
+            // 1. SQLite에서 로컬 데이터 로드
+            const localTodos = await sqliteGetAllTodos();
+            const lastSyncTimeValue = await getMetadata('lastSyncTime');
+
+            // 1-1. 설정 동기화 (백그라운드)
             try {
                 const settingsResponse = await api.get('/auth/settings');
                 const serverSettings = settingsResponse.data.settings || settingsResponse.data;
@@ -200,19 +214,14 @@ export const useSyncTodos = () => {
                 queryClient.setQueryData(['settings'], serverSettings);
                 console.log('✅ [useSyncTodos] 설정 동기화 완료');
             } catch (settingsError) {
-                console.log('⚠️ [useSyncTodos] 설정 동기화 실패 (로컬 설정 사용):', settingsError.message);
+                console.log('⚠️ [useSyncTodos] 설정 동기화 실패:', settingsError.message);
             }
 
             if (localTodos.length > 0) {
                 console.log('📱 [useSyncTodos] 로컬 Todos 로드:', localTodos.length, '개');
-                populateCache(localTodos);
+                queryClient.setQueryData(['todos', 'all'], localTodos);
             } else {
                 console.log('⚠️ [useSyncTodos] 로컬 Todos 없음!');
-            }
-
-            if (Object.keys(localCompletions).length > 0) {
-                console.log('📱 [useSyncTodos] 로컬 Completions 로드:', Object.keys(localCompletions).length, '개');
-                queryClient.setQueryData(['completions'], localCompletions);
             }
 
             // 2. 네트워크 확인
@@ -225,128 +234,97 @@ export const useSyncTodos = () => {
                 return;
             }
 
-            // 3. Pending changes 먼저 처리
+            // 3. Pending changes 처리
             const pendingResult = await processPendingChanges();
             setPendingCount(0);
 
-            // Pending Changes 처리 후 로컬 데이터 다시 로드 (중복 방지)
             if (pendingResult.success > 0) {
-                console.log('🔄 [useSyncTodos] Pending changes 처리 완료 - 로컬 데이터 재로드');
-                const updatedLocalTodos = await loadTodos();
-                const updatedLocalCompletions = await loadCompletions();
-                populateCache(updatedLocalTodos);
-                
-                // lastSyncTime을 현재 시간으로 업데이트 (방금 생성한 항목이 델타에서 중복으로 안 들어오도록)
                 const now = new Date().toISOString();
-                await saveSyncMetadata({ 
-                    lastSyncTime: now,
-                    lastCompletionSyncTime: metadata.lastCompletionSyncTime || now,
-                });
-                metadata.lastSyncTime = now;
-                metadata.lastCompletionSyncTime = metadata.lastCompletionSyncTime || now;
-                console.log('✅ [useSyncTodos] lastSyncTime 업데이트:', now);
+                await setMetadata('lastSyncTime', now);
             }
 
             // 4. Todo 델타 동기화
-            if (!metadata.lastSyncTime || forceFullSync) {
-                // 최초 동기화: 전체 데이터 받기
-                console.log('🌐 [useSyncTodos] 최초 Todo 동기화 - 전체 데이터 로드');
+            if (!lastSyncTimeValue || forceFullSync) {
+                console.log('🌐 [useSyncTodos] 최초 Todo 동기화');
                 const response = await todoAPI.getAllTodos();
                 const allTodos = response.data;
 
-                await saveTodos(allTodos);
+                await bulkUpsertTodos(allTodos);
                 const now = new Date().toISOString();
-                await saveSyncMetadata({ 
-                    lastSyncTime: now,
-                    lastCompletionSyncTime: metadata.lastCompletionSyncTime || now,
-                });
-                populateCache(allTodos);
+                await setMetadata('lastSyncTime', now);
 
+                queryClient.setQueryData(['todos', 'all'], allTodos);
                 setLastSyncTime(new Date());
-                console.log('✅ [useSyncTodos] 최초 Todo 동기화 완료:', allTodos.length, '개');
+                console.log('✅ [useSyncTodos] 최초 동기화 완료:', allTodos.length, '개');
             } else {
-                // 델타 동기화: 변경사항만
-                console.log('🔄 [useSyncTodos] Todo 델타 동기화 시작:', metadata.lastSyncTime);
-                const response = await todoAPI.getDeltaSync(metadata.lastSyncTime);
+                console.log('🔄 [useSyncTodos] Todo 델타 동기화 시작:', lastSyncTimeValue);
+                const response = await todoAPI.getDeltaSync(lastSyncTimeValue);
                 const delta = response.data;
 
                 if (delta.updated.length > 0 || delta.deleted.length > 0) {
-                    console.log('📥 [useSyncTodos] Todo 델타 수신:', {
+                    console.log('📥 [useSyncTodos] Todo 델타:', {
                         updated: delta.updated.length,
                         deleted: delta.deleted.length
                     });
 
-                    const merged = mergeDelta(localTodos, delta);
-                    await saveTodos(merged);
-                    await saveSyncMetadata({ 
-                        lastSyncTime: delta.syncTime,
-                        lastCompletionSyncTime: metadata.lastCompletionSyncTime,
-                    });
-                    populateCache(merged);
+                    await mergeDeltaToSQLite(delta);
+                    await setMetadata('lastSyncTime', delta.syncTime);
+
+                    // 캐시 갱신
+                    const updatedTodos = await sqliteGetAllTodos();
+                    queryClient.setQueryData(['todos', 'all'], updatedTodos);
                 } else {
                     console.log('✨ [useSyncTodos] Todo 변경사항 없음');
-                    await saveSyncMetadata({ 
-                        lastSyncTime: delta.syncTime,
-                        lastCompletionSyncTime: metadata.lastCompletionSyncTime,
-                    });
+                    await setMetadata('lastSyncTime', delta.syncTime);
                 }
 
                 setLastSyncTime(new Date());
             }
 
-            // 5. Completion 델타 동기화 (Phase 4)
-            if (metadata.lastCompletionSyncTime) {
-                console.log('🔄 [useSyncTodos] Completion 델타 동기화 시작:', metadata.lastCompletionSyncTime);
-                
+            // 5. Completion 델타 동기화
+            const lastCompletionSyncTime = await getMetadata('lastCompletionSyncTime');
+            if (lastCompletionSyncTime) {
+                console.log('🔄 [useSyncTodos] Completion 델타 동기화 시작:', lastCompletionSyncTime);
+
                 try {
                     const completionResponse = await api.get(
-                        `/completions/delta-sync?lastSyncTime=${metadata.lastCompletionSyncTime}`
+                        `/completions/delta-sync?lastSyncTime=${lastCompletionSyncTime}`
                     );
                     const completionDelta = completionResponse.data;
 
                     if (completionDelta.updated.length > 0 || completionDelta.deleted.length > 0) {
-                        console.log('📥 [useSyncTodos] Completion 델타 수신:', {
+                        console.log('📥 [useSyncTodos] Completion 델타:', {
                             updated: completionDelta.updated.length,
                             deleted: completionDelta.deleted.length
                         });
 
-                        const mergedCompletions = mergeCompletionDelta(localCompletions, completionDelta);
-                        await saveCompletions(mergedCompletions);
-                        
-                        // React Query 캐시에도 저장
-                        queryClient.setQueryData(['completions'], mergedCompletions);
-                        
-                        // lastCompletionSyncTime 업데이트
-                        await saveSyncMetadata({
-                            lastSyncTime: metadata.lastSyncTime,
-                            lastCompletionSyncTime: completionDelta.syncTime,
-                        });
-                        
+                        // SQLite에 Completion 업데이트
+                        for (const completion of completionDelta.updated) {
+                            await createCompletion(completion.todoId, completion.date);
+                        }
+                        for (const deletedItem of completionDelta.deleted) {
+                            // deleted는 {_id, todoId, date} 객체 배열
+                            await deleteCompletion(deletedItem.todoId, deletedItem.date);
+                        }
+
+                        await setMetadata('lastCompletionSyncTime', completionDelta.syncTime);
                         console.log('✅ [useSyncTodos] Completion 델타 동기화 완료');
-                        
-                        // 캐시 무효화 (Completion 변경 반영)
+
+                        // 캐시 무효화
                         queryClient.invalidateQueries({
                             predicate: (query) => query.queryKey[0] === 'todos'
                         });
                     } else {
                         console.log('✨ [useSyncTodos] Completion 변경사항 없음');
-                        await saveSyncMetadata({
-                            lastSyncTime: metadata.lastSyncTime,
-                            lastCompletionSyncTime: completionDelta.syncTime,
-                        });
+                        await setMetadata('lastCompletionSyncTime', completionDelta.syncTime);
                     }
                 } catch (completionError) {
                     console.error('❌ [useSyncTodos] Completion 델타 동기화 실패:', completionError.message);
-                    // Completion 동기화 실패해도 Todo 동기화는 성공했으므로 계속 진행
                 }
             } else {
-                // 최초 Completion 동기화: lastCompletionSyncTime 초기화
-                console.log('🌐 [useSyncTodos] 최초 Completion 동기화 - lastCompletionSyncTime 초기화');
+                console.log('🌐 [useSyncTodos] 최초 Completion 동기화');
                 const now = new Date().toISOString();
-                await saveSyncMetadata({
-                    lastSyncTime: metadata.lastSyncTime,
-                    lastCompletionSyncTime: now,
-                });
+                await setMetadata('lastCompletionSyncTime', now);
             }
         } catch (err) {
             console.error('❌ [useSyncTodos] 동기화 실패:', err);
@@ -355,7 +333,7 @@ export const useSyncTodos = () => {
             setIsSyncing(false);
             isSyncingRef.current = false;
         }
-    }, [isLoggedIn, populateCache, processPendingChanges, queryClient]);
+    }, [isLoggedIn, processPendingChanges, queryClient, mergeDeltaToSQLite]);
 
     /**
      * 강제 전체 동기화
@@ -368,12 +346,17 @@ export const useSyncTodos = () => {
      * Pending count 업데이트
      */
     const updatePendingCount = useCallback(async () => {
-        const pending = await getPendingChanges();
-        setPendingCount(pending.length);
+        try {
+            await ensureDatabase();
+            const pending = await sqliteGetPendingChanges();
+            setPendingCount(pending.length);
+        } catch (error) {
+            console.error('❌ [useSyncTodos] Pending count 업데이트 실패:', error.message);
+        }
     }, []);
 
     /**
-     * 앱 상태 변경 감지 (포그라운드 복귀 시 동기화)
+     * 앱 포그라운드 복귀 시 동기화
      */
     useEffect(() => {
         const subscription = AppState.addEventListener('change', (nextAppState) => {
@@ -387,7 +370,7 @@ export const useSyncTodos = () => {
     }, [syncTodos]);
 
     /**
-     * 네트워크 상태 변경 감지 (온라인 복귀 시 동기화)
+     * 네트워크 온라인 복귀 시 동기화
      */
     useEffect(() => {
         const unsubscribe = NetInfo.addEventListener(state => {
@@ -401,45 +384,55 @@ export const useSyncTodos = () => {
     }, [syncTodos]);
 
     /**
-     * 초기 캐시 준비 - 로그인 여부와 관계없이 즉시 실행
+     * 초기 캐시 준비 (SQLite 기반)
+     * 
+     * ⚠️ DISABLED: React Query already caches from UI queries (useTodos, useCategories)
+     * This was causing lock contention with UI queries.
+     * 
+     * If needed in the future, uncomment and ensure proper delay/sequencing.
      */
+    /*
     useEffect(() => {
         const prepareCache = async () => {
             try {
+                // 500ms 지연: UI 쿼리(useTodos, useCategories)가 먼저 실행되도록
+                await new Promise(resolve => setTimeout(resolve, 500));
+                
+                await ensureDatabase();
+
+                const startTime = performance.now();
+
                 // Todos
-                const localTodos = await loadTodos();
+                const localTodos = await sqliteGetAllTodos();
                 if (localTodos.length > 0) {
                     console.log('⚡ [useSyncTodos] 초기 Todos 캐시 준비:', localTodos.length, '개');
-                    populateCache(localTodos);
-                } else {
-                    console.log('⚠️ [useSyncTodos] 로컬 Todos 없음');
+                    queryClient.setQueryData(['todos', 'all'], localTodos);
                 }
-                
-                // Completions
-                const localCompletions = await loadCompletions();
-                if (Object.keys(localCompletions).length > 0) {
-                    console.log('⚡ [useSyncTodos] 초기 Completions 캐시 준비:', Object.keys(localCompletions).length, '개');
-                    queryClient.setQueryData(['completions'], localCompletions);
-                } else {
-                    console.log('⚠️ [useSyncTodos] 로컬 Completions 없음');
-                }
-                
+
                 // Categories
-                const localCategories = await loadCategories();
+                const localCategories = await sqliteGetAllCategories();
                 if (localCategories.length > 0) {
                     console.log('⚡ [useSyncTodos] 초기 Categories 캐시 준비:', localCategories.length, '개');
                     queryClient.setQueryData(['categories'], localCategories);
-                } else {
-                    console.log('⚠️ [useSyncTodos] 로컬 Categories 없음');
                 }
+
+                // Completions
+                const localCompletions = await sqliteGetAllCompletions();
+                if (Object.keys(localCompletions).length > 0) {
+                    console.log('⚡ [useSyncTodos] 초기 Completions 캐시 준비:', Object.keys(localCompletions).length, '개');
+                    queryClient.setQueryData(['completions'], localCompletions);
+                }
+
+                const endTime = performance.now();
+                console.log(`✅ [useSyncTodos] 초기 캐시 준비 완료 (${(endTime - startTime).toFixed(2)}ms)`);
             } catch (error) {
                 console.error('❌ [useSyncTodos] 초기 캐시 준비 실패:', error);
             }
         };
-        
-        // 즉시 캐시 준비 (로그인 여부 무관)
+
         prepareCache();
-    }, [populateCache, queryClient]);
+    }, [queryClient]);
+    */
 
     /**
      * 로그인 후 동기화

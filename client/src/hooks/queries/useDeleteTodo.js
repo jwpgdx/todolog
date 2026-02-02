@@ -2,8 +2,9 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import NetInfo from '@react-native-community/netinfo';
 import { todoAPI } from '../../api/todos';
 import { invalidateAffectedMonths } from '../../utils/cacheUtils';
-import { removeTodo as removeFromStorage } from '../../storage/todoStorage';
-import { addPendingChange } from '../../storage/pendingChangesStorage';
+import { deleteTodo } from '../../db/todoService';
+import { addPendingChange } from '../../db/pendingService';
+import { ensureDatabase } from '../../db/database';
 
 export const useDeleteTodo = () => {
   const queryClient = useQueryClient();
@@ -14,11 +15,12 @@ export const useDeleteTodo = () => {
 
       // 로컬 삭제 헬퍼 함수
       const deleteLocally = async () => {
-        console.log('📵 [useDeleteTodo] 오프라인/서버실패 - 로컬 삭제');
+        console.log('📵 [useDeleteTodo] 오프라인/서버실패 - SQLite 삭제');
         console.log('📦 [useDeleteTodo] 삭제 대상:', { id: todo._id, title: todo.title });
         
-        await removeFromStorage(todo._id);
-        console.log('✅ [useDeleteTodo] 로컬 저장소에서 삭제 완료');
+        await ensureDatabase();
+        await deleteTodo(todo._id);
+        console.log('✅ [useDeleteTodo] SQLite에서 삭제 완료');
         
         await addPendingChange({
           type: 'delete',
@@ -26,7 +28,7 @@ export const useDeleteTodo = () => {
         });
         console.log('✅ [useDeleteTodo] Pending queue 추가 완료');
         
-        return { message: '로컬 삭제 완료', deletedTodo: todo };
+        return { message: 'SQLite 삭제 완료', deletedTodo: todo };
       };
 
       // 네트워크 상태 확인
@@ -44,13 +46,14 @@ export const useDeleteTodo = () => {
         const res = await todoAPI.deleteTodo(todo._id);
         console.log('✅ [useDeleteTodo] 서버 삭제 성공');
         
-        // 서버 삭제 성공 시 로컬에서도 삭제 (동기화)
-        await removeFromStorage(todo._id);
-        console.log('✅ [useDeleteTodo] 로컬 저장소에서도 삭제 완료');
+        // 서버 삭제 성공 시 SQLite에서도 삭제
+        await ensureDatabase();
+        await deleteTodo(todo._id);
+        console.log('✅ [useDeleteTodo] SQLite에서도 삭제 완료');
         
         return { ...res.data, deletedTodo: todo };
       } catch (error) {
-        console.error('⚠️ [useDeleteTodo] 서버 요청 실패 → 로컬 삭제로 fallback:', error.message);
+        console.error('⚠️ [useDeleteTodo] 서버 요청 실패 → SQLite 삭제로 fallback:', error.message);
         // 서버 요청 실패 시 오프라인 처리
         return await deleteLocally();
       }
@@ -58,19 +61,20 @@ export const useDeleteTodo = () => {
     onSuccess: (data) => {
       console.log('🎉 [useDeleteTodo] onSuccess 호출됨');
 
-      // 1. ['todos', 'all'] 캐시 직접 업데이트 (화면 즉시 갱신용)
-      queryClient.setQueryData(['todos', 'all'], (oldData) => {
-        if (!oldData) return oldData;
-        console.log('🧹 [useDeleteTodo] 전체 캐시에서 항목 제거:', data.deletedTodo._id);
-        return oldData.filter(t => t._id !== data.deletedTodo._id);
-      });
+      // 전체 캐시 무효화 (SQLite에서 다시 조회)
+      queryClient.invalidateQueries({ queryKey: ['todos', 'all'] });
 
-      // 2. 현재 카테고리 뷰 무효화
+      // 날짜별 캐시 무효화
+      if (data.deletedTodo.startDate) {
+        queryClient.invalidateQueries({ queryKey: ['todos', data.deletedTodo.startDate] });
+      }
+
+      // 카테고리 뷰 무효화
       if (data.deletedTodo.categoryId) {
         queryClient.invalidateQueries({ queryKey: ['todos', 'category', data.deletedTodo.categoryId] });
       }
 
-      // 3. 삭제된 Todo의 영향받는 월 캐시 무효화
+      // 삭제된 Todo의 영향받는 월 캐시 무효화
       if (data.deletedTodo) {
         invalidateAffectedMonths(queryClient, data.deletedTodo);
       } else {

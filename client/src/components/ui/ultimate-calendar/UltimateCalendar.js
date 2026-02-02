@@ -75,11 +75,11 @@ export default function UltimateCalendar() {
     const [visibleWeekIndex, setVisibleWeekIndex] = useState(0);
 
     // ✅ 동적 이벤트 계산 Hook
-    // range: 7 = ±7주 = 총 15주 (FlashList drawDistance 고려, 보수적 버퍼)
+    // range: 12 = ±12주 = 총 25주 (6개월, 부드러운 스크롤 경험)
     const eventsByDate = useCalendarDynamicEvents({
         weeks,
         visibleIndex: visibleWeekIndex,
-        range: 7,
+        range: 12,
         cacheType: 'week'
     });
 

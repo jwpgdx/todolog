@@ -1,6 +1,7 @@
 // App.js
 import 'react-native-gesture-handler';
 import "./global.css";
+import './src/db/database'; // ⚡ DB 조기 초기화 (모듈 로드 시 자동 시작)
 import './src/utils/i18n';
 import i18n from './src/utils/i18n';
 import * as Localization from 'expo-localization';
@@ -24,6 +25,7 @@ import { toastConfig } from './src/config/toastConfig';
 import MainStack from './src/navigation/MainStack';
 import GlobalFormOverlay from './src/features/todo/form/GlobalFormOverlay';
 import { SyncProvider } from './src/providers/SyncProvider';
+import { ensureDatabase } from './src/db/database';
 
 const queryClient = new QueryClient();
 
@@ -33,6 +35,21 @@ export default function App() {
   const { user, isLoading, loadAuth } = useAuthStore();
   const { mode } = useTodoFormStore();
   const { setColorScheme } = useColorScheme();
+
+  // ⚡ SQLite 미리 초기화 (백그라운드)
+  useEffect(() => {
+    const startTime = performance.now();
+    console.log('🚀 [App] SQLite 백그라운드 초기화 시작...');
+    
+    ensureDatabase()
+      .then(() => {
+        const endTime = performance.now();
+        console.log(`✅ [App] SQLite 초기화 완료 (${(endTime - startTime).toFixed(2)}ms)`);
+      })
+      .catch(err => {
+        console.error('❌ [App] DB 초기화 실패:', err);
+      });
+  }, []);
 
   useEffect(() => {
     loadAuth();

@@ -2,14 +2,14 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '../../store/authStore';
 import * as categoryApi from '../../api/categories';
 import {
-  loadCategories,
-  saveCategories,
+  getAllCategories,
   upsertCategory,
-  removeCategory,
-} from '../../storage/categoryStorage';
+  deleteCategory as deleteCategoryFromDB,
+} from '../../db/categoryService';
+import { ensureDatabase } from '../../db/database';
 
 /**
- * 카테고리 목록 조회 (Cache-First 전략)
+ * 카테고리 목록 조회 (SQLite 기반)
  */
 export const useCategories = () => {
   const { user } = useAuthStore();
@@ -18,44 +18,33 @@ export const useCategories = () => {
   const query = useQuery({
     queryKey: ['categories'],
     queryFn: async () => {
-      // ⚡ Cache-First: 캐시 먼저 확인
-      const cachedCategories = queryClient.getQueryData(['categories']);
-      if (cachedCategories) {
-        // 백그라운드에서 서버 요청 (비동기)
-        categoryApi.getCategories()
-          .then(categories => {
-            saveCategories(categories);
-            queryClient.setQueryData(['categories'], categories);
-            console.log('🔄 [useCategories] 백그라운드 업데이트 완료');
-          })
-          .catch(() => {
-            // 백그라운드 업데이트 실패는 무시 (캐시 데이터 사용 중)
-          });
-        
-        // 즉시 반환
-        console.log('⚡ [useCategories] 캐시 즉시 반환:', cachedCategories.length, '개');
-        return cachedCategories;
-      }
-      
-      // 캐시 없으면 서버 요청
       try {
-        console.log('🌐 [useCategories] 캐시 없음 - 서버 요청');
-        const categories = await categoryApi.getCategories();
-        await saveCategories(categories);
+        await ensureDatabase();
+        
+        const startTime = performance.now();
+        const categories = await getAllCategories();
+        const endTime = performance.now();
+
+        console.log(`⚡ [useCategories] SQLite 조회: ${categories.length}개 (${(endTime - startTime).toFixed(2)}ms)`);
+
+        // 백그라운드 서버 동기화
+        categoryApi.getCategories()
+          .then(serverCategories => {
+            if (serverCategories.length !== categories.length) {
+              console.log('🔄 [useCategories] 서버 데이터 차이 감지');
+            }
+          })
+          .catch(() => {});
+
         return categories;
       } catch (error) {
-        console.log('⚠️ [useCategories] 서버 요청 실패 - AsyncStorage 확인');
-        
-        // 서버 실패하면 AsyncStorage
-        const storedCategories = await loadCategories();
-        queryClient.setQueryData(['categories'], storedCategories);
-        
-        console.log('✅ [useCategories] AsyncStorage에서 로드:', storedCategories.length, '개');
-        return storedCategories;
+        console.log('⚠️ [useCategories] SQLite 실패 - 서버 폴백');
+        const serverCategories = await categoryApi.getCategories();
+        return serverCategories;
       }
     },
     enabled: !!user,
-    staleTime: 1000 * 60 * 5, // 5분간 캐시 유지
+    staleTime: 1000 * 60 * 5,
   });
 
   return query;
@@ -70,7 +59,7 @@ export const useCreateCategory = () => {
   return useMutation({
     mutationFn: categoryApi.createCategory,
     onSuccess: async (newCategory) => {
-      // 로컬 저장소에 추가
+      await ensureDatabase();
       await upsertCategory(newCategory);
       queryClient.invalidateQueries({ queryKey: ['categories'] });
     },
@@ -86,7 +75,7 @@ export const useUpdateCategory = () => {
   return useMutation({
     mutationFn: categoryApi.updateCategory,
     onSuccess: async (updatedCategory) => {
-      // 로컬 저장소 업데이트
+      await ensureDatabase();
       await upsertCategory(updatedCategory);
       queryClient.invalidateQueries({ queryKey: ['categories'] });
     },
@@ -102,8 +91,8 @@ export const useDeleteCategory = () => {
   return useMutation({
     mutationFn: categoryApi.deleteCategory,
     onSuccess: async (_, deletedId) => {
-      // 로컬 저장소에서 삭제
-      await removeCategory(deletedId);
+      await ensureDatabase();
+      await deleteCategoryFromDB(deletedId);
       queryClient.invalidateQueries({ queryKey: ['categories'] });
       queryClient.invalidateQueries({ queryKey: ['todos'] });
     },

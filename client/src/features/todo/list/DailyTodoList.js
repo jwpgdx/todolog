@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { View, Text, TouchableOpacity, FlatList, StyleSheet } from 'react-native';
-import { format } from 'date-fns';
-import { ko } from 'date-fns/locale';
+import dayjs from 'dayjs';
+import 'dayjs/locale/ko';
 
 /**
  * DailyTodoList
@@ -76,7 +76,7 @@ export default function DailyTodoList({ date, todos = [], isLoading, onToggleCom
                         {/* 시간 표시 */}
                         {!item.isAllDay && item.startDateTime && (
                             <Text style={styles.timeText}>
-                                {format(new Date(item.startDateTime), 'a h:mm', { locale: ko })}
+                                {dayjs(item.startDateTime).locale('ko').format('A h:mm')}
                             </Text>
                         )}
                         {item.isAllDay && (

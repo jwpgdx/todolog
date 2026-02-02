@@ -1,9 +1,18 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '../../store/authStore';
 import { todoAPI } from '../../api/todos';
-import { loadTodos } from '../../storage/todoStorage';
-import { filterByDate } from '../../utils/todoFilters';
+import { getTodosByDate } from '../../db/todoService';
+import { getCompletionsByDate } from '../../db/completionService';
+import { ensureDatabase } from '../../db/database';
 
+/**
+ * 날짜별 Todo 조회 Hook (SQLite 기반)
+ * 
+ * 새로운 흐름:
+ * 1. SQLite에서 직접 조회 (Source of Truth)
+ * 2. 백그라운드에서 서버 동기화
+ * 3. 완료 상태도 SQLite에서 조회
+ */
 export const useTodos = (date) => {
   const { user } = useAuthStore();
   const queryClient = useQueryClient();
@@ -11,78 +20,62 @@ export const useTodos = (date) => {
   return useQuery({
     queryKey: ['todos', date],
     queryFn: async () => {
-      // ⚡ Cache-First: 캐시 먼저 확인
-      const allTodos = queryClient.getQueryData(['todos', 'all']);
-      if (allTodos) {
-        // 백그라운드에서 서버 요청 (비동기)
+      // 1. SQLite 초기화 보장 (자동 대기)
+      try {
+        await ensureDatabase();
+      } catch (error) {
+        console.log('⚠️ [useTodos] SQLite 초기화 실패 - 서버로 폴백');
+        try {
+          const res = await todoAPI.getTodos(date);
+          return res.data;
+        } catch (apiError) {
+          console.error('❌ [useTodos] 서버 요청도 실패:', apiError.message);
+          return [];
+        }
+      }
+
+      // 2. SQLite에서 Todo + Completion 조회
+      const startTime = performance.now();
+      
+      const todoStart = performance.now();
+      const todos = await getTodosByDate(date);
+      const todoEnd = performance.now();
+      console.log(`  📝 [useTodos] getTodosByDate: ${todos.length}개 (${(todoEnd - todoStart).toFixed(2)}ms)`);
+      
+      const compStart = performance.now();
+      const completions = await getCompletionsByDate(date);
+      const compEnd = performance.now();
+      console.log(`  ✅ [useTodos] getCompletionsByDate: ${Object.keys(completions).length}개 (${(compEnd - compStart).toFixed(2)}ms)`);
+      
+      const mergeStart = performance.now();
+      // 3. 완료 상태 병합
+      const todosWithCompletion = todos.map(todo => {
+        const key = `${todo._id}_${date || 'null'}`;
+        return {
+          ...todo,
+          completed: !!completions[key]
+        };
+      });
+      const mergeEnd = performance.now();
+      console.log(`  🔀 [useTodos] 병합: (${(mergeEnd - mergeStart).toFixed(2)}ms)`);
+      
+      const endTime = performance.now();
+      console.log(`⚡ [useTodos] 전체: ${todosWithCompletion.length}개 (${(endTime - startTime).toFixed(2)}ms)`);
+
+      // 4. 백그라운드 서버 동기화 (선택적)
+      if (user) {
         todoAPI.getTodos(date)
           .then(res => {
-            // 서버 응답에 로컬 Completion 병합
-            const completions = queryClient.getQueryData(['completions']) || {};
-            const todosWithCompletion = res.data.map(todo => {
-              const key = `${todo._id}_${date || 'null'}`;
-              return {
-                ...todo,
-                completed: !!completions[key]  // 로컬 Completion 우선
-              };
-            });
-            
-            queryClient.setQueryData(['todos', date], todosWithCompletion);
-            console.log('🔄 [useTodos] 백그라운드 업데이트 완료');
+            if (res.data.length !== todos.length) {
+              console.log('🔄 [useTodos] 서버와 데이터 차이 감지 - 동기화 권장');
+            }
           })
-          .catch(() => {
-            // 백그라운드 업데이트 실패는 무시 (캐시 데이터 사용 중)
-          });
-        
-        // 즉시 반환 (로컬 Completion 포함)
-        const startTime = performance.now();
-        const filtered = filterByDate(allTodos, date);
-        
-        // 로컬 Completion 조회하여 completed 필드 추가 (메모리 캐시에서 즉시 읽기)
-        const completions = queryClient.getQueryData(['completions']) || {};
-        const todosWithCompletion = filtered.map(todo => {
-          const key = `${todo._id}_${date || 'null'}`;
-          return {
-            ...todo,
-            completed: !!completions[key]
-          };
-        });
-        
-        const endTime = performance.now();
-        console.log(`⚡ [useTodos] 캐시 즉시 반환: ${todosWithCompletion.length}개 (${(endTime - startTime).toFixed(2)}ms) - 완료 상태 포함`);
-        return todosWithCompletion;
+          .catch(() => { });
       }
-      
-      // 캐시 없으면 서버 요청
-      try {
-        console.log('🌐 [useTodos] 캐시 없음 - 서버 요청');
-        const res = await todoAPI.getTodos(date);
-        return res.data;
-      } catch (error) {
-        console.log('⚠️ [useTodos] 서버 요청 실패 - AsyncStorage 확인');
-        
-        // 서버 실패하면 AsyncStorage
-        const storedTodos = await loadTodos();
-        const filtered = filterByDate(storedTodos, date);
-        
-        // 로컬 Completion 조회하여 completed 필드 추가 (메모리 캐시에서 즉시 읽기)
-        const completions = queryClient.getQueryData(['completions']) || {};
-        const todosWithCompletion = filtered.map(todo => {
-          const key = `${todo._id}_${date || 'null'}`;
-          return {
-            ...todo,
-            completed: !!completions[key]
-          };
-        });
-        
-        // 전체 캐시에 저장
-        queryClient.setQueryData(['todos', 'all'], storedTodos);
-        
-        console.log('✅ [useTodos] AsyncStorage에서 필터링:', todosWithCompletion.length, '개 (완료 상태 포함)');
-        return todosWithCompletion;
-      }
+
+      return todosWithCompletion;
     },
-    enabled: !!date && !!user,
+    enabled: !!date,
     staleTime: 1000 * 60 * 5,
   });
 };

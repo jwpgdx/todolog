@@ -5,6 +5,8 @@
  * - DB 초기화 및 스키마 생성
  * - 마이그레이션 관리
  * - 메타데이터 관리
+ * 
+ * ⚡ 모듈 로드 시 자동으로 초기화 시작 (대기 시간 최소화)
  */
 
 import * as SQLite from 'expo-sqlite';
@@ -20,13 +22,11 @@ const MIGRATION_VERSION = 1;
 // 스키마 정의
 // ============================================================
 const SCHEMA_SQL = `
--- Metadata (마이그레이션 & 동기화 상태)
 CREATE TABLE IF NOT EXISTS metadata (
   key TEXT PRIMARY KEY,
   value TEXT
 );
 
--- Categories (Todo의 FK이므로 먼저)
 CREATE TABLE IF NOT EXISTS categories (
   _id TEXT PRIMARY KEY,
   name TEXT NOT NULL,
@@ -38,7 +38,6 @@ CREATE TABLE IF NOT EXISTS categories (
   deleted_at TEXT
 );
 
--- Todos
 CREATE TABLE IF NOT EXISTS todos (
   _id TEXT PRIMARY KEY,
   title TEXT NOT NULL,
@@ -58,13 +57,11 @@ CREATE TABLE IF NOT EXISTS todos (
   FOREIGN KEY (category_id) REFERENCES categories(_id)
 );
 
--- Todos 인덱스
 CREATE INDEX IF NOT EXISTS idx_todos_date ON todos(date);
 CREATE INDEX IF NOT EXISTS idx_todos_range ON todos(start_date, end_date);
 CREATE INDEX IF NOT EXISTS idx_todos_category ON todos(category_id);
 CREATE INDEX IF NOT EXISTS idx_todos_updated ON todos(updated_at);
 
--- Completions
 CREATE TABLE IF NOT EXISTS completions (
   key TEXT PRIMARY KEY,
   todo_id TEXT NOT NULL,
@@ -73,11 +70,9 @@ CREATE TABLE IF NOT EXISTS completions (
   FOREIGN KEY (todo_id) REFERENCES todos(_id) ON DELETE CASCADE
 );
 
--- Completions 인덱스
 CREATE INDEX IF NOT EXISTS idx_completions_date ON completions(date);
 CREATE INDEX IF NOT EXISTS idx_completions_todo ON completions(todo_id);
 
--- Pending Changes (오프라인 큐)
 CREATE TABLE IF NOT EXISTS pending_changes (
   id TEXT PRIMARY KEY,
   type TEXT NOT NULL,
@@ -94,56 +89,92 @@ CREATE INDEX IF NOT EXISTS idx_pending_created ON pending_changes(created_at);
 // ============================================================
 // DB 초기화
 // ============================================================
+// 초기화 Promise 캐시 (동시 호출 방지)
+let initPromise = null;
 
 /**
  * DB 초기화 (앱 시작 시 호출)
+ * 동시에 여러 번 호출되어도 안전 (Promise 재사용)
  * @returns {Promise<SQLiteDatabase>}
  */
 export async function initDatabase() {
+    // 이미 초기화됨
     if (db) {
         console.log('📦 [DB] Already initialized');
         return db;
     }
 
+    // 초기화 진행 중 - Promise 재사용
+    if (initPromise) {
+        console.log('⏳ [DB] Initialization in progress, waiting...');
+        return initPromise;
+    }
+
     console.log('🚀 [DB] Initializing database...');
 
-    try {
-        // DB 열기
-        db = await SQLite.openDatabaseAsync('todos.db');
+    // Promise 락 설정
+    initPromise = (async () => {
+        try {
+            // DB 열기
+            db = await SQLite.openDatabaseAsync('todos.db');
+            console.log('✅ [DB] Database opened');
 
-        // WAL 모드 활성화 (동시 읽기/쓰기 성능 향상)
-        await db.execAsync('PRAGMA journal_mode = WAL');
-        console.log('✅ [DB] WAL mode enabled');
+            // WAL 모드 활성화
+            await db.execAsync('PRAGMA journal_mode = WAL');
+            console.log('✅ [DB] WAL mode enabled');
 
-        // 동기화 완화 (배터리 절약)
-        await db.execAsync('PRAGMA synchronous = NORMAL');
+            // 동기화 완화
+            await db.execAsync('PRAGMA synchronous = NORMAL');
 
-        // 외래키 제약 활성화
-        await db.execAsync('PRAGMA foreign_keys = ON');
+            // 외래키 제약 활성화
+            await db.execAsync('PRAGMA foreign_keys = ON');
+            console.log('✅ [DB] PRAGMA settings applied');
 
-        // 스키마 생성
-        await db.execAsync(SCHEMA_SQL);
-        console.log('✅ [DB] Schema created');
+            // 스키마 생성
+            await db.execAsync(SCHEMA_SQL);
+            console.log('✅ [DB] Schema created');
 
-        // 마이그레이션 체크
-        const version = await getMetadata('migration_version');
-        console.log(`📋 [DB] Current migration version: ${version || 'none'}`);
+            // 마이그레이션 체크
+            const version = await getMetadata('migration_version');
+            console.log(`📋 [DB] Current migration version: ${version || 'none'}`);
 
-        if (!version || parseInt(version) < MIGRATION_VERSION) {
-            console.log('🔄 [DB] Migration needed...');
-            await migrateFromAsyncStorage();
-            await setMetadata('migration_version', String(MIGRATION_VERSION));
-        } else {
-            console.log('✅ [DB] No migration needed');
+            if (!version || parseInt(version) < MIGRATION_VERSION) {
+                console.log('🔄 [DB] Migration needed...');
+                await migrateFromAsyncStorage();
+                await setMetadata('migration_version', String(MIGRATION_VERSION));
+            } else {
+                console.log('✅ [DB] No migration needed');
+            }
+
+            console.log('✅ [DB] Database initialized successfully');
+
+            // ⚡ 백그라운드 테이블 워밍업 (WASM 콜드 스타트 방지)
+            // 첫 실제 쿼리가 느린 문제 해결 - 더미 쿼리로 캐시 프라이밍
+            setTimeout(async () => {
+                try {
+                    const warmupStart = performance.now();
+                    // 각 테이블에 빠른 쿼리 실행 (존재하지 않는 데이터)
+                    await db.getFirstAsync('SELECT 1 FROM completions WHERE date = ? LIMIT 1', ['1970-01-01']);
+                    await db.getFirstAsync('SELECT 1 FROM todos WHERE date = ? LIMIT 1', ['1970-01-01']);
+                    await db.getFirstAsync('SELECT 1 FROM categories WHERE _id = ? LIMIT 1', ['warmup']);
+                    const warmupEnd = performance.now();
+                    console.log(`🔥 [DB] 테이블 워밍업 완료 (${(warmupEnd - warmupStart).toFixed(2)}ms)`);
+                } catch (warmupError) {
+                    console.warn('⚠️ [DB] 워밍업 실패 (무시 가능):', warmupError.message);
+                }
+            }, 100); // 100ms 지연 - UI 쿼리 방해하지 않음
+
+            return db;
+
+        } catch (error) {
+            console.error('❌ [DB] Initialization failed:', error);
+            db = null;
+            initPromise = null; // 실패 시 재시도 가능하도록
+            throw error;
         }
+    })();
 
-        console.log('✅ [DB] Database initialized successfully');
-        return db;
-
-    } catch (error) {
-        console.error('❌ [DB] Initialization failed:', error);
-        throw error;
-    }
+    return initPromise;
 }
 
 /**
@@ -154,6 +185,14 @@ export function getDatabase() {
         throw new Error('Database not initialized. Call initDatabase() first.');
     }
     return db;
+}
+
+/**
+ * DB 초기화를 보장하고 인스턴스 반환
+ * 여러 번 호출해도 안전 (초기화 Promise 재사용)
+ */
+export async function ensureDatabase() {
+    return initDatabase();
 }
 
 // ============================================================
@@ -464,3 +503,11 @@ export async function resetDatabase() {
 
     console.log('✅ [DB] Database reset completed');
 }
+
+// ============================================================
+// ⚡ 모듈 로드 시 자동 초기화 시작 (대기 시간 최소화)
+// ============================================================
+// 첫 import 시점에 초기화를 시작하여 Hook이 호출될 때 이미 준비되도록 함
+initDatabase().catch(err => {
+    console.warn('⚠️ [DB] Auto-init failed, will retry on first use:', err.message);
+});

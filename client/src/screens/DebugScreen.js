@@ -1,10 +1,6 @@
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Platform } from 'react-native';
 import { useQueryClient } from '@tanstack/react-query';
-import { loadTodos, saveTodos } from '../storage/todoStorage';
-import { loadCategories } from '../storage/categoryStorage';
-import { loadCompletions, clearCompletions } from '../storage/completionStorage';
-import { getPendingChanges, clearPendingChanges } from '../storage/pendingChangesStorage';
 import { todoAPI } from '../api/todos';
 import { useToggleCompletion } from '../hooks/queries/useToggleCompletion';
 import { useTodos } from '../hooks/queries/useTodos';
@@ -931,6 +927,234 @@ export default function DebugScreen() {
 
   // ========== SQLite 마이그레이션 테스트 ==========
 
+  // [BASIC] 가장 기본적인 SQLite 테스트 (스키마 없이)
+  const sqlite_basic_test = async () => {
+    addLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    addLog('🧪 [BASIC] 기본 SQLite 테스트');
+    addLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+
+    try {
+      // 1. expo-sqlite import 확인
+      const SQLite = await import('expo-sqlite');
+      addLog('✅ expo-sqlite import 성공');
+      addLog(`   버전: ${typeof SQLite.openDatabaseAsync}`);
+
+      // 2. 테스트용 DB 열기
+      addLog('');
+      addLog('📦 테스트 DB 열기...');
+      const testDb = await SQLite.openDatabaseAsync('test_basic.db');
+      addLog('✅ DB 열기 성공');
+
+      // 3. 간단한 테이블 생성 (개별 실행)
+      addLog('');
+      addLog('📝 테이블 생성...');
+      await testDb.execAsync('CREATE TABLE IF NOT EXISTS test_table (id INTEGER PRIMARY KEY, name TEXT)');
+      addLog('✅ 테이블 생성 성공');
+
+      // 4. 데이터 삽입
+      addLog('');
+      addLog('📝 데이터 삽입...');
+      await testDb.runAsync('INSERT OR REPLACE INTO test_table (id, name) VALUES (?, ?)', [1, 'Hello SQLite!']);
+      addLog('✅ 데이터 삽입 성공');
+
+      // 5. 데이터 조회
+      addLog('');
+      addLog('📖 데이터 조회...');
+      const result = await testDb.getFirstAsync('SELECT * FROM test_table WHERE id = ?', [1]);
+      addLog(`✅ 조회 결과: id=${result?.id}, name=${result?.name}`);
+
+      // 6. DB 닫기
+      addLog('');
+      addLog('🔒 DB 닫기...');
+      await testDb.closeAsync();
+      addLog('✅ DB 닫기 성공');
+
+      addLog('');
+      addLog('🎉 모든 기본 테스트 통과!');
+
+    } catch (error) {
+      addLog(`❌ 오류: ${error.message}`);
+      console.error('SQLite basic test error:', error);
+    }
+
+    addLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+  };
+
+  // [BASIC-2] 여러 문장 한번에 실행 테스트
+  const sqlite_multi_statement_test = async () => {
+    addLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    addLog('🧪 [BASIC-2] 여러 SQL 문장 테스트');
+    addLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+
+    try {
+      const SQLite = await import('expo-sqlite');
+      const testDb = await SQLite.openDatabaseAsync('test_multi.db');
+      addLog('✅ DB 열기 성공');
+
+      // 여러 문장 한번에 실행
+      addLog('');
+      addLog('📝 여러 문장 실행 테스트...');
+      const multiSql = `
+        CREATE TABLE IF NOT EXISTS t1 (id INTEGER PRIMARY KEY);
+        CREATE TABLE IF NOT EXISTS t2 (id INTEGER PRIMARY KEY);
+        CREATE TABLE IF NOT EXISTS t3 (id INTEGER PRIMARY KEY);
+      `;
+      await testDb.execAsync(multiSql);
+      addLog('✅ 여러 문장 실행 성공');
+
+      // 테이블 확인
+      const tables = await testDb.getAllAsync("SELECT name FROM sqlite_master WHERE type='table'");
+      addLog(`📋 생성된 테이블: ${tables.map(t => t.name).join(', ')}`);
+
+      await testDb.closeAsync();
+      addLog('✅ 완료');
+
+    } catch (error) {
+      addLog(`❌ 오류: ${error.message}`);
+      console.error('Multi statement test error:', error);
+    }
+
+    addLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+  };
+
+  // [BASIC-3] PRAGMA 웹 테스트
+  const sqlite_pragma_test = async () => {
+    addLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    addLog('🧪 [BASIC-3] PRAGMA 웹 테스트');
+    addLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+
+    try {
+      const SQLite = await import('expo-sqlite');
+      const testDb = await SQLite.openDatabaseAsync('test_pragma.db');
+      addLog('✅ DB 열기 성공');
+
+      // PRAGMA journal_mode = WAL
+      addLog('');
+      addLog('📝 PRAGMA journal_mode = WAL...');
+      try {
+        await testDb.execAsync('PRAGMA journal_mode = WAL');
+        addLog('✅ WAL 모드 성공');
+      } catch (e) {
+        addLog(`❌ WAL 실패: ${e.message}`);
+      }
+
+      // PRAGMA synchronous = NORMAL
+      addLog('');
+      addLog('📝 PRAGMA synchronous = NORMAL...');
+      try {
+        await testDb.execAsync('PRAGMA synchronous = NORMAL');
+        addLog('✅ synchronous 성공');
+      } catch (e) {
+        addLog(`❌ synchronous 실패: ${e.message}`);
+      }
+
+      // PRAGMA foreign_keys = ON
+      addLog('');
+      addLog('📝 PRAGMA foreign_keys = ON...');
+      try {
+        await testDb.execAsync('PRAGMA foreign_keys = ON');
+        addLog('✅ foreign_keys 성공');
+      } catch (e) {
+        addLog(`❌ foreign_keys 실패: ${e.message}`);
+      }
+
+      await testDb.closeAsync();
+      addLog('');
+      addLog('✅ 테스트 완료');
+
+    } catch (error) {
+      addLog(`❌ 오류: ${error.message}`);
+      console.error('PRAGMA test error:', error);
+    }
+
+    addLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+  };
+
+  // [TIMING] DB 초기화 시간 측정
+  const sqlite_timing_test = async () => {
+    addLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    addLog('⏱️ [TIMING] DB 초기화 시간 측정 테스트');
+    addLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+
+    try {
+      const SQLite = await import('expo-sqlite');
+
+      // 1. openDatabaseAsync 시간
+      addLog('');
+      addLog('📦 Step 1: openDatabaseAsync...');
+      const t1 = performance.now();
+      const testDb = await SQLite.openDatabaseAsync('timing_test.db');
+      const t2 = performance.now();
+      addLog(`✅ DB 열기: ${(t2 - t1).toFixed(2)}ms`);
+
+      // 2. PRAGMA journal_mode
+      addLog('');
+      addLog('📝 Step 2: PRAGMA journal_mode = WAL...');
+      const t3 = performance.now();
+      await testDb.execAsync('PRAGMA journal_mode = WAL');
+      const t4 = performance.now();
+      addLog(`✅ WAL 설정: ${(t4 - t3).toFixed(2)}ms`);
+
+      // 3. PRAGMA synchronous
+      addLog('');
+      addLog('📝 Step 3: PRAGMA synchronous = NORMAL...');
+      const t5 = performance.now();
+      await testDb.execAsync('PRAGMA synchronous = NORMAL');
+      const t6 = performance.now();
+      addLog(`✅ synchronous 설정: ${(t6 - t5).toFixed(2)}ms`);
+
+      // 4. PRAGMA foreign_keys
+      addLog('');
+      addLog('📝 Step 4: PRAGMA foreign_keys = ON...');
+      const t7 = performance.now();
+      await testDb.execAsync('PRAGMA foreign_keys = ON');
+      const t8 = performance.now();
+      addLog(`✅ foreign_keys 설정: ${(t8 - t7).toFixed(2)}ms`);
+
+      // 5. CREATE TABLE (간단한 스키마)
+      addLog('');
+      addLog('📝 Step 5: CREATE TABLE...');
+      const t9 = performance.now();
+      await testDb.execAsync('CREATE TABLE IF NOT EXISTS timing_test (id INTEGER PRIMARY KEY, data TEXT)');
+      const t10 = performance.now();
+      addLog(`✅ 테이블 생성: ${(t10 - t9).toFixed(2)}ms`);
+
+      // 6. INSERT
+      addLog('');
+      addLog('📝 Step 6: INSERT...');
+      const t11 = performance.now();
+      await testDb.runAsync('INSERT OR REPLACE INTO timing_test (id, data) VALUES (?, ?)', [1, 'test']);
+      const t12 = performance.now();
+      addLog(`✅ INSERT: ${(t12 - t11).toFixed(2)}ms`);
+
+      // 7. SELECT
+      addLog('');
+      addLog('📝 Step 7: SELECT...');
+      const t13 = performance.now();
+      await testDb.getFirstAsync('SELECT * FROM timing_test WHERE id = ?', [1]);
+      const t14 = performance.now();
+      addLog(`✅ SELECT: ${(t14 - t13).toFixed(2)}ms`);
+
+      await testDb.closeAsync();
+
+      // 요약
+      const total = t14 - t1;
+      addLog('');
+      addLog('📊 요약:');
+      addLog(`   - openDatabaseAsync: ${(t2 - t1).toFixed(2)}ms`);
+      addLog(`   - PRAGMA 설정 총합: ${(t8 - t3).toFixed(2)}ms`);
+      addLog(`   - 테이블 생성: ${(t10 - t9).toFixed(2)}ms`);
+      addLog(`   - INSERT/SELECT: ${(t14 - t11).toFixed(2)}ms`);
+      addLog(`   - 총 소요 시간: ${total.toFixed(2)}ms`);
+
+    } catch (error) {
+      addLog(`❌ 오류: ${error.message}`);
+      console.error('Timing test error:', error);
+    }
+
+    addLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+  };
+
   // [0-1] DB 초기화 테스트
   const sqlite_0_1_InitDb = async () => {
     addLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
@@ -1597,6 +1821,22 @@ export default function DebugScreen() {
 
         {/* SQLite 마이그레이션 테스트 */}
         <Text style={styles.sectionTitle}>🗄️ SQLite 마이그레이션</Text>
+
+        <Text style={styles.subSectionTitle}>🧪 BASIC 테스트 (먼저 실행!)</Text>
+        <View style={styles.buttonRow}>
+          <TouchableOpacity style={[styles.button, styles.actionButton, styles.halfButton]} onPress={sqlite_basic_test}>
+            <Text style={styles.buttonText}>[BASIC] 기본 테스트</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={[styles.button, styles.sqliteButton, styles.halfButton]} onPress={sqlite_multi_statement_test}>
+            <Text style={styles.buttonText}>[BASIC-2] 다중 문장</Text>
+          </TouchableOpacity>
+        </View>
+        <TouchableOpacity style={[styles.button, styles.warningButton]} onPress={sqlite_pragma_test}>
+          <Text style={styles.buttonText}>[BASIC-3] PRAGMA 웹 테스트</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={[styles.button, styles.actionButton]} onPress={sqlite_timing_test}>
+          <Text style={styles.buttonText}>⏱️ [TIMING] 시간 측정</Text>
+        </TouchableOpacity>
 
         <Text style={styles.subSectionTitle}>Phase 0: 기반 작업</Text>
         <View style={styles.buttonRow}>

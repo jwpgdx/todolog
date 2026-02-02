@@ -39,7 +39,14 @@
         }
       ],
       "expo-localization",
-      "expo-sqlite"
+      [
+        "expo-sqlite",
+        {
+          "enableFTS": true,
+          "useSQLCipher": false
+        }
+      ],
+      "@react-native-community/datetimepicker"
     ]
   }
 }

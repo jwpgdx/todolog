@@ -211,8 +211,8 @@ export function useCalendarDynamicEvents({
       Object.assign(eventsMap, periodEvents);
     }
     
-    // 캐시 메모리 관리 (최근 40주 또는 24개월만 유지)
-    const maxCacheSize = cacheType === 'month' ? 24 : 40;
+    // 캐시 메모리 관리 (최근 60주 또는 24개월만 유지)
+    const maxCacheSize = cacheType === 'month' ? 24 : 60;
     const cacheKeys = Object.keys(eventsCacheRef.current);
     if (cacheKeys.length > maxCacheSize) {
       const sortedKeys = cacheKeys.sort();
