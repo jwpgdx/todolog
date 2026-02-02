@@ -1,20 +1,27 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import NetInfo from '@react-native-community/netinfo';
 import { completionAPI } from '../../api/todos';
-import { toggleCompletion as sqliteToggleCompletion } from '../../db/completionService';
+import { 
+  toggleCompletion as sqliteToggleCompletion,
+  createCompletion,
+  deleteCompletion 
+} from '../../db/completionService';
 import { addPendingChange } from '../../db/pendingService';
 import { ensureDatabase } from '../../db/database';
 
 /**
- * Completion 토글 훅 (SQLite 기반 + Optimistic Update)
+ * Completion 토글 훅 (SQLite 기반 + Server Sync)
  * 
- * 새로운 흐름:
- * 1. SQLite 즉시 토글 (0.1ms)
- * 2. 캐시 직접 업데이트
- * 3. 네트워크 확인
- *    - 온라인: 서버 요청 (백그라운드)
- *    - 오프라인: Pending Queue (SQLite)
- * 4. 실패 시: Pending Queue 추가
+ * 수정된 흐름 (2026-02-03):
+ * 1. SQLite 즉시 토글 (Optimistic Update)
+ * 2. 네트워크 확인
+ *    - 온라인: 서버 요청 → 서버 응답으로 SQLite 동기화
+ *    - 오프라인: Pending Queue 추가
+ * 3. 실패 시: Pending Queue 추가
+ * 
+ * 버그 수정:
+ * - 이전: SQLite와 서버가 독립적으로 토글 → 불일치 발생
+ * - 수정: 서버 응답을 Source of Truth로 사용 → SQLite 동기화
  */
 export const useToggleCompletion = () => {
   const queryClient = useQueryClient();
@@ -23,12 +30,12 @@ export const useToggleCompletion = () => {
     mutationFn: async ({ todoId, date, currentCompleted }) => {
       console.log('🔄 [useToggleCompletion] 시작:', { todoId, date, currentCompleted });
 
-      // 1. SQLite 초기화 보장 후 토글
-      let newState;
+      // 1. SQLite 초기화 보장 후 토글 (Optimistic)
+      let optimisticState;
       try {
         await ensureDatabase();
-        newState = await sqliteToggleCompletion(todoId, date);
-        console.log(`✅ [useToggleCompletion] SQLite 토글 완료: ${newState}`);
+        optimisticState = await sqliteToggleCompletion(todoId, date);
+        console.log(`✅ [useToggleCompletion] SQLite 토글 완료 (Optimistic): ${optimisticState}`);
       } catch (error) {
         console.error('❌ [useToggleCompletion] SQLite 토글 실패:', error.message);
         throw error;
@@ -41,27 +48,43 @@ export const useToggleCompletion = () => {
       if (!netInfo.isConnected) {
         console.log('📵 [useToggleCompletion] 오프라인 - Pending Queue 추가');
         await addPendingChange({
-          type: newState ? 'createCompletion' : 'deleteCompletion',
+          type: optimisticState ? 'createCompletion' : 'deleteCompletion',
           todoId,
           date,
         });
-        return { completed: newState, offline: true };
+        return { completed: optimisticState, offline: true };
       }
 
-      // 3. 온라인: 서버 요청 (백그라운드)
+      // 3. 온라인: 서버 요청
       try {
         console.log('🌐 [useToggleCompletion] 서버 요청 시작');
         const res = await completionAPI.toggleCompletion(todoId, date);
         console.log('✅ [useToggleCompletion] 서버 요청 성공:', res.data);
+
+        // 🔧 FIX: 서버 응답으로 SQLite 동기화
+        const serverState = res.data.completed;
+        if (serverState !== optimisticState) {
+          console.warn(`⚠️ [useToggleCompletion] 상태 불일치 감지! SQLite=${optimisticState}, Server=${serverState}`);
+          console.log(`🔄 [useToggleCompletion] SQLite를 서버 상태로 동기화: ${serverState}`);
+          
+          // SQLite를 서버 상태로 강제 동기화
+          if (serverState) {
+            await createCompletion(todoId, date);
+          } else {
+            await deleteCompletion(todoId, date);
+          }
+          console.log(`✅ [useToggleCompletion] SQLite 동기화 완료: ${serverState}`);
+        }
+
         return res.data;
       } catch (error) {
         console.error('❌ [useToggleCompletion] 서버 요청 실패:', error.message);
         await addPendingChange({
-          type: newState ? 'createCompletion' : 'deleteCompletion',
+          type: optimisticState ? 'createCompletion' : 'deleteCompletion',
           todoId,
           date,
         });
-        return { completed: newState, offline: true };
+        return { completed: optimisticState, offline: true };
       }
     },
     onSuccess: (data, variables) => {

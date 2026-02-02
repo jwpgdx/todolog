@@ -1,10 +1,106 @@
-# Completion Toggle 디버깅 가이드
+# Completion Toggle 버그 수정 완료 ✅
 
-## 현재 상태 (2026-02-03)
+## 버그 원인 (2026-02-03 발견)
 
-- **Git Push**: ✅ 완료 (SQLite 마이그레이션 커밋)
-- **DebugScreen**: ✅ 정리 완료 (AsyncStorage 테스트 제거, SQLite 테스트만 유지)
-- **일정 완료/취소 에러**: ⚠️ 조사 필요
+**증상**: 일정 완료/취소 시 UI와 실제 상태가 불일치
+
+**로그 분석**:
+```
+SQLite 토글 완료: true  (SQLite: 완료로 변경)
+서버 요청 성공: {completed: false}  (서버: 취소로 변경)
+```
+
+**근본 원인**:
+- SQLite는 **현재 SQLite 상태**를 기준으로 토글
+- 서버는 **현재 서버 상태**를 기준으로 토글
+- 둘이 불일치하면 **반대 방향으로 토글** → 더 큰 불일치 발생!
+
+**예시 시나리오**:
+```
+초기 상태:
+- SQLite: false (미완료)
+- Server: true (완료)  ← 이미 불일치
+
+사용자가 토글 클릭:
+1. SQLite: false → true ✅ (완료로 변경)
+2. Server: true → false ❌ (취소로 변경)
+
+결과:
+- SQLite: true
+- Server: false
+→ 불일치가 더 심해짐!
+```
+
+## 수정 내용 ✅
+
+### 1. useToggleCompletion.js 수정
+- **Before**: SQLite 토글 → 서버 요청 (독립적)
+- **After**: SQLite 토글 (Optimistic) → 서버 요청 → **서버 응답으로 SQLite 동기화**
+
+### 2. 추가된 로직
+```javascript
+// 서버 응답 후 SQLite 동기화
+const serverState = res.data.completed;
+if (serverState !== optimisticState) {
+  console.warn(`⚠️ 상태 불일치 감지! SQLite=${optimisticState}, Server=${serverState}`);
+  
+  // SQLite를 서버 상태로 강제 동기화
+  if (serverState) {
+    await createCompletion(todoId, date);
+  } else {
+    await deleteCompletion(todoId, date);
+  }
+}
+```
+
+### 3. 원칙
+- **Server = Source of Truth**: 서버 응답이 최종 상태
+- **SQLite = Local Cache**: 서버 상태를 반영
+- **Optimistic Update**: 빠른 UI 반응을 위해 SQLite 먼저 토글, 서버 응답 후 동기화
+
+## 테스트 방법
+
+### 정상 케이스
+```
+1. 초기: SQLite=false, Server=false
+2. 토글: SQLite=true (Optimistic)
+3. 서버: true 응답
+4. 동기화: 불일치 없음 → 그대로 유지
+5. 결과: SQLite=true, Server=true ✅
+```
+
+### 불일치 케이스 (수정 전 버그)
+```
+1. 초기: SQLite=false, Server=true (불일치)
+2. 토글: SQLite=true (Optimistic)
+3. 서버: false 응답 (서버는 true→false로 토글)
+4. 동기화: 불일치 감지! → SQLite를 false로 강제 변경
+5. 결과: SQLite=false, Server=false ✅
+```
+
+## 디버깅 로그 확인
+
+수정 후 로그에서 확인할 내용:
+```
+✅ [useToggleCompletion] SQLite 토글 완료 (Optimistic): true
+✅ [useToggleCompletion] 서버 요청 성공: {completed: false}
+⚠️ [useToggleCompletion] 상태 불일치 감지! SQLite=true, Server=false
+🔄 [useToggleCompletion] SQLite를 서버 상태로 동기화: false
+✅ [useToggleCompletion] SQLite 동기화 완료: false
+```
+
+## 남은 작업
+
+1. ✅ 버그 수정 완료
+2. ⏳ 실제 앱에서 테스트
+3. ⏳ 불일치 발생 원인 조사 (왜 SQLite와 서버가 달랐는가?)
+4. ⏳ 동기화 로직 개선 (앱 시작 시 전체 동기화?)
+
+## 참고
+
+- 수정 파일: `client/src/hooks/queries/useToggleCompletion.js`
+- 커밋: "fix: sync SQLite with server response in completion toggle"
+- 날짜: 2026-02-03
 
 ## 에러 재현 방법
 
