@@ -25,8 +25,8 @@ const DayCell = React.memo(({
     const { text, isToday, dateString, monthIndex, isFirstDay, dateObj } = day;
     const { i18n } = useTranslation();
 
-    // 공통 Hook 사용
-    const { isSelected, visibleEvents, hasMore } = useDayCell(day, events);
+    // 공통 Hook 사용 (dot 모드: 카테고리 중복 제거)
+    const { isSelected, visibleEvents, hasMore } = useDayCell(day, events, 5, 'dot');
 
     // ⚡️ 핵심: onPress를 useCallback으로 감싸서 매번 새 함수 생성 방지
     const handlePress = useCallback(() => {
@@ -86,9 +86,10 @@ const DayCell = React.memo(({
     );
 }, (prev, next) => {
     // ⚡️ 커스텀 비교: 필요한 props만 비교
+    // ✅ events 참조 비교 - 카테고리 색상/Todo 제목 변경 감지
     return prev.day.dateString === next.day.dateString &&
         prev.onPress === next.onPress &&
-        prev.events?.length === next.events?.length &&
+        prev.events === next.events &&
         prev.isCurrentMonth === next.isCurrentMonth &&
         prev.showMonthLabel === next.showMonthLabel &&
         prev.useAlternatingBg === next.useAlternatingBg;

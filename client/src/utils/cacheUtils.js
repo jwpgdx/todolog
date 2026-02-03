@@ -52,7 +52,9 @@ export const invalidateAffectedMonths = (queryClient, todo) => {
         queryClient.invalidateQueries({ queryKey: ['events', year, month] });
     });
 
-    // 기존 쿼리도 무효화 (하위 호환성)
-    queryClient.invalidateQueries({ queryKey: ['todos'] });
+    // ✅ Optimistic Update 적용 후: todos 캐시는 직접 업데이트하므로 무효화 불필요
+    // ❌ 제거: queryClient.invalidateQueries({ queryKey: ['todos'] });
+    
+    // 캘린더 요약만 무효화 (복잡한 계산 필요)
     queryClient.invalidateQueries({ queryKey: ['calendarSummary'] });
 };

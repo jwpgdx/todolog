@@ -8,6 +8,9 @@
 - 
 **Tone:**
  Be concise. No fluff. Just the solution.
+- 
+**Code Modification Protocol:**
+ ALWAYS ask for user confirmation before modifying code. Even if the user asks a question that implies a fix is needed, explain the issue and proposed solution first, then wait for explicit approval before making changes.
 
 
 # SAFETY & GIT PROTOCOLS
@@ -86,26 +89,30 @@
    - Completion: `createCompletion`, `deleteCompletion`
 4. **Sync Order**: Category → Todo → Completion (의존성 순서)
 5. **Cache Strategy**: Single-source cache (`['todos', 'all']`) with on-demand filtering
+6. **Cache Invalidation**: Optimistic Updates only - no redundant invalidation on success
 
-## Key Files (UUID Migration)
-- `client/src/utils/idGenerator.js` - UUID 생성 유틸리티
-- `client/src/db/pendingService.js` - entity_id 기반, 새 타입들
-- `client/src/hooks/queries/useCreate*.js` - UUID 생성, 오프라인 지원
-- `server/src/models/*.js` - 모두 String _id로 전환
-- `server/src/controllers/*.js` - 클라이언트 _id 수용
+## Key Files Reference
+- **ID Generation**: `client/src/utils/idGenerator.js` - UUID 생성 유틸리티
+- **Database Layer**: `client/src/db/*.js` - SQLite services (todo, completion, category, pending)
+- **Query Hooks**: `client/src/hooks/queries/*.js` - React Query hooks with offline support
+- **Server Models**: `server/src/models/*.js` - MongoDB models (String _id)
+- **Server Controllers**: `server/src/controllers/*.js` - REST API endpoints
+- **Documentation**: See "Key Files Reference" section below for full list
 
 ## Important Documentation
-- **README.md**: Architecture overview, UUID strategy, performance
-- **UUID_MIGRATION_PLAN.md**: 마이그레이션 계획서 (완료됨)
+- **README.md**: Architecture overview, performance (this file)
+- **UUID_MIGRATION_PLAN.md**: UUID 마이그레이션 계획서 (완료)
+- **CACHE_INVALIDATION_ANALYSIS.md**: 캐시 무효화 최적화 분석
 - **client/docs/ROADMAP.md**: Next tasks and priorities
+- **client/docs/OPTIMISTIC_UPDATE_COMPLETED.md**: Optimistic Update 구현
+- **.kiro/steering/requirements.md**: Development guidelines and tech stack
 
 ## Next Session Start Guide
 When starting a new session:
-1. **ROADMAP.md** for next tasks (UUID 테스트 필요)
-2. **UUID 테스트**: 회원가입 → Todo 생성 → 오프라인 동기화
-3. **서버 실행 후 테스트**: MongoDB 초기화 → 서버 시작 → 앱 테스트
+1. Check **client/docs/ROADMAP.md** for next tasks
+2. Review recent updates in this README (Recent Updates & Optimizations section)
+3. For testing: MongoDB 초기화 → 서버 시작 → 앱 테스트
 
 ## Debug & Testing
-- **Database Reset**: 클라이언트 SQLite + MongoDB 컬렉션 drop
+- **Database Reset**: 클라이언트 SQLite (앱 데이터 삭제) + MongoDB 컬렉션 drop
 - **Manual Tests**: `client/src/test/TestDashboard.js`
-- **Next Task**: UUID 기반 CRUD 전체 테스트

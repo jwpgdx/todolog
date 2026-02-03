@@ -8,6 +8,7 @@ import {
 } from '../../db/completionService';
 import { addPendingChange } from '../../db/pendingService';
 import { ensureDatabase } from '../../db/database';
+import { generateId } from '../../utils/idGenerator';
 
 /**
  * Completion 토글 훅 (SQLite 기반 + Server Sync)
@@ -58,7 +59,11 @@ export const useToggleCompletion = () => {
       // 3. 온라인: 서버 요청
       try {
         console.log('🌐 [useToggleCompletion] 서버 요청 시작');
-        const res = await completionAPI.toggleCompletion(todoId, date);
+        
+        // Completion ID 생성 (완료 생성 시에만 필요)
+        const completionId = optimisticState ? `${todoId}_${date || 'null'}` : undefined;
+        
+        const res = await completionAPI.toggleCompletion(todoId, date, completionId);
         console.log('✅ [useToggleCompletion] 서버 요청 성공:', res.data);
 
         // 🔧 FIX: 서버 응답으로 SQLite 동기화
@@ -88,24 +93,34 @@ export const useToggleCompletion = () => {
       }
     },
     onSuccess: (data, variables) => {
+      const successStartTime = performance.now();
       console.log('✅ [useToggleCompletion] onSuccess:', data);
-
-      // 날짜별 Todo 캐시 업데이트
+      
+      // ✅ 날짜별 캐시 업데이트 (TodoScreen용)
       if (variables.date) {
         queryClient.setQueryData(['todos', variables.date], (oldData) => {
           if (!oldData) return oldData;
-          return oldData.map(todo => {
+          const updated = oldData.map(todo => {
             if (todo._id === variables.todoId) {
               return { ...todo, completed: data.completed };
             }
             return todo;
           });
+          console.log('📅 [useToggleCompletion] 날짜별 캐시 업데이트 완료:', {
+            date: variables.date,
+            todoId: variables.todoId,
+            completed: data.completed
+          });
+          return updated;
         });
       }
-
-      // 캘린더/월별 쿼리 무효화
-      queryClient.invalidateQueries({ queryKey: ['calendarSummary'], refetchType: 'none' });
-      queryClient.invalidateQueries({ queryKey: ['monthEvents'], refetchType: 'none' });
+      
+      // ❌ 제거: ['todos', 'all'] 업데이트 불필요
+      // - Completion 변경은 캘린더 이벤트(색상, 제목)와 무관
+      // - 불필요한 캘린더 재계산 방지
+      
+      const successEndTime = performance.now();
+      console.log(`⚡ [useToggleCompletion] onSuccess 완료: ${(successEndTime - successStartTime).toFixed(2)}ms`);
     },
     onError: (error, variables) => {
       console.error('❌ [useToggleCompletion] onError:', error);

@@ -4,6 +4,7 @@ import * as categoryApi from '../../api/categories';
 import {
   getAllCategories,
   upsertCategory,
+  upsertCategories,
   deleteCategory as deleteCategoryFromDB,
 } from '../../db/categoryService';
 import { ensureDatabase } from '../../db/database';
@@ -20,26 +21,30 @@ export const useCategories = () => {
     queryFn: async () => {
       try {
         await ensureDatabase();
-        
+
         const startTime = performance.now();
         const categories = await getAllCategories();
         const endTime = performance.now();
 
         console.log(`⚡ [useCategories] SQLite 조회: ${categories.length}개 (${(endTime - startTime).toFixed(2)}ms)`);
 
-        // 백그라운드 서버 동기화
+        // 백그라운드 서버 동기화 → SQLite 저장
         categoryApi.getCategories()
-          .then(serverCategories => {
+          .then(async (serverCategories) => {
             if (serverCategories.length !== categories.length) {
-              console.log('🔄 [useCategories] 서버 데이터 차이 감지');
+              console.log('🔄 [useCategories] 서버 데이터 차이 감지 → SQLite 동기화');
+              await upsertCategories(serverCategories);
+              queryClient.invalidateQueries({ queryKey: ['categories'] });
             }
           })
-          .catch(() => {});
+          .catch(() => { });
 
         return categories;
       } catch (error) {
         console.log('⚠️ [useCategories] SQLite 실패 - 서버 폴백');
         const serverCategories = await categoryApi.getCategories();
+        // 서버 데이터를 SQLite에 저장
+        await upsertCategories(serverCategories);
         return serverCategories;
       }
     },

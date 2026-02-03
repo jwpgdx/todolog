@@ -21,6 +21,52 @@ import dayjs from 'dayjs';
  * - 시간 자동 조정 (시작시간 변경 시 종료시간 +1시간)
  * - buildPayload()로 isAllDay에 따른 데이터 분기
  */
+
+// ✅ RRULE 파싱 헬퍼 함수들
+const parseFrequencyFromRRule = (recurrence) => {
+    if (!recurrence || recurrence.length === 0) return 'none';
+    const rrule = Array.isArray(recurrence) ? recurrence[0] : recurrence;
+    if (rrule.includes('FREQ=DAILY')) return 'daily';
+    if (rrule.includes('FREQ=WEEKLY')) return 'weekly';
+    if (rrule.includes('FREQ=MONTHLY')) return 'monthly';
+    if (rrule.includes('FREQ=YEARLY')) return 'yearly';
+    return 'none';
+};
+
+const parseWeekdaysFromRRule = (recurrence) => {
+    if (!recurrence || recurrence.length === 0) return [];
+    const rrule = Array.isArray(recurrence) ? recurrence[0] : recurrence;
+    const match = rrule.match(/BYDAY=([^;]+)/);
+    if (!match) return [];
+    
+    const dayMap = { 'SU': 0, 'MO': 1, 'TU': 2, 'WE': 3, 'TH': 4, 'FR': 5, 'SA': 6 };
+    const days = match[1].split(',');
+    return days.map(d => dayMap[d]).filter(d => d !== undefined);
+};
+
+const parseDayOfMonthFromRRule = (recurrence) => {
+    if (!recurrence || recurrence.length === 0) return [1];
+    const rrule = Array.isArray(recurrence) ? recurrence[0] : recurrence;
+    const match = rrule.match(/BYMONTHDAY=([^;]+)/);
+    if (!match) return [1];
+    
+    return match[1].split(',').map(d => parseInt(d));
+};
+
+const parseYearlyDateFromRRule = (recurrence) => {
+    if (!recurrence || recurrence.length === 0) return null;
+    const rrule = Array.isArray(recurrence) ? recurrence[0] : recurrence;
+    const monthMatch = rrule.match(/BYMONTH=(\d+)/);
+    const dayMatch = rrule.match(/BYMONTHDAY=(\d+)/);
+    
+    if (monthMatch && dayMatch) {
+        const month = String(monthMatch[1]).padStart(2, '0');
+        const day = String(dayMatch[1]).padStart(2, '0');
+        return `${month}-${day}`;
+    }
+    return null;
+};
+
 export const useTodoFormLogic = (initialTodo, onClose, visible) => {
     const { currentDate } = useDateStore();
     const { user } = useAuthStore();
@@ -83,7 +129,13 @@ export const useTodoFormLogic = (initialTodo, onClose, visible) => {
                 // 수정 모드: 기존 데이터 로드
                 setFormState(prev => ({
                     ...prev,
-                    ...initialTodo,
+                    title: initialTodo.title || '',
+                    memo: initialTodo.memo || '',
+                    categoryId: initialTodo.categoryId || '',
+                    isAllDay: initialTodo.isAllDay ?? true,
+                    startDate: initialTodo.startDate || currentDate,
+                    endDate: initialTodo.endDate || initialTodo.startDate || currentDate,
+                    timeZone: initialTodo.timeZone || userTimeZone,
                     // startDateTime이 있으면 시간 추출
                     startTime: initialTodo.startDateTime
                         ? dayjs(initialTodo.startDateTime).format('HH:mm')
@@ -91,6 +143,14 @@ export const useTodoFormLogic = (initialTodo, onClose, visible) => {
                     endTime: initialTodo.endDateTime
                         ? dayjs(initialTodo.endDateTime).format('HH:mm')
                         : prev.endTime,
+                    // ✅ 반복 설정 로드
+                    frequency: initialTodo.recurrence ? parseFrequencyFromRRule(initialTodo.recurrence) : 'none',
+                    weekdays: initialTodo.recurrence ? parseWeekdaysFromRRule(initialTodo.recurrence) : [],
+                    dayOfMonth: initialTodo.recurrence ? parseDayOfMonthFromRRule(initialTodo.recurrence) : [1],
+                    yearlyDate: initialTodo.recurrence ? parseYearlyDateFromRRule(initialTodo.recurrence) : null,
+                    recurrenceEndDate: initialTodo.recurrenceEndDate 
+                        ? dayjs(initialTodo.recurrenceEndDate).format('YYYY-MM-DD')
+                        : null,
                 }));
             } else {
                 // 생성 모드: 폼 초기화
@@ -98,7 +158,8 @@ export const useTodoFormLogic = (initialTodo, onClose, visible) => {
                 loadDefaultCategory();
             }
         }
-    }, [visible, initialTodo]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [visible, initialTodo, currentDate, userTimeZone]);
 
     // 기본 카테고리 로드
     const loadDefaultCategory = async () => {
@@ -190,8 +251,8 @@ export const useTodoFormLogic = (initialTodo, onClose, visible) => {
         // 서버 스키마에 맞는 payload 구성
         // 서버는 startTime, endTime을 "HH:MM" 문자열로 받아서 내부에서 startDateTime 생성
         const payload = {
-            title: title.trim(),
-            memo: memo.trim(),
+            title: title?.trim() || '',
+            memo: memo?.trim() || '',
             categoryId,
             isAllDay,
             startDate,  // "YYYY-MM-DD" - 항상 필수
@@ -296,7 +357,7 @@ export const useTodoFormLogic = (initialTodo, onClose, visible) => {
 
         if (initialTodo) {
             updateTodo.mutate(
-                { id: initialTodo._id, ...payload },
+                { id: initialTodo._id, data: payload },
                 {
                     onSuccess: () => {
                         Toast.show({ type: 'success', text1: '수정되었습니다' });
@@ -308,9 +369,15 @@ export const useTodoFormLogic = (initialTodo, onClose, visible) => {
             createTodo.mutate(
                 payload,
                 {
-                    onSuccess: () => {
-                        Toast.show({ type: 'success', text1: '추가되었습니다' });
-                        onClose?.();
+                    // onSettled: 성공/실패 관계없이 호출 (오프라인에서도 폼 닫힘)
+                    onSettled: (data, error) => {
+                        // data가 있으면 저장 성공 (온라인 또는 오프라인)
+                        if (data) {
+                            Toast.show({ type: 'success', text1: '추가되었습니다' });
+                            onClose?.();
+                        } else if (error) {
+                            Toast.show({ type: 'error', text1: '저장에 실패했습니다' });
+                        }
                     }
                 }
             );

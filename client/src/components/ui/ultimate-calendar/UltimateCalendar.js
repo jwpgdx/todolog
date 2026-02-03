@@ -76,7 +76,7 @@ export default function UltimateCalendar() {
 
     // ✅ 동적 이벤트 계산 Hook
     // range: 12 = ±12주 = 총 25주 (6개월, 부드러운 스크롤 경험)
-    const eventsByDate = useCalendarDynamicEvents({
+    const { eventsByDate, cacheVersion } = useCalendarDynamicEvents({
         weeks,
         visibleIndex: visibleWeekIndex,
         range: 12,
@@ -608,6 +608,7 @@ export default function UltimateCalendar() {
                                 onVisibleWeeksChange={handleVisibleWeeksChange}
                                 initialIndex={visibleWeekIndex}
                                 eventsByDate={eventsByDate}
+                                cacheVersion={cacheVersion}
                                 onEndReached={handleEndReached}
                                 onStartReached={handleStartReached}
                             />
@@ -623,6 +624,7 @@ export default function UltimateCalendar() {
                             initialIndex={visibleWeekIndex}
                             onWeekChange={handleWeekChange}
                             eventsByDate={eventsByDate}
+                            cacheVersion={cacheVersion}
                             onEndReached={handleEndReached}
                             onStartReached={handleStartReached}
                         />

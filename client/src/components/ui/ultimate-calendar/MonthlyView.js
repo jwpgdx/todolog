@@ -10,6 +10,7 @@ const MonthlyView = forwardRef(({
     onVisibleWeeksChange, 
     initialIndex, 
     eventsByDate = {},
+    cacheVersion = 0,
     onEndReached,
     onStartReached 
 }, ref) => {
@@ -44,8 +45,9 @@ const MonthlyView = forwardRef(({
             week={item}
             onPressDate={onDatePress}
             eventsByDate={eventsByDate}
+            cacheVersion={cacheVersion}
         />
-    ), [onDatePress, eventsByDate]);
+    ), [onDatePress, eventsByDate, cacheVersion]);
 
     const onScroll = useCallback((e) => {
         scrollOffsetRef.current = e.nativeEvent.contentOffset.y;
@@ -115,6 +117,7 @@ export default React.memo(MonthlyView, (prev, next) => {
         prev.onDatePress === next.onDatePress &&
         prev.initialIndex === next.initialIndex &&
         prev.eventsByDate === next.eventsByDate &&
+        prev.cacheVersion === next.cacheVersion &&
         prev.onEndReached === next.onEndReached &&
         prev.onStartReached === next.onStartReached;
 });

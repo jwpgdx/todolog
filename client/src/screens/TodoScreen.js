@@ -3,6 +3,8 @@ import { View, StyleSheet, SafeAreaView } from "react-native";
 import { useDateStore } from '../store/dateStore';
 import { useTodos } from '../hooks/queries/useTodos';
 import { useToggleCompletion } from '../hooks/queries/useToggleCompletion';
+import { useDeleteTodo } from '../hooks/queries/useDeleteTodo';
+import { useTodoFormStore } from '../store/todoFormStore';
 
 import DailyTodoList from '../features/todo/list/DailyTodoList';
 
@@ -17,11 +19,23 @@ export default function TodoScreen({ navigation }) {
   const { currentDate } = useDateStore();
   const { data: todos, isLoading } = useTodos(currentDate);
   const { mutate: toggleCompletion } = useToggleCompletion();
+  const { mutate: deleteTodo } = useDeleteTodo();
+  const { openDetail } = useTodoFormStore();
 
   // 2. 핸들러
   const handleToggleComplete = useCallback((todoId) => {
     toggleCompletion({ todoId, date: currentDate });
   }, [currentDate, toggleCompletion]);
+
+  const handleEdit = useCallback((todo) => {
+    console.log('✏️ [TodoScreen] 수정 버튼 클릭:', todo._id);
+    openDetail(todo);
+  }, [openDetail]);
+
+  const handleDelete = useCallback((todo) => {
+    console.log('🗑️ [TodoScreen] 삭제 버튼 클릭:', todo._id);
+    deleteTodo(todo);
+  }, [deleteTodo]);
 
   return (
     <SafeAreaView style={styles.container}>
@@ -35,6 +49,8 @@ export default function TodoScreen({ navigation }) {
         todos={todos}
         isLoading={isLoading}
         onToggleComplete={handleToggleComplete}
+        onEdit={handleEdit}
+        onDelete={handleDelete}
       />
     </SafeAreaView>
   );

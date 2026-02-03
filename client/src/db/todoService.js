@@ -20,9 +20,9 @@ import { getDatabase } from './database';
  * @returns {Promise<Array>}
  */
 export async function getTodosByDate(date) {
-    const db = getDatabase();
+  const db = getDatabase();
 
-    const result = await db.getAllAsync(`
+  const result = await db.getAllAsync(`
     SELECT 
       t.*,
       c.name as category_name, 
@@ -33,13 +33,13 @@ export async function getTodosByDate(date) {
     WHERE (
       t.date = ?
       OR (t.start_date <= ? AND t.end_date >= ?)
-      OR t.recurrence IS NOT NULL
+      OR (t.recurrence IS NOT NULL AND t.start_date <= ?)
     )
     AND t.deleted_at IS NULL
     ORDER BY t.is_all_day DESC, t.start_time ASC, t.created_at ASC
-  `, [date, date, date]);
+  `, [date, date, date, date]);
 
-    return result.map(deserializeTodo);
+  return result.map(deserializeTodo);
 }
 
 /**
@@ -50,12 +50,12 @@ export async function getTodosByDate(date) {
  * @returns {Promise<Array>}
  */
 export async function getTodosByMonth(year, month) {
-    const db = getDatabase();
+  const db = getDatabase();
 
-    const startDate = `${year}-${String(month).padStart(2, '0')}-01`;
-    const endDate = `${year}-${String(month).padStart(2, '0')}-31`;
+  const startDate = `${year}-${String(month).padStart(2, '0')}-01`;
+  const endDate = `${year}-${String(month).padStart(2, '0')}-31`;
 
-    const result = await db.getAllAsync(`
+  const result = await db.getAllAsync(`
     SELECT 
       t.*,
       c.name as category_name, 
@@ -66,13 +66,13 @@ export async function getTodosByMonth(year, month) {
     WHERE (
       (t.date >= ? AND t.date <= ?)
       OR (t.start_date <= ? AND t.end_date >= ?)
-      OR t.recurrence IS NOT NULL
+      OR (t.recurrence IS NOT NULL AND t.start_date <= ?)
     )
     AND t.deleted_at IS NULL
     ORDER BY t.date ASC, t.is_all_day DESC, t.start_time ASC
-  `, [startDate, endDate, endDate, startDate]);
+  `, [startDate, endDate, endDate, startDate, endDate]);
 
-    return result.map(deserializeTodo);
+  return result.map(deserializeTodo);
 }
 
 /**
@@ -82,9 +82,9 @@ export async function getTodosByMonth(year, month) {
  * @returns {Promise<Object|null>}
  */
 export async function getTodoById(id) {
-    const db = getDatabase();
+  const db = getDatabase();
 
-    const result = await db.getFirstAsync(`
+  const result = await db.getFirstAsync(`
     SELECT 
       t.*,
       c.name as category_name, 
@@ -95,7 +95,7 @@ export async function getTodoById(id) {
     WHERE t._id = ?
   `, [id]);
 
-    return result ? deserializeTodo(result) : null;
+  return result ? deserializeTodo(result) : null;
 }
 
 /**
@@ -104,9 +104,9 @@ export async function getTodoById(id) {
  * @returns {Promise<Array>}
  */
 export async function getAllTodos() {
-    const db = getDatabase();
+  const db = getDatabase();
 
-    const result = await db.getAllAsync(`
+  const result = await db.getAllAsync(`
     SELECT t.*, c.name as category_name, c.color as category_color
     FROM todos t
     LEFT JOIN categories c ON t.category_id = c._id
@@ -114,7 +114,7 @@ export async function getAllTodos() {
     ORDER BY t.date ASC, t.created_at ASC
   `);
 
-    return result.map(deserializeTodo);
+  return result.map(deserializeTodo);
 }
 
 /**
@@ -124,9 +124,9 @@ export async function getAllTodos() {
  * @returns {Promise<Array>}
  */
 export async function getTodosByCategory(categoryId) {
-    const db = getDatabase();
+  const db = getDatabase();
 
-    const result = await db.getAllAsync(`
+  const result = await db.getAllAsync(`
     SELECT 
       t.*,
       c.name as category_name, 
@@ -139,7 +139,7 @@ export async function getTodosByCategory(categoryId) {
     ORDER BY t.date ASC, t.created_at ASC
   `, [categoryId]);
 
-    return result.map(deserializeTodo);
+  return result.map(deserializeTodo);
 }
 
 // ============================================================
@@ -153,9 +153,9 @@ export async function getTodosByCategory(categoryId) {
  * @returns {Promise<void>}
  */
 export async function upsertTodo(todo) {
-    const db = getDatabase();
+  const db = getDatabase();
 
-    await db.runAsync(`
+  await db.runAsync(`
     INSERT OR REPLACE INTO todos 
     (_id, title, date, start_date, end_date, recurrence, 
      category_id, is_all_day, start_time, end_time, color, memo,
@@ -171,19 +171,19 @@ export async function upsertTodo(todo) {
  * @returns {Promise<void>}
  */
 export async function upsertTodos(todos) {
-    const db = getDatabase();
+  const db = getDatabase();
 
-    await db.withTransactionAsync(async () => {
-        for (const todo of todos) {
-            await db.runAsync(`
+  await db.withTransactionAsync(async () => {
+    for (const todo of todos) {
+      await db.runAsync(`
         INSERT OR REPLACE INTO todos 
         (_id, title, date, start_date, end_date, recurrence, 
          category_id, is_all_day, start_time, end_time, color, memo,
          created_at, updated_at, deleted_at)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `, serializeTodoForInsert(todo));
-        }
-    });
+    }
+  });
 }
 
 /**
@@ -193,12 +193,12 @@ export async function upsertTodos(todos) {
  * @returns {Promise<void>}
  */
 export async function deleteTodo(id) {
-    const db = getDatabase();
+  const db = getDatabase();
 
-    await db.runAsync(
-        'UPDATE todos SET deleted_at = ?, updated_at = ? WHERE _id = ?',
-        [new Date().toISOString(), new Date().toISOString(), id]
-    );
+  await db.runAsync(
+    'UPDATE todos SET deleted_at = ?, updated_at = ? WHERE _id = ?',
+    [new Date().toISOString(), new Date().toISOString(), id]
+  );
 }
 
 /**
@@ -208,17 +208,17 @@ export async function deleteTodo(id) {
  * @returns {Promise<void>}
  */
 export async function deleteTodos(ids) {
-    const db = getDatabase();
-    const now = new Date().toISOString();
+  const db = getDatabase();
+  const now = new Date().toISOString();
 
-    await db.withTransactionAsync(async () => {
-        for (const id of ids) {
-            await db.runAsync(
-                'UPDATE todos SET deleted_at = ?, updated_at = ? WHERE _id = ?',
-                [now, now, id]
-            );
-        }
-    });
+  await db.withTransactionAsync(async () => {
+    for (const id of ids) {
+      await db.runAsync(
+        'UPDATE todos SET deleted_at = ?, updated_at = ? WHERE _id = ?',
+        [now, now, id]
+      );
+    }
+  });
 }
 
 /**
@@ -228,8 +228,8 @@ export async function deleteTodos(ids) {
  * @returns {Promise<void>}
  */
 export async function hardDeleteTodo(id) {
-    const db = getDatabase();
-    await db.runAsync('DELETE FROM todos WHERE _id = ?', [id]);
+  const db = getDatabase();
+  await db.runAsync('DELETE FROM todos WHERE _id = ?', [id]);
 }
 
 // ============================================================
@@ -240,54 +240,54 @@ export async function hardDeleteTodo(id) {
  * DB row → Todo 객체
  */
 function deserializeTodo(row) {
-    return {
-        _id: row._id,
-        title: row.title,
-        date: row.date,
-        startDate: row.start_date,
-        endDate: row.end_date,
-        recurrence: row.recurrence ? JSON.parse(row.recurrence) : null,
-        categoryId: row.category_id,
-        isAllDay: row.is_all_day === 1,
-        startTime: row.start_time,
-        endTime: row.end_time,
-        color: row.color,
-        memo: row.memo,
-        createdAt: row.created_at,
-        updatedAt: row.updated_at,
-        deletedAt: row.deleted_at,
-        // JOIN된 카테고리 정보
-        category: row.category_name ? {
-            _id: row.category_id,
-            name: row.category_name,
-            color: row.category_color,
-            icon: row.category_icon,
-        } : null,
-    };
+  return {
+    _id: row._id,
+    title: row.title,
+    date: row.date,
+    startDate: row.start_date,
+    endDate: row.end_date,
+    recurrence: row.recurrence ? JSON.parse(row.recurrence) : null,
+    categoryId: row.category_id,
+    isAllDay: row.is_all_day === 1,
+    startTime: row.start_time,
+    endTime: row.end_time,
+    color: row.color,
+    memo: row.memo,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    deletedAt: row.deleted_at,
+    // JOIN된 카테고리 정보
+    category: row.category_name ? {
+      _id: row.category_id,
+      name: row.category_name,
+      color: row.category_color,
+      icon: row.category_icon,
+    } : null,
+  };
 }
 
 /**
  * Todo 객체 → DB params
  */
 function serializeTodoForInsert(todo) {
-    return [
-        todo._id,
-        todo.title,
-        todo.date || null,
-        todo.startDate || null,
-        todo.endDate || null,
-        todo.recurrence ? JSON.stringify(todo.recurrence) : null,
-        // categoryId가 객체일 수 있음 (이전 버그 대응)
-        typeof todo.categoryId === 'object' ? todo.categoryId?._id : todo.categoryId,
-        todo.isAllDay ? 1 : 0,
-        todo.startTime || null,
-        todo.endTime || null,
-        todo.color || null,
-        todo.memo || null,
-        todo.createdAt || new Date().toISOString(),
-        todo.updatedAt || new Date().toISOString(),
-        todo.deletedAt || null,
-    ];
+  return [
+    todo._id,
+    todo.title,
+    todo.date || null,
+    todo.startDate || null,
+    todo.endDate || null,
+    todo.recurrence ? JSON.stringify(todo.recurrence) : null,
+    // categoryId가 객체일 수 있음 (이전 버그 대응)
+    typeof todo.categoryId === 'object' ? todo.categoryId?._id : todo.categoryId,
+    todo.isAllDay ? 1 : 0,
+    todo.startTime || null,
+    todo.endTime || null,
+    todo.color || null,
+    todo.memo || null,
+    todo.createdAt || new Date().toISOString(),
+    todo.updatedAt || new Date().toISOString(),
+    todo.deletedAt || null,
+  ];
 }
 
 // ============================================================
@@ -298,26 +298,26 @@ function serializeTodoForInsert(todo) {
  * Todo 개수 조회
  */
 export async function getTodoCount() {
-    const db = getDatabase();
-    const result = await db.getFirstAsync(
-        'SELECT COUNT(*) as count FROM todos WHERE deleted_at IS NULL'
-    );
-    return result?.count || 0;
+  const db = getDatabase();
+  const result = await db.getFirstAsync(
+    'SELECT COUNT(*) as count FROM todos WHERE deleted_at IS NULL'
+  );
+  return result?.count || 0;
 }
 
 /**
  * 날짜별 Todo 개수 조회
  */
 export async function getTodoCountByDate(date) {
-    const db = getDatabase();
-    const result = await db.getFirstAsync(`
+  const db = getDatabase();
+  const result = await db.getFirstAsync(`
     SELECT COUNT(*) as count FROM todos 
     WHERE (
       date = ?
       OR (start_date <= ? AND end_date >= ?)
-      OR recurrence IS NOT NULL
+      OR (recurrence IS NOT NULL AND start_date <= ?)
     )
     AND deleted_at IS NULL
-  `, [date, date, date]);
-    return result?.count || 0;
+  `, [date, date, date, date]);
+  return result?.count || 0;
 }

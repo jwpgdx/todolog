@@ -16,7 +16,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 let db = null;
 
 // 현재 마이그레이션 버전
-const MIGRATION_VERSION = 1;
+const MIGRATION_VERSION = 2;
 
 // ============================================================
 // 스키마 정의
@@ -138,8 +138,21 @@ export async function initDatabase() {
             console.log(`📋 [DB] Current migration version: ${version || 'none'}`);
 
             if (!version || parseInt(version) < MIGRATION_VERSION) {
-                console.log('🔄 [DB] Migration needed...');
-                await migrateFromAsyncStorage();
+                console.log(`🔄 [DB] Migration needed: v${version || 0} → v${MIGRATION_VERSION}`);
+
+                // 버전별 마이그레이션
+                const currentVersion = parseInt(version || '0');
+
+                // v1: AsyncStorage → SQLite 마이그레이션
+                if (currentVersion < 1) {
+                    await migrateFromAsyncStorage();
+                }
+
+                // v2: pending_changes에 entity_id 컬럼 추가 (UUID 마이그레이션)
+                if (currentVersion < 2) {
+                    await migrateV2AddEntityId();
+                }
+
                 await setMetadata('migration_version', String(MIGRATION_VERSION));
             } else {
                 console.log('✅ [DB] No migration needed');
@@ -378,6 +391,41 @@ export async function migrateFromAsyncStorage() {
 
     } catch (error) {
         console.error('❌ [Migration] Migration failed:', error);
+        throw error;
+    }
+}
+
+/**
+ * v2 마이그레이션: pending_changes에 entity_id 컬럼 추가
+ * (UUID 마이그레이션 지원)
+ */
+async function migrateV2AddEntityId() {
+    console.log('🔄 [Migration v2] Adding entity_id column to pending_changes...');
+
+    try {
+        // 컬럼 존재 여부 확인
+        const tableInfo = await db.getAllAsync("PRAGMA table_info(pending_changes)");
+        const hasEntityId = tableInfo.some(col => col.name === 'entity_id');
+
+        if (hasEntityId) {
+            console.log('✅ [Migration v2] entity_id column already exists');
+            return;
+        }
+
+        // 컬럼 추가
+        await db.runAsync('ALTER TABLE pending_changes ADD COLUMN entity_id TEXT');
+        console.log('✅ [Migration v2] Added entity_id column');
+
+        // 기존 todo_id 데이터를 entity_id로 복사 (레거시 데이터 처리)
+        const existingCount = await db.getFirstAsync('SELECT COUNT(*) as count FROM pending_changes WHERE todo_id IS NOT NULL');
+        if (existingCount?.count > 0) {
+            await db.runAsync('UPDATE pending_changes SET entity_id = todo_id WHERE entity_id IS NULL AND todo_id IS NOT NULL');
+            console.log(`✅ [Migration v2] Copied ${existingCount.count} todo_id values to entity_id`);
+        }
+
+        console.log('✅ [Migration v2] Completed successfully');
+    } catch (error) {
+        console.error('❌ [Migration v2] Failed:', error);
         throw error;
     }
 }

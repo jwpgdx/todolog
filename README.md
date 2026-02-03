@@ -6,6 +6,65 @@
 
 ---
 
+---
+
+## 📋 Recent Updates & Optimizations
+
+### Cache Invalidation Optimization (Feb 3, 2026)
+
+**Problem**: Unnecessary calendar re-renders on Todo CRUD operations
+- Todo 생성/수정/삭제 시 캘린더가 3번 재계산됨:
+  1. `onMutate`: Optimistic Update (필요함)
+  2. `onSuccess`: 서버 데이터 교체 후 `invalidateQueries(['todos', 'all'])` (불필요)
+  3. `refetch`: SQLite 재조회 (불필요)
+
+**Root Cause**:
+- `onSuccess`에서 `queryClient.invalidateQueries(['todos', 'all'])` 호출
+- `invalidateAffectedMonths()`가 사용하지 않는 `['events']` 캐시 무효화
+- Completion 토글 시에도 `['todos', 'all']` 업데이트로 캘린더 재계산
+
+**Solution Implemented**:
+
+1. **Completion Toggle** (`useToggleCompletion.js`):
+   - Removed `['todos', 'all']` cache update from `onSuccess`
+   - Only updates date-specific cache `['todos', date]`
+   - Completion state doesn't affect calendar colors/titles
+
+2. **Todo CRUD** (`useCreateTodo.js`, `useUpdateTodo.js`, `useDeleteTodo.js`):
+   - Removed `queryClient.invalidateQueries(['todos', 'all'])` from `onSuccess`
+   - Removed `invalidateAffectedMonths()` calls (unused `['events']` cache)
+   - Calendar updates only from `onMutate` Optimistic Update
+
+3. **Calendar Event Display** (`DayCell.js`, `ListDayCell.js`):
+   - Fixed `React.memo` comparison: `events?.length` → `events` (reference)
+   - Allows re-render when event colors/titles change
+
+4. **Calendar Display Mode** (`useDayCell.js`):
+   - Added `mode` parameter: `'dot'` | `'list'`
+   - UltimateCalendar (dot mode): Category deduplication (max 5 dots)
+   - CalendarScreen (list mode): All events shown (max 3 lines)
+
+5. **Recurring Todo Edit** (`useTodoFormLogic.js`):
+   - Added RRULE parsing on form load
+   - Prevents recurring todos from converting to single-day on title-only edits
+
+**Performance Results**:
+- Todo 생성: 3번 재계산 → 1번 (67% 감소)
+- Completion 토글: 캘린더 재계산 제거 (100% 감소)
+- Category 수정: 즉시 반영 (React.memo 최적화)
+
+**Files Modified**:
+- `client/src/hooks/queries/useToggleCompletion.js`
+- `client/src/hooks/queries/useCreateTodo.js`
+- `client/src/hooks/queries/useUpdateTodo.js`
+- `client/src/hooks/queries/useDeleteTodo.js`
+- `client/src/components/ui/ultimate-calendar/day-cells/DayCell.js`
+- `client/src/components/ui/ultimate-calendar/day-cells/ListDayCell.js`
+- `client/src/components/ui/ultimate-calendar/day-cells/useDayCell.js`
+- `client/src/features/todo/form/useTodoFormLogic.js`
+
+---
+
 ## 🏗 Architecture Overview
 
 The system is split into two distinct parts that communicate via REST API.
@@ -33,6 +92,52 @@ A robust Node.js backend using **Express.js** and **MongoDB**.
 - **Authentication**: Custom JWT implementation tied to Google OAuth 2.0.
 - **Worker/Services**:
   - `GoogleCalendarService`: The heart of the sync logic. Handles token refreshing and API quotas.
+
+---
+
+## 🔑 Key Architecture Patterns
+
+1. **ID Generation**: UUID v4 (클라이언트에서 생성)
+   - 클라이언트: `expo-crypto.randomUUID()`
+   - 서버: `crypto.randomUUID()` (fallback)
+   - Completion ID: `todoId_date` 형식
+
+2. **Data Storage**: SQLite as Source of Truth
+   - Todos, Completions, Categories, Pending Changes all in SQLite
+   - Settings remain in AsyncStorage (intentional)
+
+3. **Pending Change Types**: 
+   - Category: `createCategory`, `updateCategory`, `deleteCategory`
+   - Todo: `createTodo`, `updateTodo`, `deleteTodo` (legacy: `create`, `update`, `delete`)
+   - Completion: `createCompletion`, `deleteCompletion`
+
+4. **Sync Order**: Category → Todo → Completion (의존성 순서)
+
+5. **Cache Strategy**: Single-source cache (`['todos', 'all']`) with on-demand filtering
+
+6. **Cache Invalidation**: Optimistic Updates only - no redundant invalidation on success
+
+---
+
+## 📚 Key Files Reference
+
+**Client - Core**:
+- `client/src/utils/idGenerator.js` - UUID 생성 유틸리티
+- `client/src/db/*.js` - SQLite services (todo, completion, category, pending)
+- `client/src/hooks/queries/*.js` - React Query hooks with offline support
+
+**Server - Core**:
+- `server/src/models/*.js` - MongoDB models (String _id)
+- `server/src/controllers/*.js` - REST API endpoints
+- `server/src/services/googleCalendar.js` - Google Calendar sync logic
+
+**Documentation**:
+- `README.md` - Architecture overview, performance (this file)
+- `UUID_MIGRATION_PLAN.md` - UUID 마이그레이션 계획서 (완료)
+- `CACHE_INVALIDATION_ANALYSIS.md` - 캐시 무효화 최적화 분석
+- `client/docs/ROADMAP.md` - Next tasks and priorities
+- `client/docs/OPTIMISTIC_UPDATE_COMPLETED.md` - Optimistic Update 구현
+- `.kiro/steering/requirements.md` - Development guidelines
 
 ---
 

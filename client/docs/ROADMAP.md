@@ -53,15 +53,15 @@
 **목적**: UUID 기반 시스템 전체 검증
 
 **사전 작업**:
-- [ ] MongoDB 컬렉션 drop (데이터 초기화)
-- [ ] 클라이언트 SQLite 리셋
-- [ ] 서버 시작 확인
+- [x] MongoDB 컬렉션 drop (데이터 초기화)
+- [x] 클라이언트 SQLite 리셋
+- [x] 서버 시작 확인
 
 **테스트 항목**:
-- [ ] 회원가입 → User UUID 생성 확인
-- [ ] Inbox 카테고리 → Category UUID 생성 확인
-- [ ] Todo 생성 → 클라이언트 UUID 서버 수용 확인
-- [ ] 오프라인 Todo 생성 → 동기화 확인
+- [x] 회원가입 → User UUID 생성 확인
+- [x] Inbox 카테고리 → Category UUID 생성 확인
+- [x] Todo 생성 → 클라이언트 UUID 서버 수용 확인
+- [x] 오프라인 Todo 생성 → 동기화 확인
 - [ ] 오프라인 Category 생성 → 동기화 확인
 
 **예상 시간**: 1시간

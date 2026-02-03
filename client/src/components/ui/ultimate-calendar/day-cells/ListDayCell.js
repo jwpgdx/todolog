@@ -24,8 +24,8 @@ const ListDayCell = React.memo(({
 }) => {
     const { text, isToday, dateString } = day;
 
-    // 공통 Hook 사용
-    const { isSelected, visibleEvents, hasMore, remainingCount } = useDayCell(day, events);
+    // 공통 Hook 사용 (list 모드: 모든 이벤트 표시)
+    const { isSelected, visibleEvents, hasMore, remainingCount } = useDayCell(day, events, 3, 'list');
 
     const handlePress = useCallback(() => {
         onPress(dateString);
@@ -87,9 +87,10 @@ const ListDayCell = React.memo(({
         </Pressable>
     );
 }, (prev, next) => {
+    // ✅ events 참조 비교 - 카테고리 색상/Todo 제목 변경 감지
     return prev.day.dateString === next.day.dateString &&
         prev.onPress === next.onPress &&
-        prev.events?.length === next.events?.length &&
+        prev.events === next.events &&
         prev.isCurrentMonth === next.isCurrentMonth;
 });
 

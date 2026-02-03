@@ -144,8 +144,17 @@ export const useSyncTodos = () => {
                         console.log('✅ [useSyncTodos] Todo 수정 완료:', change.entityId);
                         break;
                     case 'deleteTodo':
-                        await todoAPI.deleteTodo(change.entityId);
-                        console.log('✅ [useSyncTodos] Todo 삭제 완료:', change.entityId);
+                        try {
+                            await todoAPI.deleteTodo(change.entityId);
+                            console.log('✅ [useSyncTodos] Todo 삭제 완료:', change.entityId);
+                        } catch (err) {
+                            // 404는 이미 삭제된 것으로 간주 (성공 처리)
+                            if (err.response?.status === 404) {
+                                console.log('✅ [useSyncTodos] Todo 이미 삭제됨 (404):', change.entityId);
+                            } else {
+                                throw err; // 다른 에러는 재발생
+                            }
+                        }
                         break;
 
                     // === Todo (레거시 타입 호환) ===
@@ -159,8 +168,17 @@ export const useSyncTodos = () => {
                         console.log('✅ [useSyncTodos] 레거시 Todo 수정 완료:', change.entityId || change.todoId);
                         break;
                     case 'delete':
-                        await todoAPI.deleteTodo(change.entityId || change.todoId);
-                        console.log('✅ [useSyncTodos] 레거시 Todo 삭제 완료:', change.entityId || change.todoId);
+                        try {
+                            await todoAPI.deleteTodo(change.entityId || change.todoId);
+                            console.log('✅ [useSyncTodos] 레거시 Todo 삭제 완료:', change.entityId || change.todoId);
+                        } catch (err) {
+                            // 404는 이미 삭제된 것으로 간주 (성공 처리)
+                            if (err.response?.status === 404) {
+                                console.log('✅ [useSyncTodos] 레거시 Todo 이미 삭제됨 (404):', change.entityId || change.todoId);
+                            } else {
+                                throw err; // 다른 에러는 재발생
+                            }
+                        }
                         break;
 
                     // === Completion ===

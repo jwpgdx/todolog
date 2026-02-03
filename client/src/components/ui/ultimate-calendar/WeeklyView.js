@@ -11,6 +11,7 @@ const WeeklyView = forwardRef(({
     initialIndex, 
     onWeekChange, 
     eventsByDate = {},
+    cacheVersion = 0,
     onEndReached,
     onStartReached 
 }, ref) => {
@@ -64,9 +65,10 @@ const WeeklyView = forwardRef(({
                 week={item}
                 onPressDate={onDatePress}
                 eventsByDate={eventsByDate}
+                cacheVersion={cacheVersion}
             />
         </View>
-    ), [onDatePress, eventsByDate]);
+    ), [onDatePress, eventsByDate, cacheVersion]);
 
     const onMomentumScrollEnd = useCallback((e) => {
         // 오프셋을 기준으로 현재 인덱스 계산

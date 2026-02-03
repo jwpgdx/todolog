@@ -41,12 +41,14 @@ export function useCalendarDynamicEvents({
     if (todos || categories) {
       eventsCacheRef.current = {};
       setCacheVersion(prev => prev + 1);
-      // console.log('🔄 [useCalendarDynamicEvents] 캐시 무효화 (todos 또는 categories 변경)');
+      console.log('🔄 [useCalendarDynamicEvents] 캐시 무효화 (todos 또는 categories 변경)');
     }
   }, [todos, categories]);
   
   // 4. 동적 이벤트 계산
   const eventsByDate = useMemo(() => {
+    console.log(`🎯 [useCalendarDynamicEvents] useMemo 실행 (cacheVersion: ${cacheVersion})`);
+    
     // ✋ [Critical] 데이터 완전 로딩 대기
     // categories가 없거나 빈 배열이면 렌더링 보류 → 회색 dot 방지
     if (!todos || !categories || categories.length === 0 || !dataSource || dataSource.length === 0) {
@@ -224,11 +226,12 @@ export function useCalendarDynamicEvents({
     const eventCount = Object.keys(eventsMap).length;
     const endTime = performance.now();
     
-    // console.log(`📊 [캐시] 히트: ${cacheHits}개, 미스: ${cacheMisses}개, 총 캐시: ${Object.keys(eventsCacheRef.current).length}개`);
-    // console.log(`✅ [이벤트] ${eventCount}개 날짜 계산 완료 (${(endTime - startTime).toFixed(2)}ms)`);
+    console.log(`📊 [캐시] 히트: ${cacheHits}개, 미스: ${cacheMisses}개, 총 캐시: ${Object.keys(eventsCacheRef.current).length}개`);
+    console.log(`✅ [이벤트] ${eventCount}개 날짜 계산 완료 (${(endTime - startTime).toFixed(2)}ms)`);
+    console.log(`🔄 [eventsMap 참조] ${Object.keys(eventsMap).slice(0, 3).join(', ')}...`);
     
     return eventsMap;
-  }, [todos, categories, dataSource, visibleIndex, range, cacheType, cacheVersion]);
+  }, [dataSource, visibleIndex, range, cacheType, cacheVersion]); // todos, categories 제거 - cacheVersion으로 재계산 트리거
   
-  return eventsByDate;
+  return { eventsByDate, cacheVersion };
 }

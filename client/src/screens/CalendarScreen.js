@@ -150,7 +150,7 @@ export default function CalendarScreen() {
     }, [isLoadingMore, isLoadingPast, startDayOfWeek, months.length, visibleRange, currentViewIndex]);
 
     // ✅ 동적 이벤트 계산 (useCalendarDynamicEvents Hook 사용)
-    const eventsByDate = useCalendarDynamicEvents({
+    const { eventsByDate, cacheVersion } = useCalendarDynamicEvents({
         months,
         visibleIndex: currentViewIndex,
         range: 3,
@@ -187,12 +187,13 @@ export default function CalendarScreen() {
             <MonthSection
                 monthData={item}
                 eventsByDate={formattedEvents}
+                cacheVersion={cacheVersion}
                 onDatePress={handleDatePress}
                 startDayOfWeek={startDayOfWeek}
                 showWeekDays={false}
             />
         );
-    }, [eventsByDate, handleDatePress, startDayOfWeek]);
+    }, [eventsByDate, cacheVersion, handleDatePress, startDayOfWeek]);
 
     // 5. 아이템 높이 계산 (FlashList 최적화)
     const getItemLayout = useCallback((data, index) => {

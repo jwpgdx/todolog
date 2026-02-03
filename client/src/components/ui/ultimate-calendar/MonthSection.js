@@ -22,6 +22,7 @@ import { SCREEN_WIDTH, THEME } from './constants';
 const MonthSection = ({
     monthData,
     eventsByDate = {},
+    cacheVersion = 0,
     onDatePress,
     showWeekDays = true,
     startDayOfWeek = 'sunday'
@@ -129,8 +130,16 @@ const styles = StyleSheet.create({
 });
 
 export default React.memo(MonthSection, (prev, next) => {
-    return prev.monthData.monthKey === next.monthData.monthKey &&
+    const isEqual = prev.monthData.monthKey === next.monthData.monthKey &&
         prev.eventsByDate === next.eventsByDate &&
+        prev.cacheVersion === next.cacheVersion &&
         prev.onDatePress === next.onDatePress &&
         prev.startDayOfWeek === next.startDayOfWeek;
+    
+    // ✅ cacheVersion 변경 시 로그
+    if (!isEqual && prev.cacheVersion !== next.cacheVersion) {
+        console.log(`🔄 [MonthSection] cacheVersion 변경: ${prev.cacheVersion} → ${next.cacheVersion} (리렌더링)`);
+    }
+    
+    return isEqual;
 });

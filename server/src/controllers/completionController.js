@@ -1,4 +1,5 @@
 const Completion = require('../models/Completion');
+const { generateId } = require('../utils/idGenerator');
 
 // 완료 토글 (생성/삭제를 한 번에 처리) - Soft Delete 방식
 exports.toggleCompletion = async (req, res) => {
@@ -45,8 +46,10 @@ exports.toggleCompletion = async (req, res) => {
         console.log('✅ [toggleCompletion] 삭제된 기록 복구:', deletedCompletion._id);
         res.json({ completed: true, message: '완료 처리됨 (복구)' });
       } else {
-        // 새로 생성
+        // 새로 생성 - 클라이언트가 _id를 보냈으면 사용, 없으면 서버에서 생성
+        const completionId = req.body._id || generateId();
         const completion = new Completion({
+          _id: completionId,
           todoId,
           userId,
           date: date || null,
@@ -54,7 +57,7 @@ exports.toggleCompletion = async (req, res) => {
         await completion.save();
         
         console.log('✅ [toggleCompletion] 새로 생성:', completion._id);
-        res.json({ completed: true, message: '완료 처리됨' });
+        res.json({ completed: true, message: '완료 처리됨', completion });
       }
     }
   } catch (error) {
@@ -86,7 +89,10 @@ exports.createCompletion = async (req, res) => {
       completionDate = date; // 일반 할일은 특정 날짜로 저장
     }
 
+    // 클라이언트가 _id를 보냈으면 사용, 없으면 서버에서 생성
+    const completionId = req.body._id || generateId();
     const completion = new Completion({
+      _id: completionId,
       todoId,
       userId,
       date: completionDate,
@@ -272,8 +278,10 @@ exports.createRange = async (req, res) => {
       });
     }
 
-    // Range 생성
+    // Range 생성 - 클라이언트가 _id를 보냈으면 사용, 없으면 서버에서 생성
+    const completionId = req.body._id || generateId();
     const completion = new Completion({
+      _id: completionId,
       todoId,
       userId,
       isRange: true,

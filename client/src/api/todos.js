@@ -6,6 +6,7 @@ export const todoAPI = {
   getMonthEvents: (year, month) => api.get(`/todos/month/${year}/${month}`),
   getDeltaSync: (lastSyncTime) => api.get(`/todos/delta-sync?lastSyncTime=${encodeURIComponent(lastSyncTime)}`),
   createTodo: (data) => api.post('/todos', {
+    _id: data._id,  // 클라이언트 UUID
     title: data.title,
     memo: data.memo,
     categoryId: data.categoryId,
@@ -27,7 +28,8 @@ export const todoAPI = {
 };
 
 export const completionAPI = {
-  toggleCompletion: (todoId, date = null) => api.post('/completions/toggle', { todoId, date }),
+  toggleCompletion: (todoId, date = null, completionId = null) => 
+    api.post('/completions/toggle', { todoId, date, _id: completionId }),
   getCompletions: (startDate, endDate) =>
     api.get(`/completions?startDate=${startDate}&endDate=${endDate}`),
 };

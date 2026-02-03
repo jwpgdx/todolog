@@ -9,7 +9,7 @@ import { useDateStore } from '../../../store/dateStore';
  * - 부모(MonthlyView/WeeklyView)가 renderItem을 재생성하지 않아도 됨
  * - 이 row에 선택된 날짜가 있을 때만 리렌더링됨
  */
-const WeekRow = ({ week, onPressDate, eventsByDate = {}, showMonthLabel = true, hideOtherMonthDates = false, useAlternatingBg = true }) => {
+const WeekRow = ({ week, onPressDate, eventsByDate = {}, cacheVersion = 0, showMonthLabel = true, hideOtherMonthDates = false, useAlternatingBg = true }) => {
     const currentDate = useDateStore(state => state.currentDate);
 
     // 이 주에 선택된 날짜가 있는지 미리 계산
@@ -60,15 +60,24 @@ const styles = StyleSheet.create({
 /**
  * ⚡️ 최적화된 비교 함수
  * - currentDate는 이제 store에서 직접 구독하므로 props 비교에서 제외
- * - week 참조, onPressDate, eventsByDate를 비교
+ * - week 참조, onPressDate, eventsByDate, cacheVersion을 비교
+ * - cacheVersion이 변경되면 강제 리렌더링 (카테고리 색상, Todo 제목 변경 반영)
  */
 function arePropsEqual(prevProps, nextProps) {
-    return prevProps.week === nextProps.week &&
+    const isEqual = prevProps.week === nextProps.week &&
         prevProps.onPressDate === nextProps.onPressDate &&
         prevProps.eventsByDate === nextProps.eventsByDate &&
+        prevProps.cacheVersion === nextProps.cacheVersion &&
         prevProps.showMonthLabel === nextProps.showMonthLabel &&
         prevProps.hideOtherMonthDates === nextProps.hideOtherMonthDates &&
         prevProps.useAlternatingBg === nextProps.useAlternatingBg;
+    
+    // ✅ cacheVersion 변경 시 로그
+    if (!isEqual && prevProps.cacheVersion !== nextProps.cacheVersion) {
+        console.log(`🔄 [WeekRow] cacheVersion 변경: ${prevProps.cacheVersion} → ${nextProps.cacheVersion} (리렌더링)`);
+    }
+    
+    return isEqual;
 }
 
 export default React.memo(WeekRow, arePropsEqual);

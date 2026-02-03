@@ -1,19 +1,21 @@
-import React, { useState, useMemo } from 'react';
-import { View, Text, TouchableOpacity, FlatList, StyleSheet } from 'react-native';
-import dayjs from 'dayjs';
-import 'dayjs/locale/ko';
+import React, { useState, useMemo, useCallback } from 'react';
+import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { FlashList } from '@shopify/flash-list';
+import TodoListItem from './TodoListItem';
 
 /**
  * DailyTodoList
- * 선택된 날짜의 할일 목록을 보여주는 컴포넌트
+ * 선택된 날짜의 할일 목록을 보여주는 컴포넌트 (FlashList 최적화)
  * 
  * @param {object} props
  * @param {string} props.date - 선택된 날짜 (YYYY-MM-DD)
  * @param {Array} props.todos - 할일 목록 데이터
  * @param {boolean} props.isLoading - 로딩 상태
  * @param {function} props.onToggleComplete - 완료 토글 핸들러 (todoId) => void
+ * @param {function} props.onEdit - 수정 핸들러 (todo) => void
+ * @param {function} props.onDelete - 삭제 핸들러 (todo) => void
  */
-export default function DailyTodoList({ date, todos = [], isLoading, onToggleComplete }) {
+export default function DailyTodoList({ date, todos = [], isLoading, onToggleComplete, onEdit, onDelete }) {
     const [sortOption, setSortOption] = useState('DEADLINE'); // 'DEADLINE', 'NEWEST', 'OLDEST'
 
     // 정렬 로직
@@ -51,44 +53,18 @@ export default function DailyTodoList({ date, todos = [], isLoading, onToggleCom
         }
     }, [todos, sortOption]);
 
-    // 렌더링 아이템
-    const renderItem = ({ item }) => {
-        const isCompleted = item.completed;
+    // 렌더링 아이템 (useCallback으로 메모이제이션)
+    const renderItem = useCallback(({ item }) => (
+        <TodoListItem 
+            item={item} 
+            onToggleComplete={onToggleComplete}
+            onEdit={onEdit}
+            onDelete={onDelete}
+        />
+    ), [onToggleComplete, onEdit, onDelete]);
 
-        return (
-            <TouchableOpacity
-                style={styles.itemContainer}
-                onPress={() => onToggleComplete && onToggleComplete(item._id)}
-                activeOpacity={0.7}
-            >
-                {/* 체크박스 영역 */}
-                <View style={[styles.checkbox, isCompleted && styles.checkboxChecked]}>
-                    {isCompleted && <Text style={styles.checkmark}>✓</Text>}
-                </View>
-
-                {/* 내용 영역 */}
-                <View style={styles.contentContainer}>
-                    <Text style={[styles.title, isCompleted && styles.titleCompleted]} numberOfLines={1}>
-                        {item.title}
-                    </Text>
-
-                    <View style={styles.metaContainer}>
-                        {/* 시간 표시 */}
-                        {!item.isAllDay && item.startDateTime && (
-                            <Text style={styles.timeText}>
-                                {dayjs(item.startDateTime).locale('ko').format('A h:mm')}
-                            </Text>
-                        )}
-                        {item.isAllDay && (
-                            <Text style={styles.timeText}>하루 종일</Text>
-                        )}
-
-                        {/* 카테고리 등 추가 정보가 있다면 여기에 */}
-                    </View>
-                </View>
-            </TouchableOpacity>
-        );
-    };
+    // 아이템 키 추출 (useCallback으로 메모이제이션)
+    const keyExtractor = useCallback((item) => item._id, []);
 
     if (isLoading) {
         return (
@@ -127,13 +103,14 @@ export default function DailyTodoList({ date, todos = [], isLoading, onToggleCom
                 />
             </View>
 
-            {/* 리스트 */}
-            <FlatList
+            {/* 리스트 - FlashList로 최적화 */}
+            <FlashList
                 data={sortedTodos}
-                keyExtractor={(item) => item._id}
                 renderItem={renderItem}
-                contentContainerStyle={styles.listContent}
+                keyExtractor={keyExtractor}
+                estimatedItemSize={70}
                 showsVerticalScrollIndicator={false}
+                contentContainerStyle={styles.listContent}
             />
         </View>
     );
