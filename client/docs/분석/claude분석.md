@@ -1,438 +1,303 @@
-이 문서를 자세히 분석해보니, **SQLite로의 전환이 명확히 더 적합**합니다. 특히 헤비 유저 대응과 오프라인 완벽 지원이라는 핵심 요구사항을 고려할 때, MMKV는 단기적 개선에 불과하고 근본적 해결책이 되지 못합니다.
+흥미로운 성능 문제네요. SQLite WASM의 지연 로딩(lazy loading) 특성과 관련된 것으로 보입니다. 분석과 해결 방안을 제시하겠습니다.
 
-## 1. MMKV vs SQLite - 결론: **SQLite 강력 추천**
+## 문제 분석
 
-### MMKV의 치명적 한계
-```
-헤비 유저 시나리오 (50,000 Completions):
-- MMKV: 여전히 50,000개 전체를 stringify → 메모리 → 디스크
-- 1개 토글에도 ~10MB JSON 처리
-- 앱 시작마다 10MB+ 로드 필수
-```
+### 1. 근본 원인 (가장 가능성 높은 순서)
 
-**MMKV는 속도만 빠를 뿐, 구조적 문제는 동일합니다.**
+**A. SQLite의 지연 로딩 (Lazy Loading)**
+- 워밍업에서 `WHERE date = '1970-01-01'`은 빈 결과를 반환
+- SQLite는 실제 데이터 블록을 메모리에 로드하지 않음
+- 첫 실제 데이터 조회 시 디스크(WASM 가상 파일시스템)에서 페이지를 읽어옴
 
-### SQLite가 결정적인 이유
+**B. WASM 파일시스템 초기화**
+- expo-sqlite는 OPFS(Origin Private File System) 또는 IndexedDB를 사용
+- 첫 실제 I/O 작업 시 비동기 파일 시스템 초기화 발생
+- 워밍업 쿼리가 빈 결과라 I/O가 발생하지 않음
 
-| 시나리오 | AsyncStorage | MMKV | SQLite |
-|---|---|---|---|
-| **50,000 Completions 중 1개 토글** | 전체 쓰기 500ms | 전체 쓰기 50ms | **단일 row 0.1ms** |
-| **앱 시작 (오늘 할일만)** | 전체 로드 200ms | 전체 로드 30ms | **10개만 SELECT 1ms** |
-| **월별 캘린더 (30일치)** | 전체 필터링 100ms | 전체 필터링 10ms | **WHERE date LIKE 5ms** |
-| **메모리 점유** | 전체 ~10MB | 전체 ~10MB | **필요한 것만 ~100KB** |
+**C. 쿼리 플랜 캐싱**
+- 다른 파라미터 값(`'1970-01-01'` vs `'2026-02-04'`)으로 인한 쿼리 플랜 캐시 미스
+- 하지만 prepared statement를 사용하므로 가능성은 낮음
 
-**실제 차이:**
-- MMKV: 50,000개 → 5,000개로 줄어도 여전히 전체 처리
-- SQLite: 50,000개든 500,000개든 필요한 10개만 처리
+## 테스트 방법
 
----
-
-## 2. React Query 통합 전략 - **Option B-1 (하이브리드) 추천**
-
-### 추천 아키텍처: SQLite + React Query 하이브리드
+다음 코드를 `database.js`에 추가하여 정확한 원인을 파악하세요:
 
 ```javascript
-┌─────────────────────────────────────────────────────┐
-│                  React Query Layer                   │
-│  - 현재 화면 데이터만 캐시 (오늘/이번주)              │
-│  - 서버 동기화 상태 관리                              │
-│  - Optimistic Updates                                │
-└──────────────────┬──────────────────────────────────┘
-                   │
-┌──────────────────▼──────────────────────────────────┐
-│              SQLite Layer (진실의 원천)              │
-│  - 전체 데이터 영구 저장                              │
-│  - 날짜별/월별 쿼리                                   │
-│  - 동기화 메타데이터                                  │
-└─────────────────────────────────────────────────────┘
+// database.js에 추가
+export async function detailedWarmup(db) {
+  console.log('🔬 [상세 워밍업] 시작...');
+  
+  // Test 1: 빈 결과 쿼리
+  const t1 = performance.now();
+  await db.getAllAsync('SELECT * FROM completions WHERE date = ?', ['1970-01-01']);
+  const d1 = performance.now() - t1;
+  console.log(`  ✅ 빈 결과 쿼리: ${d1.toFixed(2)}ms`);
+  
+  // Test 2: LIMIT 1 (첫 행만)
+  const t2 = performance.now();
+  await db.getAllAsync('SELECT * FROM completions LIMIT 1');
+  const d2 = performance.now() - t2;
+  console.log(`  ✅ LIMIT 1: ${d2.toFixed(2)}ms`);
+  
+  // Test 3: 실제 데이터 조회
+  const t3 = performance.now();
+  const realData = await db.getAllAsync('SELECT * FROM completions LIMIT 10');
+  const d3 = performance.now() - t3;
+  console.log(`  ✅ 실제 데이터 10개: ${d3.toFixed(2)}ms (${realData.length} rows)`);
+  
+  // Test 4: 전체 테이블 스캔
+  const t4 = performance.now();
+  const allData = await db.getAllAsync('SELECT COUNT(*) as cnt FROM completions');
+  const d4 = performance.now() - t4;
+  console.log(`  ✅ COUNT(*): ${d4.toFixed(2)}ms (${allData[0]?.cnt} rows)`);
+  
+  // Test 5: 인덱스 사용 쿼리 (날짜 범위)
+  const t5 = performance.now();
+  await db.getAllAsync(
+    'SELECT * FROM completions WHERE date BETWEEN ? AND ?', 
+    ['2026-01-01', '2026-12-31']
+  );
+  const d5 = performance.now() - t5;
+  console.log(`  ✅ 날짜 범위 쿼리: ${d5.toFixed(2)}ms`);
+  
+  // Test 6: 페이지 캐시 강제 로드
+  const t6 = performance.now();
+  await db.execAsync('PRAGMA cache_size = -2000'); // 2MB 캐시
+  await db.getAllAsync('SELECT * FROM completions');
+  const d6 = performance.now() - t6;
+  console.log(`  ✅ 전체 테이블 로드: ${d6.toFixed(2)}ms`);
+  
+  console.log('🔬 [상세 워밍업] 완료');
+}
+
+// initDatabase()에서 호출
+await detailedWarmup(db);
 ```
 
-### 구체적 구현 패턴
+## 추천 해결 방안
+
+### 해결책 1: 실제 데이터 워밍업 (가장 효과적)
 
 ```javascript
-// hooks/useTodos.js
-export const useTodos = (date) => {
-  return useQuery({
-    queryKey: ['todos', 'date', date],
-    queryFn: async () => {
-      // SQLite에서 직접 쿼리 (오늘 것만)
-      const todos = await db.getTodosByDate(date);
-      const completions = await db.getCompletionsByDate(date);
+async function warmupTables(db) {
+  console.log('🔥 [DB] 테이블 워밍업 시작...');
+  const start = performance.now();
+  
+  // 각 테이블의 실제 데이터 페이지를 메모리에 로드
+  const tables = [
+    { name: 'todos', query: 'SELECT * FROM todos LIMIT 5' },
+    { name: 'categories', query: 'SELECT * FROM categories LIMIT 5' },
+    { 
+      name: 'completions', 
+      // 최근 30일 데이터를 미리 로드 (실제 사용 패턴에 맞춤)
+      query: `SELECT * FROM completions 
+              WHERE date >= date('now', '-30 days') 
+              ORDER BY date DESC LIMIT 100` 
+    }
+  ];
+  
+  for (const table of tables) {
+    const t = performance.now();
+    const result = await db.getAllAsync(table.query);
+    console.log(`  ✅ [Warmup] ${table.name}: ${(performance.now() - t).toFixed(2)}ms (${result.length} rows)`);
+  }
+  
+  console.log(`🔥 [DB] 테이블 워밍업 완료 (${(performance.now() - start).toFixed(2)}ms)`);
+}
+```
+
+### 해결책 2: PRAGMA 최적화
+
+```javascript
+async function optimizeDatabase(db) {
+  // 페이지 캐시 크기 증가 (기본값은 작음)
+  await db.execAsync('PRAGMA cache_size = -4000'); // 4MB
+  
+  // 메모리 매핑 활성화 (WASM에서 효과적일 수 있음)
+  await db.execAsync('PRAGMA mmap_size = 30000000000'); // 30GB
+  
+  // 임시 저장소를 메모리로 설정
+  await db.execAsync('PRAGMA temp_store = MEMORY');
+  
+  // 동기화 모드 조정 (웹에서는 영향 적음)
+  await db.execAsync('PRAGMA synchronous = NORMAL');
+  
+  console.log('⚙️ [DB] PRAGMA 최적화 완료');
+}
+```
+
+### 해결책 3: 인덱스 확인 및 추가
+
+```javascript
+async function ensureIndexes(db) {
+  // completions 테이블의 date 컬럼에 인덱스가 있는지 확인
+  const indexes = await db.getAllAsync(
+    "SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='completions'"
+  );
+  
+  console.log('📇 [DB] 인덱스:', indexes);
+  
+  // date 컬럼 인덱스가 없으면 생성
+  await db.execAsync(`
+    CREATE INDEX IF NOT EXISTS idx_completions_date 
+    ON completions(date DESC)
+  `);
+  
+  // 복합 인덱스도 고려 (자주 사용하는 쿼리 패턴에 따라)
+  await db.execAsync(`
+    CREATE INDEX IF NOT EXISTS idx_completions_date_todo 
+    ON completions(date, todo_id)
+  `);
+}
+```
+
+### 해결책 4: 백그라운드 프리로딩
+
+```javascript
+// App.js 또는 최상위 컴포넌트
+useEffect(() => {
+  const preloadData = async () => {
+    const db = await getDatabase();
+    
+    // 백그라운드에서 데이터 프리로드 (UI 블로킹 없음)
+    requestIdleCallback(async () => {
+      console.log('🔄 [Background] 데이터 프리로딩 시작');
+      const start = performance.now();
       
-      return todos.map(todo => ({
-        ...todo,
-        completed: completions[`${todo._id}_${date}`] ?? false
-      }));
-    },
-    staleTime: 5 * 60 * 1000, // 5분간 fresh
-    gcTime: 10 * 60 * 1000,   // 10분간 캐시 유지
-  });
-};
-
-// hooks/useCalendarEvents.js
-export const useCalendarEvents = (year, month) => {
-  return useQuery({
-    queryKey: ['calendar', year, month],
-    queryFn: async () => {
-      // 월별 데이터만 SQLite에서 가져오기
-      const todos = await db.getTodosByMonth(year, month);
-      const completions = await db.getCompletionsByMonth(year, month);
+      // 오늘 날짜 기준 데이터 미리 로드
+      const today = new Date().toISOString().split('T')[0];
+      await db.getAllAsync('SELECT * FROM completions WHERE date = ?', [today]);
       
-      // RRule 전개는 여기서 (변경 없음)
-      return expandRecurringEvents(todos, completions, year, month);
-    },
-    staleTime: 10 * 60 * 1000,
-  });
-};
-```
-
-### 왜 하이브리드인가?
-
-**React Query 유지 이유:**
-1. **Optimistic Updates** - 즉각적인 UI 반영
-2. **서버 동기화 상태** - `isFetching`, `isError` 등
-3. **캐시 무효화** - `invalidateQueries` 편리함
-4. **Background Refetch** - 자동 재검증
-
-**SQLite가 진실의 원천인 이유:**
-1. **앱 재시작 시** - SQLite에서 복원
-2. **날짜 이동 시** - 새 쿼리 실행
-3. **동기화 완료 시** - SQLite 업데이트 → React Query invalidate
-
----
-
-## 3. 마이그레이션 전략 - **Option 2 (동시 전환) 추천**
-
-### Phase 1: Completions 단독 전환 시 문제점
-
-```javascript
-// 안티패턴: 혼재된 저장소
-const todos = await AsyncStorage.getItem('todos');        // 느림
-const completions = await db.getCompletionsByDate(date);  // 빠름
-
-// 문제 1: 날짜별 조회 시 여전히 전체 로드
-const allTodos = JSON.parse(todos);  // 5,000개 전체
-const filtered = allTodos.filter(t => t.date === date);  // JS 필터링
-
-// 문제 2: JOIN 불가
-// todos와 completions를 메모리에서 수동 병합
-```
-
-### 추천: Todos + Completions 동시 전환
-
-```sql
--- 1단계: 스키마 생성
-CREATE TABLE todos (
-  _id TEXT PRIMARY KEY,
-  title TEXT NOT NULL,
-  date TEXT,
-  startDate TEXT,
-  endDate TEXT,
-  recurrence TEXT,  -- JSON string
-  categoryId TEXT,
-  isAllDay INTEGER DEFAULT 0,
-  color TEXT,
-  createdAt TEXT NOT NULL,
-  updatedAt TEXT NOT NULL,
-  deletedAt TEXT,
-  FOREIGN KEY (categoryId) REFERENCES categories(_id)
-);
-
-CREATE TABLE completions (
-  key TEXT PRIMARY KEY,
-  todoId TEXT NOT NULL,
-  date TEXT,
-  completedAt TEXT NOT NULL,
-  FOREIGN KEY (todoId) REFERENCES todos(_id) ON DELETE CASCADE
-);
-
--- 인덱스 (핵심 성능 요소)
-CREATE INDEX idx_todos_date ON todos(date) WHERE deletedAt IS NULL;
-CREATE INDEX idx_todos_date_range ON todos(startDate, endDate) WHERE deletedAt IS NULL;
-CREATE INDEX idx_completions_date ON completions(date);
-CREATE INDEX idx_completions_todoId ON completions(todoId);
-
--- 2단계: 마이그레이션 함수
-async function migrateToSQLite() {
-  const oldTodos = await AsyncStorage.getItem('@todos');
-  const oldCompletions = await AsyncStorage.getItem('@completions');
-  
-  if (!oldTodos) return; // 이미 마이그레이션됨
-  
-  const todos = JSON.parse(oldTodos);
-  const completions = JSON.parse(oldCompletions);
-  
-  // Batch Insert (트랜잭션)
-  await db.transaction(tx => {
-    todos.forEach(todo => {
-      tx.executeSql(`
-        INSERT OR REPLACE INTO todos VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `, [
-        todo._id, todo.title, todo.date, 
-        todo.startDate, todo.endDate,
-        JSON.stringify(todo.recurrence),
-        todo.categoryId, todo.isAllDay ? 1 : 0,
-        todo.color, todo.createdAt, todo.updatedAt,
-        todo.deletedAt
-      ]);
-    });
-    
-    Object.entries(completions).forEach(([key, comp]) => {
-      tx.executeSql(`
-        INSERT OR REPLACE INTO completions VALUES (?, ?, ?, ?)
-      `, [key, comp.todoId, comp.date, comp.completedAt]);
-    });
-  });
-  
-  // 3단계: 백업 후 삭제
-  await AsyncStorage.setItem('@todos_backup', oldTodos);
-  await AsyncStorage.removeItem('@todos');
-  await AsyncStorage.removeItem('@completions');
-}
-```
-
-### 마이그레이션 타이밍
-
-```javascript
-// App.tsx - 앱 시작 시
-export default function App() {
-  useEffect(() => {
-    (async () => {
-      await initializeDatabase();
-      await migrateToSQLite(); // 최초 1회만 실행
-    })();
-  }, []);
-  
-  // ...
-}
-```
-
----
-
-## 4. 글로벌 출시 고려사항
-
-### A. SQLite 안정성 (✅ 매우 안정적)
-
-```
-- iOS/Android 기본 탑재 (시스템 라이브러리)
-- Expo SQLite: 10년+ 검증된 래퍼
-- 파일 손상 복구: WAL mode + PRAGMA integrity_check
-```
-
-**오히려 AsyncStorage/MMKV보다 안전:**
-- AsyncStorage: 6MB 제한 (iOS), 파편화된 구현
-- MMKV: 상대적으로 신생 (2020년~), Expo 공식 지원 아님
-
-### B. 성능 최적화
-
-```javascript
-// 1. WAL Mode 활성화 (동시 읽기/쓰기)
-await db.execAsync('PRAGMA journal_mode = WAL');
-
-// 2. 동기화 완화 (배터리 절약)
-await db.execAsync('PRAGMA synchronous = NORMAL');
-
-// 3. 캐시 크기
-await db.execAsync('PRAGMA cache_size = -2000'); // 2MB
-
-// 4. Batch 쓰기 (동기화 시)
-await db.transaction(tx => {
-  deltaUpdated.forEach(todo => {
-    tx.executeSql('INSERT OR REPLACE INTO todos ...', [todo]);
-  });
-  deltaDeleted.forEach(id => {
-    tx.executeSql('UPDATE todos SET deletedAt = ? WHERE _id = ?', [now, id]);
-  });
-});
-```
-
-### C. 네트워크 불안정 대응
-
-```javascript
-// useSyncTodos.js - 변경 최소화
-const syncMutation = useMutation({
-  mutationFn: async () => {
-    const lastSyncTime = await db.getMetadata('lastSyncTime');
-    
-    // 1. 서버에서 델타 가져오기
-    const response = await api.post('/todos/delta-sync', { lastSyncTime });
-    
-    // 2. SQLite에 병합 (트랜잭션)
-    await db.mergeDelta(response.data.updated, response.data.deleted);
-    
-    // 3. React Query 무효화
-    queryClient.invalidateQueries(['todos']);
-    queryClient.invalidateQueries(['calendar']);
-    
-    return response.data.syncTime;
-  },
-  onSuccess: (syncTime) => {
-    db.setMetadata('lastSyncTime', syncTime);
-  }
-});
-```
-
----
-
-## 5. 최종 아키텍처 제안
-
-### 저장소 분리 원칙
-
-```javascript
-┌────────────────────────────────────────────┐
-│             SQLite (Primary)               │
-│  - todos, completions, categories          │
-│  - sync_metadata (lastSyncTime)            │
-│  - pending_changes (오프라인 큐)           │
-└────────────────────────────────────────────┘
-
-┌────────────────────────────────────────────┐
-│         AsyncStorage (Settings Only)       │
-│  - @userSettings (테마, 알림 등)           │
-│  - @onboardingCompleted                    │
-└────────────────────────────────────────────┘
-```
-
-### Categories 처리
-
-**옵션 1: SQLite 포함 (추천)**
-```sql
-CREATE TABLE categories (
-  _id TEXT PRIMARY KEY,
-  name TEXT NOT NULL,
-  color TEXT,
-  icon TEXT,
-  updatedAt TEXT
-);
-
--- 장점: todos와 JOIN 가능
-SELECT t.*, c.name as categoryName, c.color as categoryColor
-FROM todos t
-LEFT JOIN categories c ON t.categoryId = c._id
-WHERE t.date = ?;
-```
-
-**옵션 2: AsyncStorage 유지**
-- 소량 데이터 (~30개)
-- 변경 드묾
-- 단, JOIN 불가
-
----
-
-## 핵심 구현 포인트
-
-### 1. db.js - SQLite 래퍼
-
-```javascript
-import * as SQLite from 'expo-sqlite';
-
-class TodoDatabase {
-  constructor() {
-    this.db = null;
-  }
-  
-  async init() {
-    this.db = await SQLite.openDatabaseAsync('todos.db');
-    await this.db.execAsync('PRAGMA journal_mode = WAL');
-    await this.createTables();
-  }
-  
-  async getTodosByDate(date) {
-    const result = await this.db.getAllAsync(
-      `SELECT * FROM todos 
-       WHERE (date = ? OR (startDate <= ? AND endDate >= ?))
-       AND deletedAt IS NULL`,
-      [date, date, date]
-    );
-    return result.map(row => ({
-      ...row,
-      recurrence: JSON.parse(row.recurrence || 'null'),
-      isAllDay: Boolean(row.isAllDay)
-    }));
-  }
-  
-  async upsertTodo(todo) {
-    await this.db.runAsync(
-      `INSERT OR REPLACE INTO todos VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [todo._id, todo.title, /* ... */]
-    );
-  }
-  
-  async toggleCompletion(todoId, date) {
-    const key = `${todoId}_${date || 'null'}`;
-    const existing = await this.db.getFirstAsync(
-      'SELECT * FROM completions WHERE key = ?',
-      [key]
-    );
-    
-    if (existing) {
-      await this.db.runAsync('DELETE FROM completions WHERE key = ?', [key]);
-      return false;
-    } else {
-      await this.db.runAsync(
-        'INSERT INTO completions VALUES (?, ?, ?, ?)',
-        [key, todoId, date, new Date().toISOString()]
+      // 이번 주 데이터도 프리로드
+      const weekAgo = new Date();
+      weekAgo.setDate(weekAgo.getDate() - 7);
+      await db.getAllAsync(
+        'SELECT * FROM completions WHERE date >= ?', 
+        [weekAgo.toISOString().split('T')[0]]
       );
-      return true;
-    }
-  }
-}
-
-export const db = new TodoDatabase();
+      
+      console.log(`🔄 [Background] 프리로딩 완료 (${(performance.now() - start).toFixed(2)}ms)`);
+    }, { timeout: 2000 });
+  };
+  
+  preloadData();
+}, []);
 ```
 
-### 2. 동기화 병합
+## 통합 솔루션
 
 ```javascript
-// db.js
-async mergeDelta(updated, deleted) {
-  await this.db.withTransactionAsync(async () => {
-    // 업데이트
-    for (const todo of updated) {
-      await this.upsertTodo(todo);
+// database.js - 개선된 initDatabase()
+export async function initDatabase() {
+  if (dbInstance) return dbInstance;
+  
+  console.log('🚀 [DB] 초기화 시작...');
+  const start = performance.now();
+  
+  try {
+    const db = await SQLite.openDatabaseAsync('mydb.db');
+    console.log('✅ [DB] Database opened');
+    
+    // 1. PRAGMA 최적화
+    await db.execAsync('PRAGMA journal_mode = WAL');
+    await db.execAsync('PRAGMA cache_size = -4000'); // 4MB 캐시
+    await db.execAsync('PRAGMA temp_store = MEMORY');
+    console.log('✅ [DB] PRAGMA 설정 완료');
+    
+    // 2. 스키마 생성
+    await db.execAsync(`
+      CREATE TABLE IF NOT EXISTS todos (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        title TEXT NOT NULL,
+        category_id INTEGER,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      );
+      
+      CREATE TABLE IF NOT EXISTS completions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        todo_id INTEGER NOT NULL,
+        date TEXT NOT NULL,
+        completed_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (todo_id) REFERENCES todos (id)
+      );
+      
+      -- 인덱스 생성
+      CREATE INDEX IF NOT EXISTS idx_completions_date 
+      ON completions(date DESC);
+      
+      CREATE INDEX IF NOT EXISTS idx_completions_date_todo 
+      ON completions(date, todo_id);
+    `);
+    console.log('✅ [DB] Schema created');
+    
+    // 3. 실제 데이터 워밍업
+    const warmupStart = performance.now();
+    
+    // 각 테이블의 실제 데이터 로드
+    const tables = ['todos', 'categories', 'completions'];
+    for (const table of tables) {
+      const t = performance.now();
+      const result = await db.getAllAsync(`SELECT * FROM ${table} LIMIT 10`);
+      console.log(`  ✅ [Warmup] ${table}: ${(performance.now() - t).toFixed(2)}ms (${result.length} rows)`);
     }
     
-    // Soft Delete
-    const now = new Date().toISOString();
-    for (const id of deleted) {
-      await this.db.runAsync(
-        'UPDATE todos SET deletedAt = ? WHERE _id = ?',
-        [now, id]
-      );
-    }
-  });
+    // 최근 데이터 프리로드
+    const today = new Date().toISOString().split('T')[0];
+    const t = performance.now();
+    await db.getAllAsync('SELECT * FROM completions WHERE date >= ?', [today]);
+    console.log(`  ✅ [Warmup] 오늘 데이터: ${(performance.now() - t).toFixed(2)}ms`);
+    
+    console.log(`🔥 [DB] 워밍업 완료 (${(performance.now() - warmupStart).toFixed(2)}ms)`);
+    
+    dbInstance = db;
+    console.log(`✅ [App] SQLite 초기화 완료 (${(performance.now() - start).toFixed(2)}ms)`);
+    
+    return db;
+    
+  } catch (error) {
+    console.error('❌ [DB] 초기화 실패:', error);
+    throw error;
+  }
 }
 ```
 
----
+## 추가 디버깅 로그
 
-## 요약 및 실행 계획
-
-### ✅ 최종 결론
-
-1. **저장소: SQLite** (MMKV는 단기 개선에 불과)
-2. **통합: SQLite + React Query 하이브리드**
-3. **마이그레이션: Todos + Completions 동시 전환**
-4. **Categories: SQLite 포함** (일관성 + JOIN 이점)
-
-### 🚀 실행 순서
-
+```javascript
+// services/todoService.js - getCompletionsByDate 수정
+export async function getCompletionsByDate(date) {
+  const start = performance.now();
+  const db = await getDatabase();
+  
+  // 쿼리 플랜 확인
+  const plan = await db.getAllAsync(
+    'EXPLAIN QUERY PLAN SELECT * FROM completions WHERE date = ?',
+    [date]
+  );
+  console.log('📋 [Query Plan]:', plan);
+  
+  const result = await db.getAllAsync(
+    'SELECT * FROM completions WHERE date = ?',
+    [date]
+  );
+  
+  const duration = performance.now() - start;
+  console.log(`⏱️ [getCompletionsByDate] ${duration.toFixed(2)}ms (${result.length} rows)`);
+  
+  // 느린 쿼리 경고
+  if (duration > 100) {
+    console.warn(`⚠️ 느린 쿼리 감지! ${duration.toFixed(2)}ms`);
+  }
+  
+  return result;
+}
 ```
-1. SQLite 스키마 설계 & 인덱스 최적화 (1일)
-2. db.js 래퍼 구현 (1일)
-3. 마이그레이션 함수 작성 & 테스트 (1일)
-4. useTodos/useCalendar 리팩토링 (1일)
-5. 동기화 로직 통합 (1일)
-6. 프로덕션 배포 & 모니터링
-```
 
-### 📊 예상 성능 개선
+## 권장 조치 순서
 
-| 지표 | 현재 | SQLite 전환 후 |
-|---|---|---|
-| 앱 시작 (10,000 completions) | 150ms | **10ms** (15배) |
-| Completion 토글 | 80ms | **0.5ms** (160배) |
-| 월별 캘린더 조회 | 100ms | **8ms** (12배) |
-| 메모리 점유 | 10MB | **1MB** (10배) |
+1. **즉시 적용**: 해결책 1 (실제 데이터 워밍업) - 가장 효과적
+2. **함께 적용**: 해결책 2 (PRAGMA 최적화) - 부작용 없음
+3. **확인**: 인덱스가 제대로 생성되었는지 체크
+4. **선택 적용**: 해결책 4 (백그라운드 프리로딩) - UX 개선
 
-시작하시겠습니까? 어떤 부분부터 구현을 도와드릴까요?
+테스트 후 결과를 공유해주시면 추가 분석 도와드리겠습니다!

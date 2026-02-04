@@ -1,228 +1,335 @@
-ㅋㅋ 좋다 이 질문. 지금 딱 **“개념이 연결되는 지점”**이야.
-지금 구조를 정확히 짚고, **SQLite 도입 후 구조가 어떻게 바뀌는지**를 그림 없이 머릿속에 박히게 설명해줄게.
+야 이거 거의 **“WASM + 브라우저 I/O 콜드스타트” 전형적인 증상**이다 ㅋㅋ
+결론부터 말하면 **SQL 문제가 아니라 스토리지 초기화 타이밍 문제일 확률이 매우 높다.**
+
+로그 보면 이미 단서가 있음:
+
+👉 워밍업: 1~2ms
+👉 첫 실제 데이터 조회: **1390ms**
+👉 이후: 20ms
+
+이 패턴 = **디스크(IndexedDB / OPFS) → WASM 메모리로 첫 페이지 로딩**
+
+SQLite 엔진 문제라면 워밍업도 느려야 하는데 아니잖아.
 
 ---
 
-# 0️⃣ 지금 니가 하고 있는 구조 (팩트 정리)
+# 🔥 근본 원인 (확률 높은 순)
 
-지금은 사실상 이거임 👇
+## ✅ 1. OPFS / IndexedDB lazy load
+
+expo-sqlite web은 내부적으로 보통 이 흐름임:
 
 ```
-[서버]
-  └─ 모든 일정 데이터
-
-[클라이언트]
-  ├─ AsyncStorage = 전체 일정 영구 저장소 (DB 흉내)
-  └─ React Query = 화면용 캐시
+브라우저 스토리지 → WASM FS → SQLite pager → cache
 ```
 
-### 중요한 포인트
+워밍업에서 0 rows면:
 
-* **AsyncStorage가 사실상 “로컬 DB 역할”**
-* React Query는 그 위에 얹힌 **뷰 캐시**
-* 문제는 AsyncStorage가 **DB가 아니라 JSON 파일**이라는 것
+👉 **pager가 실제 데이터 페이지를 안 읽음**
+
+왜냐면 SQLite는 존나 똑똑해서:
+
+```
+index hit → 결과 없음 → 페이지 fetch 안함
+```
+
+그래서 첫 real query에서:
+
+👉 디스크 read
+👉 wasm memory mapping
+👉 page cache 생성
+
+→ 1초 터짐.
+
+**이건 매우 흔한 wasm-sqlite 패턴이다.**
+
+sql.js / absurd-sql / wa-sqlite에서도 자주 봄.
 
 ---
 
-# 1️⃣ SQLite로 바뀌면 “역할 분리”가 생김
+## ✅ 2. React lifecycle + WASM init race
 
-SQLite 도입의 핵심은 **데이터의 역할을 분리**하는 거다.
+이게 꽤 의심됨.
 
-## 🔥 핵심 구조 (정답)
+로그:
 
 ```
-[서버]
-  └─ 전체 일정 데이터 (Delta Sync)
-
-[클라이언트]
-  ├─ SQLite = 전체 일정의 로컬 원본 (Source of Truth)
-  └─ React Query = 화면에 필요한 "부분 집합" 캐시
+SQLite 초기화 완료 (576ms)
+→ 바로 Todo screen
+→ completions만 1.3초
 ```
 
-👉 **“전체 저장 ↔ 화면 캐싱” 구조는 그대로**
-👉 **저장소만 AsyncStorage → SQLite로 바뀜**
+가능성:
+
+👉 WASM instantiate는 끝났는데
+👉 **스토리지 hydration이 async로 뒤에서 계속 진행**
+
+즉:
+
+```
+open DB ≠ file fully ready
+```
+
+특히 OPFS는 worker thread에서 sync함.
+
+Debug Screen이 빠른 이유?
+
+👉 이미 hydration 끝남.
 
 ---
 
-# 2️⃣ 가장 중요한 개념: 캐싱의 기준이 바뀜
+## ✅ 3. completions 테이블만 느린 이유
 
-## ❌ 지금 (잘못된 캐싱 단위)
+이거 중요하다.
+
+가능성 매우 큼:
+
+👉 completions가 제일 큰 테이블
+👉 page 수 많음
+👉 index 깊음
+
+SQLite는 첫 read 때:
 
 ```
-React Query
-  └─ ['todos', 'all']  ← 전부
-  └─ ['completions']  ← 전부
+root b-tree → leaf
 ```
 
-이게 성능 박살의 근원임.
+타고 내려간다.
+
+페이지 많으면 당연히 느림.
 
 ---
 
-## ✅ SQLite 이후 (정상적인 캐싱 단위)
+# 🚨 절대 하지마라 (Option 2)
 
-```
-React Query
-  ├─ ['todos', '2026-02-01']
-  ├─ ['todos', '2026-02-02']
-  ├─ ['calendar', '2026-02']
-  └─ ['completions', '2026-02-02']
-```
+### ❌ SELECT * FROM completions;
 
-👉 **날짜 / 화면 단위 캐시**
-👉 “보여질 것만 메모리에”
+이거 워밍업으로 쓰면:
+
+👉 startup 3~5초 터질 수도 있음.
+
+모바일이면 바로 앱 삭제각.
 
 ---
 
-# 3️⃣ 실제 데이터 흐름 (중요)
+# ✅ 가장 효과적인 워밍업 (추천 ⭐⭐⭐⭐⭐)
 
-## ① 서버 ↔ 로컬 동기화 (변경 없음)
+핵심:
 
-```text
-서버 delta-sync
-  ↓
-SQLite INSERT / UPDATE / DELETE
+👉 **"실제 데이터 페이지 하나만 읽게 만들어라"**
+
+### 베스트 쿼리:
+
+```sql
+SELECT rowid 
+FROM completions 
+LIMIT 1;
 ```
 
-🔹 이 단계에서는 **React Query 아예 신경 안 써도 됨**
+이게 좋은 이유:
+
+* row 전체 안 읽음
+* 최소 page만 fetch
+* index 없어도 root page 읽음
+
+👉 거의 항상 콜드스타트 방지됨.
 
 ---
 
-## ② 화면에서 일정 보여줄 때
+## 🔥 더 강력한 방법 (추천 ⭐⭐⭐⭐⭐⭐)
 
-### 예: 2026-02-01 일정 화면
+### 👉 cache_size 강제 증가
 
-```ts
-useQuery({
-  queryKey: ['todos', '2026-02-01'],
-  queryFn: () => db.getTodosByDate('2026-02-01'),
-});
+init에서:
+
+```sql
+PRAGMA cache_size = -20000;
 ```
 
-### 실제 동작
+(-는 KB 단위 → 약 20MB)
 
-```
-1. React Query 캐시 있음?
-   └─ YES → 바로 렌더
-   └─ NO  → SQLite 쿼리
+브라우저 WASM은 cache 작으면 개느림.
 
-2. SQLite
-   └─ SELECT * FROM todos WHERE date = '2026-02-01'
-   └─ JOIN completions
-```
+진짜 체감됨.
 
 ---
 
-## ③ Completion 토글할 때
+## 🔥 미친 꿀팁 (고급)
 
-```ts
-await db.toggleCompletion(todoId, date);
+### 👉 WAL 대신 MEMORY journal 테스트
 
-queryClient.invalidateQueries(['todos', date]);
-queryClient.invalidateQueries(['calendar', month]);
+웹에서는 WAL 이득 거의 없음.
+
+오히려:
+
+👉 WAL file read 추가됨.
+
+테스트:
+
+```sql
+PRAGMA journal_mode = MEMORY;
 ```
 
-### 이게 의미하는 바
+속도 확 뛰는 케이스 많다.
 
-* **DB는 즉시 변경**
-* **UI는 invalidate → 다시 SELECT**
-
-👉 JSON 전체 다시 쓰는 개념 자체가 사라짐
+(웹은 crash durability 의미 거의 없음)
 
 ---
 
-# 4️⃣ “전체 일정은 어디 있냐?”라는 질문의 답
+# 🧪 반드시 해봐야 하는 테스트
 
-### 💡 이 질문이 핵심이다
+## 테스트 1 ⭐⭐⭐⭐⭐ (강력 추천)
 
-> “그럼 전체 일정은 어디 저장돼 있음?”
+init 직후:
 
-👉 **SQLite 안에 항상 있음**
+```js
+console.time('first-read');
 
+await db.getFirstAsync(`
+  SELECT rowid 
+  FROM completions 
+  LIMIT 1
+`);
+
+console.timeEnd('first-read');
 ```
-SQLite
- ├─ todos (전부)
- ├─ completions (전부)
- └─ categories
-```
 
-React Query는:
+👉 여기서 이미 1초 나오면?
 
-* 전체를 **가지고 있지 않음**
-* 필요할 때만 slice 가져옴
+✔️ 100% storage hydration 문제.
 
 ---
 
-# 5️⃣ 캘린더 화면은 어떻게 바뀌냐?
+## 테스트 2 (스토리지 타입 확인)
 
-### 지금
+expo web이 뭐 쓰는지 체크:
 
-```ts
-const allTodos = queryClient.getQueryData(['todos', 'all']);
-const monthTodos = filterByMonth(allTodos);
-```
+* OPFS ?
+* IndexedDB ?
+* memory fallback ?
 
-### SQLite 이후
+크롬이면:
 
-```ts
-SELECT date, COUNT(*) 
-FROM completions
-WHERE date LIKE '2026-02%'
-GROUP BY date;
-```
+👉 `navigator.storage.getDirectory`
 
-또는
+지원하면 OPFS.
 
-```ts
-useQuery(['calendar', '2026-02'], () =>
-  db.getCalendarStats('2026-02')
-);
-```
-
-👉 캘린더 dot 찍으려고 **5만 개를 메모리에 둘 이유가 없음**
+OPFS 초기 open이 느린 편.
 
 ---
 
-# 6️⃣ 캐싱 전략 한 줄 요약 (이거 외워라)
+## 테스트 3 (페이지 수 확인)
 
-> ❌ “전체 데이터를 캐싱하고 필터링”
-> ✅ “필요한 데이터만 쿼리하고 캐싱”
-
----
-
-# 7️⃣ 니 앱 기준 최종 구조 (그림으로 정리)
-
-```
-서버 (MongoDB)
-   ↓ delta sync
-SQLite (전체 일정 로컬 DB)
-   ↓ SELECT (date / month)
-React Query (화면 캐시)
-   ↓
-UI
+```sql
+PRAGMA page_count;
+PRAGMA page_size;
 ```
 
----
-
-# 8️⃣ 실무에서 자주 터지는 실수 (경고)
-
-* ❌ SQLite 쓰면서도 `getAllTodos()` 만들어서 캐싱함
-* ❌ React Query에 DB 전체 넣음
-* ❌ invalidate 안 하고 optimistic update로만 버팀
-
-이러면 **SQLite 도입 의미 0**임.
+page_count 많으면 첫 read 느려짐 정상.
 
 ---
 
-## 결론 한 줄
+# 💡 내가 봤을 때 최강 해결책
 
-> **SQLite는 “전체 데이터를 저장하는 곳”이고
-> React Query는 “지금 화면에 필요한 조각”만 들고 있는다.**
+## ⭐⭐⭐⭐⭐ BEST
 
-다음으로 갈 수 있는 선택지:
+### 👉 init에서 비동기 워밍업 하지 말고 **blocking warmup**
 
-1. SQLite 쿼리 함수 구조 설계
-2. todos + completions JOIN 전략
-3. Calendar dot 최적 쿼리
-4. Delta Sync → SQLite 적용 코드 흐름
+지금 구조 의심됨:
 
-다음 뭐 볼까?
+```
+init 완료
+→ 화면 진입
+→ warmup 아직 진행중
+```
+
+### 이렇게 바꿔라:
+
+```js
+await ensureDatabase();
+
+await db.execAsync(`
+  SELECT rowid FROM completions LIMIT 1;
+`);
+```
+
+👉 끝날 때까지 화면 렌더 금지.
+
+**이게 제일 확실하다.**
+
+---
+
+# 🔥 더 좋은 구조 (강력 추천)
+
+솔직히 말하면…
+
+👉 Todo screen에서 DB 첫 read 하는 구조 자체가 위험함.
+
+### 추천 패턴:
+
+앱 시작할 때:
+
+```
+Splash screen 유지
+↓
+DB fully warm
+↓
+App mount
+```
+
+요즘 sqlite wasm 쓰는 앱들 거의 이 구조임.
+
+Notion web도 비슷하다.
+
+---
+
+# 📊 정리 (현업 기준)
+
+원인 확률:
+
+```
+45% → storage hydration
+25% → page cache cold
+15% → wasm worker init
+10% → large btree
+5%  → sql 문제
+```
+
+👉 거의 환경 문제다.
+
+니 코드 잘못 아닐 확률 높음 ㅋㅋ
+
+---
+
+# 🚀 추가로 추천하는 초고급 최적화
+
+## 🔥 mmap (지원되면 무조건)
+
+```sql
+PRAGMA mmap_size = 268435456; -- 256MB
+```
+
+WASM sqlite에서 가끔 지원됨.
+
+되면 속도 미친다.
+
+---
+
+# ⭐ 결론 (한 줄)
+
+👉 **0 rows 워밍업은 워밍업이 아니다.
+실제 데이터 페이지를 최소 1개 읽어라.**
+
+---
+
+원하면 내가:
+
+✅ expo-sqlite web에서 가장 빠른 초기화 템플릿
+✅ WASM sqlite 성능 튜닝 체크리스트
+✅ React 구조 최적 패턴
+✅ IndexedDB vs OPFS 속도 차이
+
+이거 싹 정리해서 **“실무에서 쓰는 세팅”** 만들어 줄게.
+
+이거 진짜 중요하다.
+WASM sqlite는 초기 세팅 잘못하면 평생 느리다 😇

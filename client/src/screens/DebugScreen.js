@@ -5,7 +5,7 @@ import { useToggleCompletion } from '../hooks/queries/useToggleCompletion';
 import { useTodos } from '../hooks/queries/useTodos';
 import NetInfo from '@react-native-community/netinfo';
 // SQLite
-import { initDatabase, getDbStats, resetDatabase } from '../db/database';
+import { initDatabase, getDbStats, resetDatabase, getDatabase } from '../db/database';
 import {
   getTodosByDate as sqliteGetTodosByDate,
   getTodosByMonth as sqliteGetTodosByMonth,
@@ -39,6 +39,190 @@ export default function DebugScreen() {
   const addLog = (message) => {
     const timestamp = new Date().toLocaleTimeString();
     setLogs(prev => [`[${timestamp}] ${message}`, ...prev].slice(0, 100));
+  };
+
+  const checkAndRepairIndexes = async () => {
+    addLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    addLog('🔧 인덱스 점검 및 복구');
+    addLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+
+    try {
+      const db = getDatabase();
+      const indexes = await db.getAllAsync("PRAGMA index_list('completions')");
+      const hasIndex = indexes.some(idx => idx.name === 'idx_completions_date');
+
+      if (hasIndex) {
+        addLog('✅ idx_completions_date 인덱스 존재함');
+        addLog('🔄 REINDEX 실행...');
+        await db.execAsync('REINDEX completions');
+        addLog('✅ REINDEX 완료');
+      } else {
+        addLog('⚠️ idx_completions_date 인덱스 없음!');
+        addLog('🛠 인덱스 생성 중...');
+        await db.execAsync('CREATE INDEX IF NOT EXISTS idx_completions_date ON completions(date)');
+        addLog('✅ 인덱스 생성 완료');
+      }
+
+      // 쿼리 속도 테스트
+      const start = performance.now();
+      await db.getAllAsync('SELECT * FROM completions WHERE date = ?', ['2026-02-04']);
+      const end = performance.now();
+      addLog(`🚀 쿼리 테스트 (After): ${(end - start).toFixed(2)}ms`);
+
+    } catch (e) {
+      addLog(`❌ 오류: ${e.message}`);
+    }
+  };
+
+  // ========== 🔬 성능 테스트 ==========
+
+  const testLimitImpact = async () => {
+    addLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    addLog('🔬 LIMIT 영향 테스트');
+    addLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+
+    try {
+      const db = getDatabase();
+
+      // Test 1: LIMIT 1 워밍업 → LIMIT 없는 쿼리
+      addLog('');
+      addLog('━━━ Test 1: LIMIT 1 워밍업 후 ━━━');
+      
+      const warmup1Start = performance.now();
+      await db.getAllAsync('SELECT * FROM completions WHERE date = ? LIMIT 1', ['1970-01-01']);
+      const warmup1End = performance.now();
+      addLog(`🔥 워밍업 (LIMIT 1): ${(warmup1End - warmup1Start).toFixed(2)}ms`);
+
+      const query1Start = performance.now();
+      const result1 = await db.getAllAsync('SELECT * FROM completions WHERE date = ?', ['2026-02-04']);
+      const query1End = performance.now();
+      addLog(`📊 실제 쿼리 (LIMIT 없음): ${(query1End - query1Start).toFixed(2)}ms (${result1.length} rows)`);
+
+      // Test 2: LIMIT 없는 워밍업 → LIMIT 없는 쿼리
+      addLog('');
+      addLog('━━━ Test 2: LIMIT 없는 워밍업 후 ━━━');
+      
+      const warmup2Start = performance.now();
+      await db.getAllAsync('SELECT * FROM completions WHERE date = ?', ['1970-01-01']);
+      const warmup2End = performance.now();
+      addLog(`🔥 워밍업 (LIMIT 없음): ${(warmup2End - warmup2Start).toFixed(2)}ms`);
+
+      const query2Start = performance.now();
+      const result2 = await db.getAllAsync('SELECT * FROM completions WHERE date = ?', ['2026-02-05']);
+      const query2End = performance.now();
+      addLog(`📊 실제 쿼리 (LIMIT 없음): ${(query2End - query2Start).toFixed(2)}ms (${result2.length} rows)`);
+
+      // Test 3: 연속 호출 (캐싱 확인)
+      addLog('');
+      addLog('━━━ Test 3: 연속 호출 ━━━');
+
+      const call1Start = performance.now();
+      await db.getAllAsync('SELECT * FROM completions WHERE date = ?', ['2026-02-04']);
+      const call1End = performance.now();
+      addLog(`1️⃣ 첫 호출: ${(call1End - call1Start).toFixed(2)}ms`);
+
+      const call2Start = performance.now();
+      await db.getAllAsync('SELECT * FROM completions WHERE date = ?', ['2026-02-04']);
+      const call2End = performance.now();
+      addLog(`2️⃣ 두 번째: ${(call2End - call2Start).toFixed(2)}ms`);
+
+      const call3Start = performance.now();
+      await db.getAllAsync('SELECT * FROM completions WHERE date = ?', ['2026-02-04']);
+      const call3End = performance.now();
+      addLog(`3️⃣ 세 번째: ${(call3End - call3Start).toFixed(2)}ms`);
+
+      addLog('');
+      addLog('✅ LIMIT 테스트 완료!');
+
+    } catch (e) {
+      addLog(`❌ 오류: ${e.message}`);
+    }
+
+    addLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+  };
+
+  const testCompletionPerformance = async () => {
+    addLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    addLog('🔬 Completion 쿼리 성능 테스트');
+    addLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+
+    try {
+      const db = getDatabase();
+
+      // Test 1: 연속 호출 (캐싱 효과 확인)
+      addLog('');
+      addLog('━━━ Test 1: 연속 호출 (같은 날짜) ━━━');
+      
+      const call1Start = performance.now();
+      const result1 = await db.getAllAsync('SELECT * FROM completions WHERE date = ?', ['2026-02-04']);
+      const call1End = performance.now();
+      addLog(`1️⃣ 첫 호출: ${(call1End - call1Start).toFixed(2)}ms (${result1.length} rows)`);
+
+      const call2Start = performance.now();
+      const result2 = await db.getAllAsync('SELECT * FROM completions WHERE date = ?', ['2026-02-04']);
+      const call2End = performance.now();
+      addLog(`2️⃣ 두 번째: ${(call2End - call2Start).toFixed(2)}ms (${result2.length} rows)`);
+
+      const call3Start = performance.now();
+      const result3 = await db.getAllAsync('SELECT * FROM completions WHERE date = ?', ['2026-02-04']);
+      const call3End = performance.now();
+      addLog(`3️⃣ 세 번째: ${(call3End - call3Start).toFixed(2)}ms (${result3.length} rows)`);
+
+      // Test 2: 다양한 날짜
+      addLog('');
+      addLog('━━━ Test 2: 다양한 날짜 ━━━');
+
+      const emptyStart = performance.now();
+      const emptyResult = await db.getAllAsync('SELECT * FROM completions WHERE date = ?', ['1970-01-01']);
+      const emptyEnd = performance.now();
+      addLog(`📭 빈 결과 (1970-01-01): ${(emptyEnd - emptyStart).toFixed(2)}ms (${emptyResult.length} rows)`);
+
+      const date1Start = performance.now();
+      const date1Result = await db.getAllAsync('SELECT * FROM completions WHERE date = ?', ['2026-02-04']);
+      const date1End = performance.now();
+      addLog(`📦 데이터 있음 (2026-02-04): ${(date1End - date1Start).toFixed(2)}ms (${date1Result.length} rows)`);
+
+      const date2Start = performance.now();
+      const date2Result = await db.getAllAsync('SELECT * FROM completions WHERE date = ?', ['2026-02-05']);
+      const date2End = performance.now();
+      addLog(`📦 다른 날짜 (2026-02-05): ${(date2End - date2Start).toFixed(2)}ms (${date2Result.length} rows)`);
+
+      // Test 3: 쿼리 변형
+      addLog('');
+      addLog('━━━ Test 3: 쿼리 변형 ━━━');
+
+      const limitStart = performance.now();
+      const limitResult = await db.getAllAsync('SELECT * FROM completions LIMIT 1');
+      const limitEnd = performance.now();
+      addLog(`🔢 LIMIT 1: ${(limitEnd - limitStart).toFixed(2)}ms (${limitResult.length} rows)`);
+
+      const firstStart = performance.now();
+      const firstResult = await db.getFirstAsync('SELECT * FROM completions WHERE date = ?', ['2026-02-04']);
+      const firstEnd = performance.now();
+      addLog(`1️⃣ getFirstAsync: ${(firstEnd - firstStart).toFixed(2)}ms`);
+
+      const allStart = performance.now();
+      const allResult = await db.getAllAsync('SELECT * FROM completions WHERE date = ?', ['2026-02-04']);
+      const allEnd = performance.now();
+      addLog(`📋 getAllAsync: ${(allEnd - allStart).toFixed(2)}ms (${allResult.length} rows)`);
+
+      // Test 4: Service 함수 호출
+      addLog('');
+      addLog('━━━ Test 4: Service 함수 (Map 변환 포함) ━━━');
+
+      const serviceStart = performance.now();
+      const serviceResult = await sqliteGetCompletionsByDate('2026-02-04');
+      const serviceEnd = performance.now();
+      addLog(`🔧 getCompletionsByDate: ${(serviceEnd - serviceStart).toFixed(2)}ms (${Object.keys(serviceResult).length} keys)`);
+
+      addLog('');
+      addLog('✅ 성능 테스트 완료!');
+
+    } catch (e) {
+      addLog(`❌ 오류: ${e.message}`);
+    }
+
+    addLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
   };
 
   // ========== 기본 상태 확인 ==========
@@ -486,6 +670,18 @@ export default function DebugScreen() {
 
         <TouchableOpacity style={[styles.button, styles.sqliteButton]} onPress={sqlite_CategoryList}>
           <Text style={styles.buttonText}>📂 Categories</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity style={[styles.button, styles.actionButton]} onPress={checkAndRepairIndexes}>
+          <Text style={styles.buttonText}>🔧 인덱스 점검 및 복구</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity style={[styles.button, styles.testButton]} onPress={testCompletionPerformance}>
+          <Text style={styles.buttonText}>🔬 Completion 성능 테스트</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity style={[styles.button, styles.testButton]} onPress={testLimitImpact}>
+          <Text style={styles.buttonText}>🔬 LIMIT 영향 테스트</Text>
         </TouchableOpacity>
 
         <View style={styles.divider} />

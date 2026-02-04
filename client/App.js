@@ -36,19 +36,22 @@ export default function App() {
   const { mode } = useTodoFormStore();
   const { setColorScheme } = useColorScheme();
 
-  // ⚡ SQLite 미리 초기화 (백그라운드)
+  // ⚡ SQLite 초기화 및 워밍업 완료 대기
   useEffect(() => {
-    const startTime = performance.now();
-    console.log('🚀 [App] SQLite 백그라운드 초기화 시작...');
-    
-    ensureDatabase()
-      .then(() => {
+    const initializeDatabase = async () => {
+      const startTime = performance.now();
+      console.log('🚀 [App] SQLite 초기화 시작 (워밍업 포함)...');
+      
+      try {
+        await ensureDatabase(); // 워밍업 완료까지 대기
         const endTime = performance.now();
         console.log(`✅ [App] SQLite 초기화 완료 (${(endTime - startTime).toFixed(2)}ms)`);
-      })
-      .catch(err => {
+      } catch (err) {
         console.error('❌ [App] DB 초기화 실패:', err);
-      });
+      }
+    };
+
+    initializeDatabase();
   }, []);
 
   useEffect(() => {

@@ -17,12 +17,15 @@ import { getDatabase } from './database';
  * @returns {Promise<Object>} - { key: { todoId, date, completedAt } }
  */
 export async function getCompletionsByDate(date) {
+    const startTotal = performance.now();
     const db = getDatabase();
 
+    const startQuery = performance.now();
     const result = await db.getAllAsync(
         'SELECT * FROM completions WHERE date = ?',
         [date]
     );
+    const endQuery = performance.now();
 
     // Map 형태로 변환 (기존 형식 호환)
     const map = {};
@@ -33,6 +36,9 @@ export async function getCompletionsByDate(date) {
             completedAt: row.completed_at,
         };
     });
+    const endTotal = performance.now();
+
+    console.log(`⏱️ [getCompletionsByDate] ${(endTotal - startTotal).toFixed(2)}ms | Query: ${(endQuery - startQuery).toFixed(2)}ms | Rows: ${result.length}`);
 
     return map;
 }

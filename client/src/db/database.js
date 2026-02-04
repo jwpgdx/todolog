@@ -160,21 +160,41 @@ export async function initDatabase() {
 
             console.log('✅ [DB] Database initialized successfully');
 
-            // ⚡ 백그라운드 테이블 워밍업 (WASM 콜드 스타트 방지)
-            // 첫 실제 쿼리가 느린 문제 해결 - 더미 쿼리로 캐시 프라이밍
-            setTimeout(async () => {
-                try {
-                    const warmupStart = performance.now();
-                    // 각 테이블에 빠른 쿼리 실행 (존재하지 않는 데이터)
-                    await db.getFirstAsync('SELECT 1 FROM completions WHERE date = ? LIMIT 1', ['1970-01-01']);
-                    await db.getFirstAsync('SELECT 1 FROM todos WHERE date = ? LIMIT 1', ['1970-01-01']);
-                    await db.getFirstAsync('SELECT 1 FROM categories WHERE _id = ? LIMIT 1', ['warmup']);
-                    const warmupEnd = performance.now();
-                    console.log(`🔥 [DB] 테이블 워밍업 완료 (${(warmupEnd - warmupStart).toFixed(2)}ms)`);
-                } catch (warmupError) {
-                    console.warn('⚠️ [DB] 워밍업 실패 (무시 가능):', warmupError.message);
-                }
-            }, 100); // 100ms 지연 - UI 쿼리 방해하지 않음
+            // ⚡ 즉시 테이블 워밍업 (WASM 콜드 스타트 방지)
+            // 첫 실제 쿼리가 느린 문제 해결 - 실제 사용 순서대로 워밍업
+            try {
+                const warmupStart = performance.now();
+                console.log('🔥 [DB] 테이블 워밍업 시작...');
+                
+                // 실제 사용 순서: todos → categories → completions
+                // 각 테이블의 첫 쿼리가 WASM 메타데이터를 로드하므로 순서 중요
+                
+                const todosStart = performance.now();
+                await db.getFirstAsync('SELECT 1 FROM todos WHERE date = ? LIMIT 1', ['1970-01-01']);
+                const todosEnd = performance.now();
+                console.log(`  ✅ [Warmup] todos (getFirstAsync): ${(todosEnd - todosStart).toFixed(2)}ms`);
+                
+                const categoriesStart = performance.now();
+                await db.getFirstAsync('SELECT 1 FROM categories WHERE _id = ? LIMIT 1', ['warmup']);
+                const categoriesEnd = performance.now();
+                console.log(`  ✅ [Warmup] categories (getFirstAsync): ${(categoriesEnd - categoriesStart).toFixed(2)}ms`);
+                
+                const completionsFirstStart = performance.now();
+                await db.getFirstAsync('SELECT 1 FROM completions WHERE date = ? LIMIT 1', ['1970-01-01']);
+                const completionsFirstEnd = performance.now();
+                console.log(`  ✅ [Warmup] completions (getFirstAsync): ${(completionsFirstEnd - completionsFirstStart).toFixed(2)}ms`);
+                
+                // 🔬 추가 테스트: getAllAsync도 워밍업
+                const completionsAllStart = performance.now();
+                await db.getAllAsync('SELECT * FROM completions WHERE date = ? LIMIT 1', ['1970-01-01']);
+                const completionsAllEnd = performance.now();
+                console.log(`  ✅ [Warmup] completions (getAllAsync): ${(completionsAllEnd - completionsAllStart).toFixed(2)}ms`);
+                
+                const warmupEnd = performance.now();
+                console.log(`🔥 [DB] 테이블 워밍업 완료 (${(warmupEnd - warmupStart).toFixed(2)}ms)`);
+            } catch (warmupError) {
+                console.warn('⚠️ [DB] 워밍업 실패 (무시 가능):', warmupError.message);
+            }
 
             return db;
 

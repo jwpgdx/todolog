@@ -1,175 +1,114 @@
-## 🚀 최종 결론: SQLite (압도적 승리)
+매우 상세한 분석과 로그 감사합니다. React Native Web (Expo) 환경의 SQLite WASM에서 발생하는 전형적인 **"콜드 캐시(Cold Cache)와 페이징 I/O"** 문제입니다.
 
-제공해주신 프로젝트 스펙(Offline-First, 헤비 유저 5만+ 데이터, 글로벌/저사양 기기 지원)을 분석한 결과, **SQLite**가 유일한 정답입니다.
+1390ms라는 지연 시간은 단순히 쿼리가 느린 것이 아니라, **파일 시스템(OPFS)에서 실제 데이터 페이지를 메모리로 퍼 올리는 물리적(가상) I/O 시간**과 **동시성 큐 대기 시간**이 합쳐진 결과일 가능성이 매우 높습니다.
 
-MMKV는 훌륭하지만 본질적으로 Key-Value 저장소입니다. 데이터가 5만 개가 넘어갈 때 `JSON.parse()`와 `filter()`를 자바스크립트 스레드에서 수행하는 비용은 MMKV의 빠른 I/O 속도를 상쇄하고도 남습니다. 특히 **배터리 효율**과 **콜드 스타트** 면에서 SQLite 구조가 필수적입니다.
-
----
-
-## 1. 저장소 선정 및 아키텍처 제안
-
-### A. 저장소 분할 전략 (Hybrid Approach)
-
-모든 데이터를 하나에 몰아넣지 않고, 데이터 특성에 맞는 저장소를 사용합니다.
-
-| 데이터 유형 | 추천 저장소 | 이유 |
-| --- | --- | --- |
-| **Todos** | **SQLite** | 날짜 범위 쿼리, 정렬, 부분 업데이트 필수 |
-| **Completions** | **SQLite** | 가장 방대한 양, 단순 조회/토글 빈번, FK 관계 |
-| **Settings** | **MMKV** | 단순 Key-Value, 앱 실행 시 즉시 로드 필요 |
-| **Categories** | **MMKV** | 데이터 양이 적음(30개 미만), 자주 안 바뀜 |
-| **Sync Queue** | **SQLite** | 트랜잭션 보장 필요 (네트워크 실패 시 롤백 등) |
-
-### B. React Query + SQLite 통합 패턴
-
-**"SQLite를 로컬 서버처럼 취급하십시오."**
-
-React Query의 캐싱 메커니즘은 그대로 유지하되, `fetcher` 함수가 네트워크가 아닌 **SQLite**를 바라보게 합니다.
-
-1. **Read (조회):** `useQuery`가 SQLite를 호출합니다. (메모리 캐싱 효과)
-2. **Write (수정):** SQLite에 직접 씁니다 (`INSERT/UPDATE`).
-3. **Reaction (반영):** 쓰기 성공 후 `queryClient.invalidateQueries()`를 호출하여 UI를 갱신합니다.
+분석 내용과 해결 방안을 정리해 드립니다.
 
 ---
 
-## 2. 상세 구현 가이드
+### 1. 근본 원인 분석 (Root Cause)
 
-### A. 스키마 설계 (JSON 컬럼 활용)
+#### 가설 검증
 
-과도한 정규화(Normalization)는 피하고, 쿼리에 필요한 필드만 컬럼으로 빼고 나머지는 JSON으로 저장하는 **Hybrid Schema**를 추천합니다.
+* **워밍업 데이터 (False Positive):** 작성하신 워밍업 쿼리(`SELECT 1 ... WHERE date = '1970...'`)는 **인덱스 스캔(Index Scan)**만으로 처리가 끝났을 확률이 높습니다. `date` 컬럼에 인덱스가 있다면, SQLite는 실제 데이터 파일(Table Heap)을 열어보지 않고 인덱스 트리에서만 "없음"을 확인하고 종료합니다. 그래서 1ms로 매우 빠릅니다.
+* **실제 쿼리 (The Bottleneck):** `SELECT * ...`는 인덱스에서 RowID를 찾은 후, 실제 데이터가 저장된 페이지(Page)를 디스크(OPFS)에서 읽어와야 합니다.
+* **문제의 핵심:** **"인덱스 페이지는 메모리에 올라왔지만, 실제 데이터 페이지는 여전히 디스크(Cold) 상태"**입니다. WASM 환경에서 첫 I/O는 브라우저의 보안 레이어와 파일 시스템을 거치느라 네이티브보다 오버헤드가 큽니다.
+
+#### 추가 원인: 동시성 병목 (Concurrency Bottleneck)
+
+로그를 보면 `Todo Screen` 진입 시 4개의 쿼리가 동시에 발생합니다.
+
+1. `useAllTodos`
+2. `useCategories`
+3. `getTodosByDate`
+4. `getCompletionsByDate` (가장 느림)
+
+JS는 비동기이지만, **SQLite WASM 스레드(또는 워커)는 기본적으로 한 번에 하나의 쿼리를 처리(Serialize)**할 수 있습니다. 앞선 3개의 쿼리가 실행되는 동안 `getCompletionsByDate`는 큐에서 대기했을 수 있으며, 앞선 쿼리들이 I/O를 일으키며 락을 걸었다면 대기 시간은 기하급수적으로 늘어납니다.
+
+---
+
+### 2. 해결 방안 (Solutions)
+
+#### Option 1: 워밍업 쿼리 수정 (가장 효과적)
+
+"가짜 데이터"가 아닌 **"존재하는 최신 데이터"**를 강제로 읽어야 합니다. `LIMIT 1`은 좋지만, 데이터가 존재하는 범위를 건드려야 합니다.
+
+```javascript
+// 수정된 워밍업 로직
+// 1. 인덱스만 태우는 것이 아니라 실제 데이터 페이지를 로드하도록 유도
+// 2. 가장 최근 데이터(사용자가 곧 볼 데이터)를 미리 로드
+await db.getFirstAsync('SELECT * FROM completions ORDER BY date DESC LIMIT 1');
+
+```
+
+* **이유:** `ORDER BY date DESC`는 인덱스를 타고 내려와 실제 가장 최근의 데이터 페이지를 메모리(Page Cache)에 적재시킵니다.
+
+#### Option 2: 페이지 캐시 크기 증량 (PRAGMA 설정)
+
+10만 건 이상의 데이터를 다루신다면(이전 컨텍스트 기반), 기본 캐시 사이즈가 부족해 I/O가 빈번할 수 있습니다. 초기화 시 캐시를 늘려주세요.
+
+```javascript
+// initDatabase 함수 내
+await db.execAsync(`
+  PRAGMA cache_size = -20000; -- 약 20MB (음수는 kbyte 단위)
+  PRAGMA mmap_size = 30000000; -- Memory Map I/O 활성화 (WASM 지원 시 속도 향상 큼)
+`);
+
+```
+
+#### Option 3: 쿼리 최적화 (Covering Index)
+
+만약 화면에서 `completions` 테이블의 모든 컬럼(`*`)이 필요한 게 아니라면, 필요한 컬럼만 인덱스에 포함(Include)시키거나 조회 컬럼을 줄이세요.
 
 ```sql
--- Todos 테이블
-CREATE TABLE IF NOT EXISTS todos (
-  id TEXT PRIMARY KEY,       -- UUID
-  date TEXT,                 -- 조회용: YYYY-MM-DD
-  is_synced INTEGER DEFAULT 0, -- 동기화 상태
-  payload TEXT,              -- 나머지 데이터(recurrence, color 등) 통째로 JSON 저장
-  updated_at INTEGER,
-  deleted_at INTEGER
-);
-CREATE INDEX idx_todos_date ON todos(date);
+-- 나쁜 예
+SELECT * FROM completions ...
 
--- Completions 테이블
-CREATE TABLE IF NOT EXISTS completions (
-  id TEXT PRIMARY KEY,       -- UUID or todoId_date
-  todo_id TEXT NOT NULL,
-  date TEXT NOT NULL,
-  completed_at INTEGER,
-  is_synced INTEGER DEFAULT 0
-);
-CREATE INDEX idx_comp_lookup ON completions(todo_id, date);
-CREATE INDEX idx_comp_date ON completions(date);
+-- 좋은 예 (필요한 컬럼만 조회하여 인덱스 커버링 유도 가능성 높임)
+SELECT id, is_completed FROM completions ...
 
 ```
 
-### B. 쿼리 최적화 (일별 조회)
+---
 
-AsyncStorage/MMKV 방식과 비교하여 획기적으로 가벼워집니다.
+### 3. 검증 및 테스트 방법
+
+분석이 맞는지 확인하기 위해 다음 단계로 디버깅해보시길 권장합니다.
+
+#### Step 1: EXPLAIN QUERY PLAN 확인
+
+로그를 찍어서 현재 워밍업과 실제 쿼리가 인덱스를 어떻게 타는지 확인해야 합니다.
 
 ```javascript
-// db/todoService.js
-export const getTodosByDate = async (date) => {
-  // 전체 로드(X) -> 해당 날짜만 로드(O)
-  const result = await db.getAllAsync(
-    `SELECT * FROM todos 
-     WHERE (date = ? OR date IS NULL) -- 반복 일정 고려 로직 필요
-     AND deleted_at IS NULL`,
-    [date]
-  );
-  
-  // payload JSON 파싱 비용은 '오늘 할 일' 갯수만큼만 발생 (수천 개 -> 수십 개)
-  return result.map(row => ({
-    ...JSON.parse(row.payload),
-    _id: row.id,
-    isSynced: !!row.is_synced
-  }));
-};
+// 워밍업 직후 실행해 보세요
+const plan1 = await db.getAllAsync('EXPLAIN QUERY PLAN SELECT 1 FROM completions WHERE date = "1970-01-01" LIMIT 1');
+console.log('Warmup Plan:', plan1);
+
+const plan2 = await db.getAllAsync('EXPLAIN QUERY PLAN SELECT * FROM completions WHERE date = "2026-02-04"');
+console.log('Real Plan:', plan2);
 
 ```
 
-### C. Completion 토글 (속도 핵심)
-
-전체 파일을 다시 쓰는 것이 아니라, 딱 한 줄만 건드립니다.
-
-```javascript
-// db/completionService.js
-export const toggleCompletion = async (todoId, date) => {
-  const existing = await db.getFirstAsync(
-    'SELECT id FROM completions WHERE todo_id = ? AND date = ?', 
-    [todoId, date]
-  );
-
-  if (existing) {
-    await db.runAsync('DELETE FROM completions WHERE id = ?', [existing.id]);
-  } else {
-    await db.runAsync(
-      'INSERT INTO completions (id, todo_id, date, completed_at, is_synced) VALUES (?, ?, ?, ?, 0)',
-      [uuidv4(), todoId, date, Date.now()]
-    );
-  }
-  // React Query 무효화 -> UI 자동 갱신
-  queryClient.invalidateQueries(['todos', date]);
-};
-
-```
-
----
-
-## 3. 마이그레이션 전략 (점진적 적용)
-
-한 번에 모든 코드를 뒤집는 것은 위험합니다. 다음 순서로 진행하는 것을 권장합니다.
-
-### 1단계: MMKV 도입 및 유틸리티 교체 (Risk: 낮음)
-
-* **대상:** `Settings`, `Categories`, `AuthToken`
-* **작업:** `AsyncStorage.getItem/setItem`을 `mmkv.getString/set`으로 교체.
-* **효과:** 앱 실행 시 설정 로딩 속도 즉시 개선.
-
-### 2단계: Completion 분리 (Risk: 중간, 효과: 최상)
-
-* **이유:** 데이터 양이 가장 많고(수만 개), 구조가 단순하며, AsyncStorage 용량 제한의 주범입니다.
-* **작업:**
-1. `completions` 테이블 생성.
-2. 앱 시작 시 기존 AsyncStorage의 `completions`를 읽어 SQLite로 `INSERT` (Bulk Insert).
-3. `useSyncTodos` 등에서 Completion 관련 로직만 SQLite로 변경.
-
-
-* **효과:** 6MB 용량 제한 해결, 토글 반응 속도 극대화.
-
-### 3단계: Todo 마이그레이션 (Risk: 높음)
-
-* **작업:** `todos` 테이블 생성 및 로직 이관.
-* **주의:** 기존 델타 싱크 로직(`mergeDelta`)을 `INSERT OR REPLACE` 쿼리로 재작성해야 합니다.
-
----
-
-## 4. 글로벌/동남아 시장 고려사항 (기술적 조언)
-
-1. **SQLite WAL (Write-Ahead Logging) 모드 활성화:**
-* 동시 읽기/쓰기 성능이 향상됩니다. 백그라운드 싱크 중에 유저가 UI를 조작해도 버벅임이 줄어듭니다.
-* `PRAGMA journal_mode = WAL;`
-
-
-2. **트랜잭션(Transaction) 필수:**
-* 동남아 지역의 저가형 안드로이드 기기는 I/O 중 앱이 강제 종료될 확률이 높습니다.
-* 데이터 정합성을 위해 일괄 쓰기 작업은 반드시 트랜잭션으로 묶어야 합니다.
-
-
-3. **마이그레이션 코드의 안전장치:**
-* 기존 유저가 업데이트 후 첫 실행 시, 마이그레이션이 완료되기 전까지 앱 사용을 막는 Splash Screen 로직이 필요합니다 (수 초 소요 가능).
+* **예상 결과:**
+* `Warmup Plan`: `SEARCH TABLE completions USING COVERING INDEX ...` (실제 테이블 접근 안 함)
+* `Real Plan`: `SEARCH TABLE completions USING INDEX ...` (인덱스 사용 후 테이블 접근 필요)
 
 
 
----
+#### Step 2: 동시성 테스트 (Isolation)
 
-## 5. 결론 및 다음 단계
+`Todo Screen` 진입 시 `getCompletionsByDate`만 단독으로 실행되도록 다른 훅(`useAllTodos` 등)을 주석 처리하고 테스트해보세요.
 
-**귀하의 상황(개발자, 코딩 가능)에 맞춘 추천:**
+* 만약 1390ms -> 300ms 정도로 줄어든다면, **앞선 쿼리들에 의한 큐 대기(Blocking)**가 주요 원인입니다.
 
-1. **MMKV**는 `Settings`와 `Categories`에만 사용하십시오.
-2. **SQLite**를 도입하여 `Todos`와 `Completions`를 관리하십시오.
-3. **마이그레이션 순서:** Settings (MMKV) → Completions (SQLite) → Todos (SQLite).
+### 요약 및 추천
 
-**제가 해드릴 수 있는 다음 단계:**
-SQLite 테이블 생성 쿼리(Schema)와, 기존 `AsyncStorage` 데이터를 SQLite로 옮기는 **'마이그레이션 유틸리티 스크립트'** 초안을 작성해 드릴까요?
+1. **근본 원인:** 워밍업 쿼리가 인덱스만 스치고 지나가서 실제 데이터 영역(Heap)은 여전히 Cold 상태였음 + 화면 진입 시 다수 쿼리 병목.
+2. **즉시 조치:**
+* 워밍업 쿼리를 `SELECT * FROM completions ORDER BY date DESC LIMIT 1`로 변경하세요.
+* `initDatabase`에 `PRAGMA cache_size = -20000;`을 추가하세요.
+
+
+3. **웹 환경 특성:** WASM 환경(특히 OPFS)은 첫 I/O 비용이 비쌉니다. "데이터가 있는 척"하는 쿼리로 워밍업해야 합니다.
+
+이 방법으로 워밍업 쿼리를 수정한 뒤 로그 시간을 다시 확인해 보시기 바랍니다.
