@@ -11,10 +11,13 @@ import { ensureDatabase } from '../../services/db/database';
 
 /**
  * 카테고리 목록 조회 (SQLite 기반)
+ * 
+ * SQLite만 조회 (Read Only):
+ * - SQLite에서 직접 조회 (Source of Truth)
+ * - 서버 동기화는 useSyncService가 담당
  */
 export const useCategories = () => {
   const { user } = useAuthStore();
-  const queryClient = useQueryClient();
 
   const query = useQuery({
     queryKey: ['categories'],
@@ -27,17 +30,6 @@ export const useCategories = () => {
         const endTime = performance.now();
 
         console.log(`⚡ [useCategories] SQLite 조회: ${categories.length}개 (${(endTime - startTime).toFixed(2)}ms)`);
-
-        // 백그라운드 서버 동기화 → SQLite 저장
-        categoryApi.getCategories()
-          .then(async (serverCategories) => {
-            if (serverCategories.length !== categories.length) {
-              console.log('🔄 [useCategories] 서버 데이터 차이 감지 → SQLite 동기화');
-              await upsertCategories(serverCategories);
-              queryClient.invalidateQueries({ queryKey: ['categories'] });
-            }
-          })
-          .catch(() => { });
 
         return categories;
       } catch (error) {

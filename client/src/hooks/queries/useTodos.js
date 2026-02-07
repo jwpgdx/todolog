@@ -1,21 +1,18 @@
-import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useAuthStore } from '../../store/authStore';
-import { todoAPI } from '../../api/todos';
+import { useQuery } from '@tanstack/react-query';
 import { getTodosByDate } from '../../services/db/todoService';
 import { getCompletionsByDate } from '../../services/db/completionService';
 import { ensureDatabase } from '../../services/db/database';
+import { todoAPI } from '../../api/todos';
 
 /**
  * 날짜별 Todo 조회 Hook (SQLite 기반)
  * 
- * 새로운 흐름:
+ * SQLite만 조회 (Read Only):
  * 1. SQLite에서 직접 조회 (Source of Truth)
- * 2. 백그라운드에서 서버 동기화
- * 3. 완료 상태도 SQLite에서 조회
+ * 2. 완료 상태도 SQLite에서 조회
+ * 3. 서버 동기화는 useSyncService가 담당
  */
 export const useTodos = (date) => {
-  const { user } = useAuthStore();
-  const queryClient = useQueryClient();
 
   return useQuery({
     queryKey: ['todos', date],
@@ -61,17 +58,6 @@ export const useTodos = (date) => {
       
       const endTime = performance.now();
       console.log(`⚡ [useTodos] 전체: ${todosWithCompletion.length}개 (${(endTime - startTime).toFixed(2)}ms)`);
-
-      // 4. 백그라운드 서버 동기화 (선택적)
-      if (user) {
-        todoAPI.getTodos(date)
-          .then(res => {
-            if (res.data.length !== todos.length) {
-              console.log('🔄 [useTodos] 서버와 데이터 차이 감지 - 동기화 권장');
-            }
-          })
-          .catch(() => { });
-      }
 
       return todosWithCompletion;
     },

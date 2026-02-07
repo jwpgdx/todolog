@@ -102,16 +102,16 @@ client/src/services/
 - [x] 4.1 `SyncProvider.js`에서 useSyncService import
 - [x] 4.2 `useSyncTodos.js` 삭제
 - [x] 4.3 ✅ **체크포인트**: 빌드 + 동기화 테스트
-- [-] 4.4 **커밋**: "refactor: replace useSyncTodos with useSyncService"
+- [x] 4.4 **커밋**: "refactor: replace useSyncTodos with useSyncService"
 
 ---
 
 ### Phase 5: Query Hooks 단순화
 
-- [ ] 5.1 useTodos.js 백그라운드 서버 호출 삭제
-- [ ] 5.2 useCategories.js 백그라운드 서버 호출 삭제
-- [ ] 5.3 ✅ **체크포인트**: 빌드 + Network 탭 확인
-- [ ] 5.4 **커밋**: "perf: remove background API calls from query hooks"
+- [x] 5.1 useTodos.js 백그라운드 서버 호출 삭제
+- [x] 5.2 useCategories.js 백그라운드 서버 호출 삭제
+- [x] 5.3 ✅ **체크포인트**: 빌드 + Network 탭 확인
+- [-] 5.4 **커밋**: "perf: remove background API calls from query hooks"
 
 ---
 
