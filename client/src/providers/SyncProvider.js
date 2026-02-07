@@ -1,5 +1,5 @@
 import React, { createContext, useContext } from 'react';
-import { useSyncTodos } from '../hooks/useSyncTodos';
+import { useSyncService } from '../services/sync';
 
 /**
  * 동기화 컨텍스트
@@ -12,23 +12,20 @@ export const useSyncContext = () => {
     if (!context) {
         console.warn('[SyncContext] Provider 내부에서 사용해야 합니다');
         return {
-            syncTodos: () => { },
-            forceFullSync: () => { },
+            syncAll: () => { },
             isSyncing: false,
-            lastSyncTime: null,
             error: null,
-            pendingCount: 0,
         };
     }
     return context;
 };
 
 /**
- * SyncProvider - 델타 동기화를 관리하는 Provider
+ * SyncProvider - 중앙 집중 동기화를 관리하는 Provider
  * 자식 컴포넌트에서 동기화 상태 및 함수에 접근 가능
  */
 export const SyncProvider = ({ children }) => {
-    const syncState = useSyncTodos();
+    const syncState = useSyncService();
 
     return (
         <SyncContext.Provider value={syncState}>

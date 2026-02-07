@@ -93,16 +93,16 @@ client/src/services/
 - [x] 3.3 `completionSync.js` 생성
 - [x] 3.4 `index.js` (useSyncService) 생성
 - [x] 3.5 ✅ **체크포인트**: 빌드 확인
-- [-] 3.6 **커밋**: "feat: add services/sync/ folder"
+- [x] 3.6 **커밋**: "feat: add services/sync/ folder"
 
 ---
 
 ### Phase 4: Sync 연결 및 정리
 
-- [ ] 4.1 `SyncProvider.js`에서 useSyncService import
-- [ ] 4.2 `useSyncTodos.js` 삭제
-- [ ] 4.3 ✅ **체크포인트**: 빌드 + 동기화 테스트
-- [ ] 4.4 **커밋**: "refactor: replace useSyncTodos with useSyncService"
+- [x] 4.1 `SyncProvider.js`에서 useSyncService import
+- [x] 4.2 `useSyncTodos.js` 삭제
+- [x] 4.3 ✅ **체크포인트**: 빌드 + 동기화 테스트
+- [-] 4.4 **커밋**: "refactor: replace useSyncTodos with useSyncService"
 
 ---
 
