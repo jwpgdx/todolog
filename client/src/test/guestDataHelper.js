@@ -5,10 +5,10 @@
  */
 
 import * as Crypto from 'expo-crypto';
-import { upsertTodo } from '../db/todoService';
-import { upsertCategory } from '../db/categoryService';
-import { createCompletion } from '../db/completionService';
-import { clearAllData, initDatabase } from '../db/database';
+import { upsertTodo } from '../services/db/todoService';
+import { upsertCategory } from '../services/db/categoryService';
+import { createCompletion } from '../services/db/completionService';
+import { clearAllData, initDatabase } from '../services/db/database';
 
 // ============================================================
 // 카테고리 생성

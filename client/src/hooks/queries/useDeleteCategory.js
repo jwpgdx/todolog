@@ -1,9 +1,9 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import NetInfo from '@react-native-community/netinfo';
 import { deleteCategory as apiDeleteCategory } from '../../api/categories';
-import { deleteCategory as sqliteDeleteCategory } from '../../db/categoryService';
-import { addPendingChange } from '../../db/pendingService';
-import { ensureDatabase } from '../../db/database';
+import { deleteCategory as sqliteDeleteCategory } from '../../services/db/categoryService';
+import { addPendingChange } from '../../services/db/pendingService';
+import { ensureDatabase } from '../../services/db/database';
 
 export const useDeleteCategory = () => {
     const queryClient = useQueryClient();

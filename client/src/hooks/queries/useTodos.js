@@ -1,9 +1,9 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '../../store/authStore';
 import { todoAPI } from '../../api/todos';
-import { getTodosByDate } from '../../db/todoService';
-import { getCompletionsByDate } from '../../db/completionService';
-import { ensureDatabase } from '../../db/database';
+import { getTodosByDate } from '../../services/db/todoService';
+import { getCompletionsByDate } from '../../services/db/completionService';
+import { ensureDatabase } from '../../services/db/database';
 
 /**
  * 날짜별 Todo 조회 Hook (SQLite 기반)

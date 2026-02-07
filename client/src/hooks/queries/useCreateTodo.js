@@ -3,9 +3,9 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import NetInfo from '@react-native-community/netinfo';
 import { todoAPI } from '../../api/todos';
 import { invalidateAffectedMonths } from '../../utils/cacheUtils';
-import { upsertTodo } from '../../db/todoService';
-import { addPendingChange } from '../../db/pendingService';
-import { ensureDatabase } from '../../db/database';
+import { upsertTodo } from '../../services/db/todoService';
+import { addPendingChange } from '../../services/db/pendingService';
+import { ensureDatabase } from '../../services/db/database';
 import { generateId } from '../../utils/idGenerator';
 
 export const useCreateTodo = () => {

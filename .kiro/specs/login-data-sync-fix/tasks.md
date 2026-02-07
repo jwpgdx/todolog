@@ -69,20 +69,20 @@ client/src/services/
 - [x] 1.2 ✅ **체크포인트**: 빌드 확인
 - [x] 1.3 서버 API 추가 (`GET /completions/all`)
 - [x] 1.4 ✅ **체크포인트**: API 테스트 (Postman/curl)
-- [-] 1.5 **커밋**: "feat: add isLoggedIn + completions/all API"
+- [x] 1.5 **커밋**: "feat: add isLoggedIn + completions/all API"
 
 ---
 
 ### Phase 2: services/db/ 폴더 마이그레이션
 
-- [ ] 2.1 `services/db/` 폴더 생성
-- [ ] 2.2 `git mv db/* services/db/`로 파일 이동
-- [ ] 2.3 ✅ **체크포인트**: 빌드 에러 확인 (에러 예상됨)
-- [ ] 2.4 hooks/queries/ 13개 파일 import 수정
-- [ ] 2.5 ✅ **체크포인트**: 빌드 확인
-- [ ] 2.6 나머지 5개 파일 import 수정
-- [ ] 2.7 ✅ **체크포인트**: 빌드 + 앱 실행 테스트
-- [ ] 2.8 **커밋**: "refactor: move db/ to services/db/"
+- [x] 2.1 `services/db/` 폴더 생성
+- [x] 2.2 `git mv db/* services/db/`로 파일 이동
+- [x] 2.3 ✅ **체크포인트**: 빌드 에러 확인 (에러 예상됨)
+- [x] 2.4 hooks/queries/ 13개 파일 import 수정
+- [x] 2.5 ✅ **체크포인트**: 빌드 확인
+- [x] 2.6 나머지 5개 파일 import 수정
+- [x] 2.7 ✅ **체크포인트**: 빌드 + 앱 실행 테스트
+- [-] 2.8 **커밋**: "refactor: move db/ to services/db/"
 
 ---
 

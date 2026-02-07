@@ -5,9 +5,9 @@ import {
   toggleCompletion as sqliteToggleCompletion,
   createCompletion,
   deleteCompletion 
-} from '../../db/completionService';
-import { addPendingChange } from '../../db/pendingService';
-import { ensureDatabase } from '../../db/database';
+} from '../../services/db/completionService';
+import { addPendingChange } from '../../services/db/pendingService';
+import { ensureDatabase } from '../../services/db/database';
 import { generateId } from '../../utils/idGenerator';
 
 /**

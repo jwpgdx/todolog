@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { getTodosByCategory } from '../../db/todoService';
-import { ensureDatabase } from '../../db/database';
+import { getTodosByCategory } from '../../services/db/todoService';
+import { ensureDatabase } from '../../services/db/database';
 
 /**
  * 카테고리별 Todo 조회 (SQLite 기반)

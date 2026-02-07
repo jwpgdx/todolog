@@ -4,9 +4,9 @@ import dayjs from 'dayjs';
 import { useAuthStore } from '../store/authStore';
 import { todoAPI } from '../api/todos';
 import { isDateInRRule } from '../utils/routineUtils';
-import { getTodosByMonth } from '../db/todoService';
-import { getCompletionsByMonth } from '../db/completionService';
-import { ensureDatabase } from '../db/database';
+import { getTodosByMonth } from '../services/db/todoService';
+import { getCompletionsByMonth } from '../services/db/completionService';
+import { ensureDatabase } from '../services/db/database';
 
 /**
  * 캘린더 이벤트 훅 (SQLite 기반)

@@ -5,10 +5,10 @@ import * as Localization from 'expo-localization';
 
 import api, { setLogoutHandler } from '../api/axios';
 import { authAPI } from '../api/auth';
-import { clearAllData } from '../db/database';
-import { getTodoCount, getAllTodos } from '../db/todoService';
-import { getCategoryCount, getAllCategories } from '../db/categoryService';
-import { getAllCompletionsArray } from '../db/completionService';
+import { clearAllData } from '../services/db/database';
+import { getTodoCount, getAllTodos } from '../services/db/todoService';
+import { getCategoryCount, getAllCategories } from '../services/db/categoryService';
+import { getAllCompletionsArray } from '../services/db/completionService';
 
 // QueryClient를 외부에서 주입받을 수 있도록 변수 선언
 let queryClientInstance = null;

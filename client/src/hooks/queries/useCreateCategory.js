@@ -1,9 +1,9 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import NetInfo from '@react-native-community/netinfo';
 import { createCategory as apiCreateCategory } from '../../api/categories';
-import { upsertCategory } from '../../db/categoryService';
-import { addPendingChange } from '../../db/pendingService';
-import { ensureDatabase } from '../../db/database';
+import { upsertCategory } from '../../services/db/categoryService';
+import { addPendingChange } from '../../services/db/pendingService';
+import { ensureDatabase } from '../../services/db/database';
 import { generateId } from '../../utils/idGenerator';
 
 export const useCreateCategory = () => {

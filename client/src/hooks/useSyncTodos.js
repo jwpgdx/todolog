@@ -8,24 +8,24 @@ import { todoAPI } from '../api/todos';
 import api from '../api/axios';
 import { saveSettings } from '../storage/settingsStorage';
 // SQLite Services
-import { ensureDatabase, getMetadata, setMetadata } from '../db/database';
+import { ensureDatabase, getMetadata, setMetadata } from '../services/db/database';
 import {
     getAllTodos as sqliteGetAllTodos,
     upsertTodo as sqliteUpsertTodo,
     deleteTodo as sqliteDeleteTodo,
     upsertTodos as bulkUpsertTodos,
-} from '../db/todoService';
+} from '../services/db/todoService';
 import {
     getAllCompletions as sqliteGetAllCompletions,
     createCompletion,
     deleteCompletion,
-} from '../db/completionService';
+} from '../services/db/completionService';
 import {
     getPendingChanges as sqliteGetPendingChanges,
     removePendingChange as sqliteRemovePendingChange,
     clearPendingChanges as sqliteClearPendingChanges,
-} from '../db/pendingService';
-import { getAllCategories as sqliteGetAllCategories } from '../db/categoryService';
+} from '../services/db/pendingService';
+import { getAllCategories as sqliteGetAllCategories } from '../services/db/categoryService';
 
 /**
  * 델타 동기화 핵심 훅 (SQLite 기반)

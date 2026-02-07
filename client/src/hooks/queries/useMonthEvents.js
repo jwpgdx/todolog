@@ -1,8 +1,8 @@
 import { useQuery } from '@tanstack/react-query';
 import { useAuthStore } from '../../store/authStore';
 import { todoAPI } from '../../api/todos';
-import { getTodosByMonth } from '../../db/todoService';
-import { ensureDatabase } from '../../db/database';
+import { getTodosByMonth } from '../../services/db/todoService';
+import { ensureDatabase } from '../../services/db/database';
 
 /**
  * 월별 이벤트 조회 훅 (SQLite 기반)

@@ -2,9 +2,9 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import NetInfo from '@react-native-community/netinfo';
 import { todoAPI } from '../../api/todos';
 import { invalidateAffectedMonths } from '../../utils/cacheUtils';
-import { deleteTodo } from '../../db/todoService';
-import { addPendingChange } from '../../db/pendingService';
-import { ensureDatabase } from '../../db/database';
+import { deleteTodo } from '../../services/db/todoService';
+import { addPendingChange } from '../../services/db/pendingService';
+import { ensureDatabase } from '../../services/db/database';
 
 export const useDeleteTodo = () => {
   const queryClient = useQueryClient();

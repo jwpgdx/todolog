@@ -5,29 +5,29 @@ import { useToggleCompletion } from '../hooks/queries/useToggleCompletion';
 import { useTodos } from '../hooks/queries/useTodos';
 import NetInfo from '@react-native-community/netinfo';
 // SQLite
-import { initDatabase, getDbStats, resetDatabase, getDatabase } from '../db/database';
+import { initDatabase, getDbStats, resetDatabase, getDatabase } from '../services/db/database';
 import {
   getTodosByDate as sqliteGetTodosByDate,
   getTodosByMonth as sqliteGetTodosByMonth,
   getAllTodos as sqliteGetAllTodos,
   getTodoCount,
-} from '../db/todoService';
+} from '../services/db/todoService';
 import {
   getCompletionsByDate as sqliteGetCompletionsByDate,
   toggleCompletion as sqliteToggleCompletion,
   getCompletionStats,
   getCompletionCount,
-} from '../db/completionService';
+} from '../services/db/completionService';
 import {
   getPendingChanges as sqliteGetPendingChanges,
   addPendingChange,
   clearPendingChanges as sqliteClearPendingChanges,
   getPendingChangesCount,
-} from '../db/pendingService';
+} from '../services/db/pendingService';
 import {
   getAllCategories as sqliteGetAllCategories,
   getCategoryCount,
-} from '../db/categoryService';
+} from '../services/db/categoryService';
 
 export default function DebugScreen({ navigation }) {
   const [logs, setLogs] = useState([]);

@@ -6,8 +6,8 @@ import {
   upsertCategory,
   upsertCategories,
   deleteCategory as deleteCategoryFromDB,
-} from '../../db/categoryService';
-import { ensureDatabase } from '../../db/database';
+} from '../../services/db/categoryService';
+import { ensureDatabase } from '../../services/db/database';
 
 /**
  * 카테고리 목록 조회 (SQLite 기반)

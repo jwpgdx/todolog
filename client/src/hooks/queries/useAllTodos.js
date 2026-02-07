@@ -1,8 +1,8 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '../../store/authStore';
 import { todoAPI } from '../../api/todos';
-import { getAllTodos } from '../../db/todoService';
-import { ensureDatabase } from '../../db/database';
+import { getAllTodos } from '../../services/db/todoService';
+import { ensureDatabase } from '../../services/db/database';
 
 /**
  * 전체 Todo 조회 (SQLite 기반)
