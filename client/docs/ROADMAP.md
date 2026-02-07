@@ -49,6 +49,47 @@
 
 ## 🚀 다음 작업 (우선순위)
 
+### 0. ⚠️ UltimateCalendar 임시 비활성화 (2026-02-06)
+**상태**: 주석 처리됨 (`client/src/screens/TodoScreen.js`)
+
+**비활성화 이유:**
+- SQLite 데이터 변경 시 실시간 동기화 이슈
+- 카테고리 색상 변경 시 dot 색상 업데이트 안됨
+- 일정 카테고리 변경 시 dot 색상 업데이트 안됨
+- 게스트 마이그레이션 시 새 카테고리 dot 표시 안됨
+
+**근본 원인:**
+- `useCalendarDynamicEvents` Hook의 `useMemo` 의존성 문제
+- `todos`, `categories` 변경 시 `eventsByDate` 재계산 안됨
+- 캐시 무효화는 되지만 컴포넌트 재렌더링 트리거 안됨
+
+**해결 방법:**
+```javascript
+// client/src/hooks/useCalendarDynamicEvents.js
+const eventsByDate = useMemo(() => {
+  // ...
+}, [dataSource, visibleIndex, range, cacheType, cacheVersion, todos, categories]);
+//                                                              ^^^^^^^^^^^^^^^^^^^^
+//                                                              추가 필요!
+```
+
+**복구 절차:**
+1. `client/src/hooks/useCalendarDynamicEvents.js` 수정 (위 코드)
+2. `client/src/screens/TodoScreen.js`에서 주석 해제:
+   ```javascript
+   import UltimateCalendar from '../components/ui/ultimate-calendar/UltimateCalendar';
+   // ...
+   <UltimateCalendar />
+   ```
+3. 테스트:
+   - 카테고리 색상 변경 → dot 색상 즉시 업데이트 확인
+   - 일정 카테고리 변경 → dot 색상 즉시 업데이트 확인
+   - 게스트 마이그레이션 → 새 카테고리 dot 표시 확인
+
+**우선순위:** 중간 (핵심 기능 안정화 후 수정)
+
+---
+
 ### 0. 게스트 모드 완료 ✅
 **목적**: 게스트 모드 전체 플로우 검증
 
@@ -70,24 +111,25 @@
 
 ---
 
-### 1. 🔴 긴급: 로그인 후 서버 데이터 동기화 버그 수정
-**문제**: 로그인 후 서버에 있는 일정이 SQLite로 동기화되지 않음
-- 게스트 → 회원 전환 → 로그아웃 → 재로그인 시 일정 사라짐
-- 다른 기기에서 로그인해도 일정 안 보임
-- 서버 DB에는 데이터 있음, SQLite로 가져오는 로직 문제
+### 1. 🔴 긴급: 동기화 아키텍처 리팩토링 (보류)
+**상태**: 스펙 생성 완료 (`.kiro/specs/login-data-sync-fix/`)
 
-**원인 추정**:
-- `useSyncTodos` 또는 `useCategories`가 서버 데이터를 SQLite로 가져오지 않음
-- 게스트 사용자 동기화 스킵 로직이 정회원에게도 적용될 수 있음
-- 로그인 직후 초기 동기화가 실행되지 않음
+**문제**:
+1. 로그인 후 서버 데이터가 SQLite로 동기화되지 않음
+2. 백그라운드 서버 호출 중복 (`useTodos`, `useCategories`)
+3. 동기화 트리거 과다 (AppState + NetInfo + isLoggedIn)
 
-**수정 필요**:
-- [ ] `useSyncTodos.js` - 게스트 체크 로직 확인
-- [ ] `useCategories.js` - 서버 → SQLite 동기화 확인
-- [ ] `useTodos.js` - 서버 → SQLite 동기화 확인
-- [ ] 로그인 직후 전체 동기화 트리거 추가
+**스펙 내용**:
+- Query Hooks 단순화 (SQLite만 조회)
+- `/services/` 폴더 구조 도입 (db/, sync/)
+- 중앙 집중 동기화 (`useSyncService`)
+- 디바운스 적용으로 중복 트리거 방지
 
-**예상 시간**: 2-3시간
+**영향 범위**: 18개 파일 수정 (리스크 높음)
+
+**보류 이유**: 큰 리팩토링이므로 다른 작업 완료 후 진행
+
+**예상 시간**: 4-6시간
 
 ---
 

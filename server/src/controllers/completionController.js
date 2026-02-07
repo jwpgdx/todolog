@@ -162,6 +162,39 @@ exports.getCompletions = async (req, res) => {
   }
 };
 
+// 모든 완료 기록 조회 (Full Sync용)
+exports.getAllCompletions = async (req, res) => {
+  try {
+    const userId = req.userId;
+
+    console.log('🔄 [getAllCompletions] Full Sync 시작:', { userId });
+
+    // deletedAt이 null인 모든 완료 기록 조회
+    const completions = await Completion.find({
+      userId,
+      deletedAt: null,
+    }).select('_id todoId date completedAt updatedAt isRange startDate endDate');
+
+    console.log('✅ [getAllCompletions] Full Sync 완료:', {
+      count: completions.length,
+    });
+
+    res.json(completions.map(c => ({
+      _id: c._id,
+      todoId: c.todoId,
+      date: c.date,
+      completedAt: c.completedAt,
+      updatedAt: c.updatedAt,
+      isRange: c.isRange,
+      startDate: c.startDate,
+      endDate: c.endDate,
+    })));
+  } catch (error) {
+    console.error('❌ [getAllCompletions] Full Sync 실패:', error);
+    res.status(500).json({ message: error.message });
+  }
+};
+
 // 델타 동기화 API (Phase 2)
 exports.getDeltaSync = async (req, res) => {
   try {

@@ -5,11 +5,15 @@ const {
   createCompletion,
   deleteCompletion,
   getCompletions,
+  getAllCompletions,
   toggleCompletion,
   getDeltaSync,
   createRange,
   checkCompletion,
 } = require('../controllers/completionController');
+
+// Full Sync (모든 완료 기록 조회)
+router.get('/all', auth, getAllCompletions);
 
 // 델타 동기화 (Phase 2)
 router.get('/delta-sync', auth, getDeltaSync);

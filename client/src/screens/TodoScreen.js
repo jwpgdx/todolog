@@ -1,14 +1,19 @@
 import React, { useCallback } from 'react';
-import { View, StyleSheet, SafeAreaView } from "react-native";
+import { View, Text, StyleSheet, SafeAreaView, TouchableOpacity } from "react-native";
 import { useDateStore } from '../store/dateStore';
 import { useTodos } from '../hooks/queries/useTodos';
 import { useToggleCompletion } from '../hooks/queries/useToggleCompletion';
 import { useDeleteTodo } from '../hooks/queries/useDeleteTodo';
 import { useTodoFormStore } from '../store/todoFormStore';
+import dayjs from 'dayjs';
+import { useTranslation } from 'react-i18next';
 
 import DailyTodoList from '../features/todo/list/DailyTodoList';
 
-import UltimateCalendar from '../components/ui/ultimate-calendar/UltimateCalendar';
+// ⚠️ [2026-02-06] UltimateCalendar 임시 비활성화
+// 이유: SQLite/서버 동기화/카테고리 색상 동기화 이슈 해결 후 재활성화
+// 복구 방법: 아래 주석 해제
+// import UltimateCalendar from '../components/ui/ultimate-calendar/UltimateCalendar';
 
 /**
  * TodoScreen
@@ -16,11 +21,18 @@ import UltimateCalendar from '../components/ui/ultimate-calendar/UltimateCalenda
  */
 export default function TodoScreen({ navigation }) {
   // 1. 상태 및 데이터 훅
-  const { currentDate } = useDateStore();
+  const { currentDate, setCurrentDate } = useDateStore();
   const { data: todos, isLoading } = useTodos(currentDate);
   const { mutate: toggleCompletion } = useToggleCompletion();
   const { mutate: deleteTodo } = useDeleteTodo();
   const { openDetail } = useTodoFormStore();
+  const { t, i18n } = useTranslation();
+
+  // 날짜 포맷
+  const dateObj = dayjs(currentDate);
+  const isToday = dateObj.isSame(dayjs(), 'day');
+  const dateTitle = dateObj.locale(i18n.language).format(t('date.header_fmt'));
+  const dayOfWeek = dateObj.locale(i18n.language).format('ddd'); // 요일 (월, 화, 수...)
 
   // 2. 핸들러
   const handleToggleComplete = useCallback((todoId) => {
@@ -37,11 +49,48 @@ export default function TodoScreen({ navigation }) {
     deleteTodo(todo);
   }, [deleteTodo]);
 
+  // 날짜 네비게이션
+  const handlePrevDay = useCallback(() => {
+    const prevDate = dateObj.subtract(1, 'day').format('YYYY-MM-DD');
+    setCurrentDate(prevDate);
+  }, [dateObj, setCurrentDate]);
+
+  const handleNextDay = useCallback(() => {
+    const nextDate = dateObj.add(1, 'day').format('YYYY-MM-DD');
+    setCurrentDate(nextDate);
+  }, [dateObj, setCurrentDate]);
+
+  const handleToday = useCallback(() => {
+    setCurrentDate(dayjs().format('YYYY-MM-DD'));
+  }, [setCurrentDate]);
+
   return (
     <SafeAreaView style={styles.container}>
-      {/* 주간/월간 캘린더 (동적 이벤트 로딩) */}
-      <UltimateCalendar />
+      {/* ⚠️ [2026-02-06] UltimateCalendar 임시 비활성화 */}
+      {/* 이유: SQLite/서버 동기화/카테고리 색상 동기화 이슈 */}
+      {/* 복구 방법: 아래 주석 해제 */}
+      {/* <UltimateCalendar /> */}
 
+      {/* 임시 날짜 네비게이션 헤더 */}
+      <View style={styles.dateHeader}>
+        <TouchableOpacity onPress={handlePrevDay} style={styles.arrowButton}>
+          <Text style={styles.arrowText}>‹</Text>
+        </TouchableOpacity>
+        
+        <View style={styles.dateCenter}>
+          <Text style={styles.dateTitle}>{dateTitle}</Text>
+          <Text style={styles.dayOfWeek}>{dayOfWeek}</Text>
+          {!isToday && (
+            <TouchableOpacity onPress={handleToday} style={styles.todayButton}>
+              <Text style={styles.todayText}>{t('calendar.today')}</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+        
+        <TouchableOpacity onPress={handleNextDay} style={styles.arrowButton}>
+          <Text style={styles.arrowText}>›</Text>
+        </TouchableOpacity>
+      </View>
 
       {/* 투두 리스트 (정렬/완료 기능 포함) */}
       <DailyTodoList
@@ -60,5 +109,52 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#F9FAFB',
+  },
+  dateHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: 'white',
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+  },
+  arrowButton: {
+    width: 44,
+    height: 44,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  arrowText: {
+    fontSize: 28,
+    color: '#007AFF',
+    fontWeight: '300',
+  },
+  dateCenter: {
+    flex: 1,
+    alignItems: 'center',
+    gap: 4,
+  },
+  dateTitle: {
+    fontSize: 17,
+    fontWeight: '600',
+    color: '#000',
+  },
+  dayOfWeek: {
+    fontSize: 13,
+    fontWeight: '500',
+    color: '#666',
+  },
+  todayButton: {
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    borderRadius: 12,
+    backgroundColor: '#007AFF',
+  },
+  todayText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: 'white',
   },
 });

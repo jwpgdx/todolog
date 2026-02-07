@@ -21,6 +21,7 @@ export const useAuthStore = create((set) => ({
   user: null,
   token: null,
   isLoading: true,
+  isLoggedIn: false, // ✅ 추가: 로그인 상태 (게스트 제외)
   shouldShowLogin: false, // 로그아웃 후 바로 로그인 화면으로 이동할지 여부
 
   setAuth: async (token, user) => {
@@ -32,7 +33,11 @@ export const useAuthStore = create((set) => ({
       await AsyncStorage.removeItem('token');
       await AsyncStorage.removeItem('user');
     }
-    set({ token, user, isLoading: false });
+    
+    // isLoggedIn 계산: user && token && 게스트 아님
+    const isLoggedIn = !!(user && token && !user._id?.startsWith('guest_'));
+    
+    set({ token, user, isLoading: false, isLoggedIn });
   },
 
   setUser: async (user) => {
@@ -88,8 +93,8 @@ export const useAuthStore = create((set) => ({
       await AsyncStorage.setItem('refreshToken', refreshToken);
       await AsyncStorage.setItem('user', JSON.stringify(user));
 
-      // 5. Update Zustand state
-      set({ token: accessToken, user, isLoading: false });
+      // 5. Update Zustand state (게스트는 isLoggedIn = false)
+      set({ token: accessToken, user, isLoading: false, isLoggedIn: false });
 
       return user;
     } catch (error) {
@@ -105,7 +110,10 @@ export const useAuthStore = create((set) => ({
       const userStr = await AsyncStorage.getItem('user');
       const user = userStr ? JSON.parse(userStr) : null;
 
-      set({ token, user, isLoading: false, shouldShowLogin: false });
+      // isLoggedIn 계산
+      const isLoggedIn = !!(user && token && !user._id?.startsWith('guest_'));
+
+      set({ token, user, isLoading: false, isLoggedIn, shouldShowLogin: false });
     } catch (error) {
       set({ isLoading: false });
     }
@@ -129,7 +137,7 @@ export const useAuthStore = create((set) => ({
       }
     }
     
-    set({ token: null, user: null, shouldShowLogin: showLogin });
+    set({ token: null, user: null, isLoggedIn: false, shouldShowLogin: showLogin });
 
     // TanStack Query 캐시 초기화
     if (queryClientInstance) {
@@ -183,7 +191,10 @@ export const useAuthStore = create((set) => ({
       await AsyncStorage.setItem('token', token);
       await AsyncStorage.setItem('user', JSON.stringify(user));
       
-      set({ token, user, isLoading: false });
+      // isLoggedIn 계산
+      const isLoggedIn = !!(user && token && !user._id?.startsWith('guest_'));
+      
+      set({ token, user, isLoading: false, isLoggedIn });
       
       // 5. React Query 캐시 무효화 (Full Sync 트리거)
       if (queryClientInstance) {
