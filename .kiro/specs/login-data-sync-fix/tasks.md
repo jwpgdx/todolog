@@ -82,18 +82,18 @@ client/src/services/
 - [x] 2.5 ✅ **체크포인트**: 빌드 확인
 - [x] 2.6 나머지 5개 파일 import 수정
 - [x] 2.7 ✅ **체크포인트**: 빌드 + 앱 실행 테스트
-- [-] 2.8 **커밋**: "refactor: move db/ to services/db/"
+- [x] 2.8 **커밋**: "refactor: move db/ to services/db/"
 
 ---
 
 ### Phase 3: services/sync/ 폴더 생성
 
-- [ ] 3.1 `categorySync.js` 생성
-- [ ] 3.2 `todoSync.js` 생성
-- [ ] 3.3 `completionSync.js` 생성
-- [ ] 3.4 `index.js` (useSyncService) 생성
-- [ ] 3.5 ✅ **체크포인트**: 빌드 확인
-- [ ] 3.6 **커밋**: "feat: add services/sync/ folder"
+- [x] 3.1 `categorySync.js` 생성
+- [x] 3.2 `todoSync.js` 생성
+- [x] 3.3 `completionSync.js` 생성
+- [x] 3.4 `index.js` (useSyncService) 생성
+- [x] 3.5 ✅ **체크포인트**: 빌드 확인
+- [-] 3.6 **커밋**: "feat: add services/sync/ folder"
 
 ---
 
