@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, Platform, ScrollView } from 'react-native';
+import { View, Text, TouchableOpacity, Platform, ScrollView, ActionSheetIOS, Alert, ActivityIndicator } from 'react-native';
 import Toast from 'react-native-toast-message';
 import * as Localization from 'expo-localization';
 
@@ -22,10 +22,13 @@ export default function LoginScreen() {
   const [name, setName] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [isCheckingGuestData, setIsCheckingGuestData] = useState(false);
 
-  const { setAuth } = useAuthStore();
+  const { setAuth, checkGuestData, migrateGuestData, discardGuestData } = useAuthStore();
 
   const handleSubmit = async () => {
+    console.log('🔵 [Login] handleSubmit called');
+    
     // Validation
     if (!email || !password) {
       Toast.show({
@@ -63,6 +66,140 @@ export default function LoginScreen() {
       return;
     }
 
+    console.log('✅ [Login] Validation passed');
+
+    try {
+      // 로그인 시 게스트 데이터 확인
+      if (isLogin) {
+        console.log('🔍 [Login] Checking guest data...');
+        setIsCheckingGuestData(true);
+        const guestData = await checkGuestData();
+        setIsCheckingGuestData(false);
+        console.log('📊 [Login] Guest data:', guestData);
+
+        if (guestData && (guestData.todos > 0 || guestData.categories > 0)) {
+          // 게스트 데이터 존재 → ActionSheet 표시
+          console.log('🎯 [Login] Guest data found, showing migration options');
+          showMigrationOptions(guestData);
+          return;
+        }
+        
+        console.log('✅ [Login] No guest data, proceeding with normal login');
+      }
+
+      // 게스트 데이터 없음 또는 회원가입 → 정상 진행
+      await performAuth();
+    } catch (error) {
+      console.error('❌ [Login] Auth error:', error);
+      console.error('❌ [Login] Error details:', {
+        code: error.code,
+        message: error.message,
+        response: error.response?.data,
+      });
+      
+      setIsCheckingGuestData(false);
+      setIsLoading(false);
+
+      // 네트워크 오류 처리
+      if (error.code === 'ERR_NETWORK' || error.message === 'Network Error') {
+        Toast.show({
+          type: 'error',
+          text1: '네트워크 오류',
+          text2: '서버에 연결할 수 없습니다. 서버가 실행 중인지 확인해주세요.',
+        });
+        return;
+      }
+
+      // 타임아웃 오류
+      if (error.code === 'ECONNABORTED') {
+        Toast.show({
+          type: 'error',
+          text1: '요청 시간 초과',
+          text2: '네트워크 상태를 확인하고 다시 시도해주세요',
+        });
+        return;
+      }
+
+      // 서버 응답 에러
+      const errorMessage = error.response?.data?.message;
+      if (errorMessage) {
+        Toast.show({
+          type: 'error',
+          text1: isLogin ? '로그인 실패' : '회원가입 실패',
+          text2: errorMessage,
+        });
+      } else {
+        Toast.show({
+          type: 'error',
+          text1: isLogin ? '로그인 실패' : '회원가입 실패',
+          text2: error.message || '잠시 후 다시 시도해주세요',
+        });
+      }
+    }
+  };
+
+  // 게스트 데이터 마이그레이션 옵션 표시
+  const showMigrationOptions = (count) => {
+    const message = `${count.todos}개의 일정과 ${count.categories}개의 카테고리를 가져오시겠습니까?`;
+
+    if (Platform.OS === 'ios') {
+      ActionSheetIOS.showActionSheetWithOptions(
+        {
+          title: '게스트 데이터 발견',
+          message,
+          options: ['취소', '버리기', '가져오기'],
+          destructiveButtonIndex: 1,
+          cancelButtonIndex: 0,
+        },
+        (buttonIndex) => {
+          if (buttonIndex === 0) {
+            // 취소: 아무것도 안함
+            console.log('🚫 [Login] User cancelled migration');
+          } else if (buttonIndex === 1) {
+            console.log('🗑️ [Login] User chose to discard guest data');
+            handleDiscard();
+          } else if (buttonIndex === 2) {
+            console.log('📥 [Login] User chose to migrate guest data');
+            handleMigrate();
+          }
+        }
+      );
+    } else if (Platform.OS === 'web') {
+      // 웹에서는 window.confirm 사용
+      console.log('🌐 [Login] Showing web confirmation dialog');
+      const confirmed = window.confirm(
+        `게스트 데이터 발견\n\n${message}\n\n확인: 가져오기\n취소: 버리기`
+      );
+      
+      if (confirmed) {
+        console.log('📥 [Login] User chose to migrate guest data');
+        handleMigrate();
+      } else {
+        console.log('🗑️ [Login] User chose to discard guest data');
+        handleDiscard();
+      }
+    } else {
+      // Android
+      Alert.alert(
+        '게스트 데이터 발견',
+        message,
+        [
+          { text: '취소', style: 'cancel', onPress: () => console.log('🚫 [Login] User cancelled migration') },
+          { text: '버리기', style: 'destructive', onPress: () => {
+            console.log('🗑️ [Login] User chose to discard guest data');
+            handleDiscard();
+          }},
+          { text: '가져오기', onPress: () => {
+            console.log('📥 [Login] User chose to migrate guest data');
+            handleMigrate();
+          }},
+        ]
+      );
+    }
+  };
+
+  // 실제 인증 수행 (로그인/회원가입)
+  const performAuth = async () => {
     try {
       setIsLoading(true);
 
@@ -96,17 +233,68 @@ export default function LoginScreen() {
         text1: isLogin ? '로그인 성공' : '회원가입 성공',
         text2: `${user.name}님 환영합니다!`,
       });
-    } catch (error) {
-      console.error('Auth error:', error);
-      console.error('Error response:', error.response?.data);
 
+      setIsLoading(false);
+    } catch (error) {
+      setIsLoading(false);
+      console.error('performAuth error:', error);
+      throw error; // 에러를 상위로 전달
+    }
+  };
+
+  // 마이그레이션 처리
+  const handleMigrate = async () => {
+    try {
+      setIsLoading(true);
+      console.log('📥 [Login] Starting migration...');
+      await migrateGuestData({ email, password });
+      console.log('✅ [Login] Migration completed successfully');
+      Toast.show({
+        type: 'success',
+        text1: '마이그레이션 완료',
+        text2: '게스트 데이터를 가져왔습니다',
+      });
+    } catch (error) {
+      setIsLoading(false);
+      console.error('❌ [Login] Migration failed:', error);
+      console.error('❌ [Login] Error response:', error.response?.data);
+
+      if (error.code === 'ERR_NETWORK') {
+        Toast.show({
+          type: 'error',
+          text1: '네트워크 오류',
+          text2: '인터넷 연결을 확인해주세요',
+        });
+      } else {
+        const errorMsg = error.response?.data?.message || error.message || '다시 시도해주세요';
+        Toast.show({
+          type: 'error',
+          text1: '마이그레이션 실패',
+          text2: errorMsg,
+          visibilityTime: 5000,
+        });
+        
+        // 서버 에러 상세 정보 콘솔 출력
+        if (error.response?.data?.error) {
+          console.error('❌ [Login] Server error details:', error.response.data.error);
+        }
+      }
+    }
+  };
+
+  // 게스트 데이터 버리기
+  const handleDiscard = async () => {
+    try {
+      setIsLoading(true);
+      await discardGuestData();
+      await performAuth();
+    } catch (error) {
+      setIsLoading(false);
       Toast.show({
         type: 'error',
-        text1: isLogin ? '로그인 실패' : '회원가입 실패',
-        text2: error.response?.data?.message || '다시 시도해주세요',
+        text1: '로그인 실패',
+        text2: error.message,
       });
-    } finally {
-      setIsLoading(false);
     }
   };
 
@@ -178,73 +366,30 @@ export default function LoginScreen() {
 
       {/* 제출 버튼 */}
       <TouchableOpacity
-        className={`rounded-xl py-4 mb-4 mt-2 ${isLoading ? 'bg-gray-400' : 'bg-blue-500 active:bg-blue-600'}`}
+        className={`rounded-xl py-4 mb-4 mt-2 ${(isLoading || isCheckingGuestData) ? 'bg-gray-400' : 'bg-blue-500 active:bg-blue-600'}`}
         onPress={handleSubmit}
-        disabled={isLoading}
+        disabled={isLoading || isCheckingGuestData}
       >
-        <Text className="text-white text-center font-semibold text-lg">
-          {isLoading
-            ? (isLogin ? '로그인 중...' : '가입 중...')
-            : (isLogin ? '로그인' : '회원가입')
-          }
-        </Text>
+        {(isLoading || isCheckingGuestData) ? (
+          <View className="flex-row items-center justify-center">
+            <ActivityIndicator color="white" size="small" />
+            <Text className="text-white text-center font-semibold text-lg ml-2">
+              {isCheckingGuestData ? '데이터 확인 중...' : '데이터를 가져오는 중...'}
+            </Text>
+          </View>
+        ) : (
+          <Text className="text-white text-center font-semibold text-lg">
+            {isLogin ? '로그인' : '회원가입'}
+          </Text>
+        )}
       </TouchableOpacity>
 
       {/* 모드 전환 */}
-      <TouchableOpacity onPress={() => setIsLogin(!isLogin)} className="p-2">
+      <TouchableOpacity onPress={() => setIsLogin(!isLogin)} className="p-2 mb-8">
         <Text className="text-blue-500 text-center font-medium">
           {isLogin ? '계정이 없으신가요? 회원가입' : '이미 계정이 있으신가요? 로그인'}
         </Text>
       </TouchableOpacity>
-
-      {/* 개발용 빠른 로그인 */}
-      <View className="mt-8 p-4 bg-gray-100 rounded-xl">
-        <Text className="text-sm text-gray-600 text-center mb-2">개발용 빠른 로그인</Text>
-        <View className="flex-row justify-around">
-          <TouchableOpacity
-            className="bg-gray-500 px-4 py-2 rounded-lg"
-            onPress={() => {
-              setEmail('admin@test.com');
-              setPassword('123456');
-              setName('Admin User');
-              setIsLogin(true);
-              setTimeout(handleSubmit, 100);
-            }}
-          >
-            <Text className="text-white text-sm font-medium">Admin</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            className="bg-gray-500 px-4 py-2 rounded-lg"
-            onPress={() => {
-              setEmail('user1@test.com');
-              setPassword('123456');
-              setName('User One');
-              setIsLogin(true);
-              setTimeout(handleSubmit, 100);
-            }}
-          >
-            <Text className="text-white text-sm font-medium">User1</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            className="bg-gray-500 px-4 py-2 rounded-lg"
-            onPress={() => {
-              setEmail('user2@test.com');
-              setPassword('123456');
-              setName('User Two');
-              setIsLogin(true);
-              setTimeout(handleSubmit, 100);
-            }}
-          >
-            <Text className="text-white text-sm font-medium">User2</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-
-      {/* Network Debug Info */}
-      <View className="mt-4 p-3 bg-yellow-100 rounded-xl border border-yellow-300 mb-8">
-        <Text className="text-xs text-center text-gray-500 font-bold mb-1">Network Debug Info</Text>
-        <Text className="text-xs text-center text-gray-700">API URL: {API_URL}</Text>
-      </View>
     </KeyboardAwareScrollView>
   );
 }

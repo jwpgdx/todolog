@@ -26,6 +26,35 @@ export default function ProfileScreen({ navigation }) {
 
 
       <ScrollView className="flex-1" contentContainerStyle={{ paddingBottom: 40 }}>
+        {/* Guest Banner */}
+        {user?.accountType === 'anonymous' && (
+          <View className="mx-4 mt-4 mb-2 bg-blue-50 border border-blue-200 rounded-xl p-4">
+            <View className="flex-row items-center mb-2">
+              <Ionicons name="information-circle" size={20} color="#3b82f6" />
+              <Text className="text-blue-700 font-semibold ml-2">게스트로 사용 중입니다</Text>
+            </View>
+            <Text className="text-blue-600 text-sm mb-3">
+              회원으로 전환하면 여러 기기에서 데이터를 동기화할 수 있습니다.
+            </Text>
+            
+            {/* 회원가입 버튼 */}
+            <TouchableOpacity
+              className="bg-blue-500 py-3 px-4 rounded-lg active:bg-blue-600 mb-2"
+              onPress={() => navigation.navigate('ConvertGuest')}
+            >
+              <Text className="text-white font-semibold text-center">회원가입</Text>
+            </TouchableOpacity>
+            
+            {/* 기존 회원 로그인 버튼 */}
+            <TouchableOpacity
+              className="bg-white border border-blue-500 py-3 px-4 rounded-lg active:bg-blue-50"
+              onPress={() => useAuthStore.getState().logout({ skipDataClear: true, showLogin: true })}
+            >
+              <Text className="text-blue-500 font-semibold text-center">기존 회원 로그인</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
         {/* 2. Profile Card */}
         <View className="items-center py-8">
           <View className="w-24 h-24 bg-gray-200 rounded-full mb-4 items-center justify-center overflow-hidden">

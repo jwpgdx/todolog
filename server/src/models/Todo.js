@@ -128,13 +128,10 @@ todoSchema.index({ userId: 1, startDate: 1 });
 // 쿼리 예: { userId: '...', recurrence: { $ne: null }, recurrenceEndDate: { $gte: 조회시작일 } }
 todoSchema.index({ userId: 1, recurrenceEndDate: 1 });
 
-// 3. 구글 연동용: 구글 ID로 빠르게 내 DB 문서 찾기
-todoSchema.index({ googleCalendarEventId: 1 });
-
-// 4. 델타 동기화용: 특정 시간 이후 변경된 일정 조회
+// 3. 델타 동기화용: 특정 시간 이후 변경된 일정 조회
 todoSchema.index({ userId: 1, updatedAt: -1 });
 
-// 5. Soft delete 조회용: 삭제된 일정 조회
+// 4. Soft delete 조회용: 삭제된 일정 조회
 todoSchema.index({ userId: 1, deletedAt: 1 });
 
 module.exports = mongoose.model('Todo', todoSchema);

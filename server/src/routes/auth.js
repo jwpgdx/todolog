@@ -4,6 +4,9 @@ const auth = require('../middleware/auth');
 const {
   register,
   login,
+  createGuest,
+  refreshToken,
+  convertGuest,
   googleLogin,
   googleLoginWeb,
   exchangeGoogleCode,
@@ -11,7 +14,7 @@ const {
   toggleCalendarSync,
   disconnectCalendar,
   updateShowCompletedTodos,
-
+  migrateGuestData,
   updateTimeZone,
   updateProfile,
   checkHandle,
@@ -23,6 +26,10 @@ const {
 
 router.post('/register', register);
 router.post('/login', login);
+router.post('/guest', createGuest); // 게스트 생성
+router.post('/refresh', refreshToken); // Access Token 갱신
+router.post('/convert-guest', auth, convertGuest); // 게스트 → 정회원 전환
+router.post('/migrate-guest-data', migrateGuestData); // 게스트 데이터 마이그레이션
 router.post('/google', googleLogin); // 모바일용 (ID Token)
 router.post('/google/web', googleLoginWeb); // 웹용 (Access Token)
 router.post('/google/calendar/code', auth, exchangeGoogleCode); // 웹용 캘린더 인증 (코드 교환)

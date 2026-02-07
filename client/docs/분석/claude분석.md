@@ -1,303 +1,429 @@
-흥미로운 성능 문제네요. SQLite WASM의 지연 로딩(lazy loading) 특성과 관련된 것으로 보입니다. 분석과 해결 방안을 제시하겠습니다.
+정확히 핵심을 짚으셨습니다. 이 선택이 앱 전체 UX를 결정합니다.
 
-## 문제 분석
+---
 
-### 1. 근본 원인 (가장 가능성 높은 순서)
+## 상황 분석
 
-**A. SQLite의 지연 로딩 (Lazy Loading)**
-- 워밍업에서 `WHERE date = '1970-01-01'`은 빈 결과를 반환
-- SQLite는 실제 데이터 블록을 메모리에 로드하지 않음
-- 첫 실제 데이터 조회 시 디스크(WASM 가상 파일시스템)에서 페이지를 읽어옴
-
-**B. WASM 파일시스템 초기화**
-- expo-sqlite는 OPFS(Origin Private File System) 또는 IndexedDB를 사용
-- 첫 실제 I/O 작업 시 비동기 파일 시스템 초기화 발생
-- 워밍업 쿼리가 빈 결과라 I/O가 발생하지 않음
-
-**C. 쿼리 플랜 캐싱**
-- 다른 파라미터 값(`'1970-01-01'` vs `'2026-02-04'`)으로 인한 쿼리 플랜 캐시 미스
-- 하지만 prepared statement를 사용하므로 가능성은 낮음
-
-## 테스트 방법
-
-다음 코드를 `database.js`에 추가하여 정확한 원인을 파악하세요:
-
-```javascript
-// database.js에 추가
-export async function detailedWarmup(db) {
-  console.log('🔬 [상세 워밍업] 시작...');
-  
-  // Test 1: 빈 결과 쿼리
-  const t1 = performance.now();
-  await db.getAllAsync('SELECT * FROM completions WHERE date = ?', ['1970-01-01']);
-  const d1 = performance.now() - t1;
-  console.log(`  ✅ 빈 결과 쿼리: ${d1.toFixed(2)}ms`);
-  
-  // Test 2: LIMIT 1 (첫 행만)
-  const t2 = performance.now();
-  await db.getAllAsync('SELECT * FROM completions LIMIT 1');
-  const d2 = performance.now() - t2;
-  console.log(`  ✅ LIMIT 1: ${d2.toFixed(2)}ms`);
-  
-  // Test 3: 실제 데이터 조회
-  const t3 = performance.now();
-  const realData = await db.getAllAsync('SELECT * FROM completions LIMIT 10');
-  const d3 = performance.now() - t3;
-  console.log(`  ✅ 실제 데이터 10개: ${d3.toFixed(2)}ms (${realData.length} rows)`);
-  
-  // Test 4: 전체 테이블 스캔
-  const t4 = performance.now();
-  const allData = await db.getAllAsync('SELECT COUNT(*) as cnt FROM completions');
-  const d4 = performance.now() - t4;
-  console.log(`  ✅ COUNT(*): ${d4.toFixed(2)}ms (${allData[0]?.cnt} rows)`);
-  
-  // Test 5: 인덱스 사용 쿼리 (날짜 범위)
-  const t5 = performance.now();
-  await db.getAllAsync(
-    'SELECT * FROM completions WHERE date BETWEEN ? AND ?', 
-    ['2026-01-01', '2026-12-31']
-  );
-  const d5 = performance.now() - t5;
-  console.log(`  ✅ 날짜 범위 쿼리: ${d5.toFixed(2)}ms`);
-  
-  // Test 6: 페이지 캐시 강제 로드
-  const t6 = performance.now();
-  await db.execAsync('PRAGMA cache_size = -2000'); // 2MB 캐시
-  await db.getAllAsync('SELECT * FROM completions');
-  const d6 = performance.now() - t6;
-  console.log(`  ✅ 전체 테이블 로드: ${d6.toFixed(2)}ms`);
-  
-  console.log('🔬 [상세 워밍업] 완료');
-}
-
-// initDatabase()에서 호출
-await detailedWarmup(db);
+### Option 1: 바로 Todo 화면 (자동 게스트)
+```
+앱 설치 → 즉시 Todo 화면 → 할일 생성 가능
 ```
 
-## 추천 해결 방안
-
-### 해결책 1: 실제 데이터 워밍업 (가장 효과적)
-
+**문제 시나리오:**
 ```javascript
-async function warmupTables(db) {
-  console.log('🔥 [DB] 테이블 워밍업 시작...');
-  const start = performance.now();
+1. 앱 설치 → 자동 게스트 생성 (UUID: guest-123)
+2. 할일 10개 생성
+3. "아 이거 내 기존 계정으로 쓰고 싶다"
+4. 기존 계정 로그인 (UUID: user-456)
+
+// 😱 지옥의 데이터 병합
+- guest-123의 할일 10개 → user-456로 이동?
+- 카테고리 중복은? (Inbox 2개?)
+- 완료 기록은?
+- 서버 동기화 충돌은?
+- 클라이언트 SQLite 정리는?
+
+// 코드 복잡도 폭발
+const mergeGuestToExistingUser = async (guestId, userId) => {
+  // 1. 할일 이동
+  await Todo.updateMany(
+    { userId: guestId },
+    { userId: userId }
+  );
   
-  // 각 테이블의 실제 데이터 페이지를 메모리에 로드
-  const tables = [
-    { name: 'todos', query: 'SELECT * FROM todos LIMIT 5' },
-    { name: 'categories', query: 'SELECT * FROM categories LIMIT 5' },
-    { 
-      name: 'completions', 
-      // 최근 30일 데이터를 미리 로드 (실제 사용 패턴에 맞춤)
-      query: `SELECT * FROM completions 
-              WHERE date >= date('now', '-30 days') 
-              ORDER BY date DESC LIMIT 100` 
+  // 2. 카테고리 병합 (중복 처리)
+  const guestCategories = await Category.find({ userId: guestId });
+  const userCategories = await Category.find({ userId: userId });
+  
+  for (const guestCat of guestCategories) {
+    const duplicate = userCategories.find(c => c.name === guestCat.name);
+    if (duplicate) {
+      // 게스트 카테고리의 할일을 기존 카테고리로 이동
+      await Todo.updateMany(
+        { categoryId: guestCat._id },
+        { categoryId: duplicate._id }
+      );
+      await Category.deleteOne({ _id: guestCat._id });
+    } else {
+      await Category.updateOne(
+        { _id: guestCat._id },
+        { userId: userId }
+      );
     }
-  ];
-  
-  for (const table of tables) {
-    const t = performance.now();
-    const result = await db.getAllAsync(table.query);
-    console.log(`  ✅ [Warmup] ${table.name}: ${(performance.now() - t).toFixed(2)}ms (${result.length} rows)`);
   }
   
-  console.log(`🔥 [DB] 테이블 워밍업 완료 (${(performance.now() - start).toFixed(2)}ms)`);
-}
-```
-
-### 해결책 2: PRAGMA 최적화
-
-```javascript
-async function optimizeDatabase(db) {
-  // 페이지 캐시 크기 증가 (기본값은 작음)
-  await db.execAsync('PRAGMA cache_size = -4000'); // 4MB
-  
-  // 메모리 매핑 활성화 (WASM에서 효과적일 수 있음)
-  await db.execAsync('PRAGMA mmap_size = 30000000000'); // 30GB
-  
-  // 임시 저장소를 메모리로 설정
-  await db.execAsync('PRAGMA temp_store = MEMORY');
-  
-  // 동기화 모드 조정 (웹에서는 영향 적음)
-  await db.execAsync('PRAGMA synchronous = NORMAL');
-  
-  console.log('⚙️ [DB] PRAGMA 최적화 완료');
-}
-```
-
-### 해결책 3: 인덱스 확인 및 추가
-
-```javascript
-async function ensureIndexes(db) {
-  // completions 테이블의 date 컬럼에 인덱스가 있는지 확인
-  const indexes = await db.getAllAsync(
-    "SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='completions'"
+  // 3. 완료 기록 이동
+  await Completion.updateMany(
+    { userId: guestId },
+    { userId: userId }
   );
   
-  console.log('📇 [DB] 인덱스:', indexes);
+  // 4. 게스트 계정 삭제
+  await User.deleteOne({ _id: guestId });
   
-  // date 컬럼 인덱스가 없으면 생성
-  await db.execAsync(`
-    CREATE INDEX IF NOT EXISTS idx_completions_date 
-    ON completions(date DESC)
-  `);
-  
-  // 복합 인덱스도 고려 (자주 사용하는 쿼리 패턴에 따라)
-  await db.execAsync(`
-    CREATE INDEX IF NOT EXISTS idx_completions_date_todo 
-    ON completions(date, todo_id)
-  `);
-}
+  // 5. 클라이언트 SQLite 전체 재동기화
+  await fullSync();
+};
 ```
 
-### 해결책 4: 백그라운드 프리로딩
+**이거 진짜 헬입니다.** 😱
+
+---
+
+### Option 2: 로그인 화면 (게스트 버튼)
+```
+앱 설치 → 로그인 화면
+- "게스트로 시작하기" 버튼
+- "기존 계정으로 로그인" 버튼
+```
+
+**장점:**
+- ✅ 명확한 선택 (게스트 vs 기존 계정)
+- ✅ 데이터 병합 문제 없음
+- ✅ 코드 단순
+
+**단점:**
+- ❌ 진입 장벽 (버튼 1번 클릭)
+
+---
+
+## 하이브리드 솔루션 (추천) 🎯
+
+### "Smart Onboarding"
+
+```
+┌─────────────────────────────────┐
+│   Welcome to Todo App! 🎉       │
+│                                  │
+│   [시작하기]  ← 큰 버튼          │
+│                                  │
+│   이미 계정이 있으신가요?        │
+│   → 로그인                       │
+└─────────────────────────────────┘
+
+"시작하기" 클릭 → 자동 게스트 생성
+"로그인" 클릭 → 로그인 화면
+```
+
+**핵심:**
+- 기본 흐름은 게스트 (바로 시작)
+- 기존 사용자는 명시적으로 "로그인" 선택
+- **데이터 병합 문제 회피**
+
+---
+
+## 구체적 구현 방안
+
+### A. 최소 마찰 버전 (추천)
 
 ```javascript
-// App.js 또는 최상위 컴포넌트
+// WelcomeScreen.js
+export default function WelcomeScreen() {
+  return (
+    <View className="flex-1 justify-center items-center bg-white px-6">
+      {/* 로고 */}
+      <Text className="text-4xl font-bold mb-2">✓ Todo</Text>
+      <Text className="text-gray-500 mb-12">간단하고 강력한 할일 관리</Text>
+      
+      {/* 메인 액션 */}
+      <TouchableOpacity
+        className="bg-blue-500 w-full py-4 rounded-xl mb-4"
+        onPress={handleStart}
+      >
+        <Text className="text-white text-center font-bold text-lg">
+          시작하기
+        </Text>
+      </TouchableOpacity>
+      
+      {/* 세컨더리 액션 */}
+      <TouchableOpacity onPress={() => navigation.navigate('Login')}>
+        <Text className="text-gray-600">
+          이미 계정이 있으신가요? <Text className="text-blue-500 font-semibold">로그인</Text>
+        </Text>
+      </TouchableOpacity>
+    </View>
+  );
+}
+
+const handleStart = async () => {
+  // 자동 게스트 생성
+  await authStore.loginAsGuest();
+  navigation.replace('Home');
+};
+```
+
+**유저 입장:**
+1. 앱 열기 → "시작하기" 1번 클릭 → 바로 사용 ✅
+2. 기존 사용자는 "로그인" 명시적 선택 ✅
+
+**개발자 입장:**
+- 데이터 병합 로직 불필요 ✅
+- 코드 단순 ✅
+
+---
+
+### B. 완전 자동 버전 (비추천)
+
+```javascript
+// App.js
 useEffect(() => {
-  const preloadData = async () => {
-    const db = await getDatabase();
-    
-    // 백그라운드에서 데이터 프리로드 (UI 블로킹 없음)
-    requestIdleCallback(async () => {
-      console.log('🔄 [Background] 데이터 프리로딩 시작');
-      const start = performance.now();
-      
-      // 오늘 날짜 기준 데이터 미리 로드
-      const today = new Date().toISOString().split('T')[0];
-      await db.getAllAsync('SELECT * FROM completions WHERE date = ?', [today]);
-      
-      // 이번 주 데이터도 프리로드
-      const weekAgo = new Date();
-      weekAgo.setDate(weekAgo.getDate() - 7);
-      await db.getAllAsync(
-        'SELECT * FROM completions WHERE date >= ?', 
-        [weekAgo.toISOString().split('T')[0]]
-      );
-      
-      console.log(`🔄 [Background] 프리로딩 완료 (${(performance.now() - start).toFixed(2)}ms)`);
-    }, { timeout: 2000 });
-  };
+  const token = await AsyncStorage.getItem('token');
   
-  preloadData();
+  if (token) {
+    // 기존 사용자 → 메인 화면
+    navigation.replace('Home');
+  } else {
+    // 신규 사용자 → 자동 게스트 생성
+    await authStore.loginAsGuest();
+    navigation.replace('Home');
+  }
 }, []);
 ```
 
-## 통합 솔루션
+**문제:**
+```
+사용자: "어? 내 기존 데이터가 안 보이네? 아 로그인을 안 했구나"
+→ 로그인 시도
+→ 😱 방금 만든 게스트 데이터는?
+```
+
+이거 **UX 재앙**입니다.
+
+---
+
+## 실제 앱 사례 분석
+
+### Todoist (Option 2 방식)
+```
+로그인 화면:
+- [구글로 시작하기]
+- [이메일로 시작하기]
+- [계정이 있으신가요? 로그인]
+
+✅ 명확함
+❌ 버튼 1번 더 클릭
+```
+
+### Things 3 (Option 1 방식)
+```
+앱 열기 → 바로 Todo 화면
+나중에 "Things Cloud" 설정에서 동기화 켜기
+
+⚠️ 문제: 동기화 켜면 로컬 데이터가 날아감 (사용자 불만 多)
+```
+
+### Notion (하이브리드)
+```
+앱 열기 → Welcome 화면
+- [Get Started] ← 큰 버튼 (자동 게스트)
+- [I have an account] ← 작은 링크
+
+✅ 최고의 UX
+✅ 데이터 병합 문제 없음
+```
+
+**Notion 방식이 정답입니다.**
+
+---
+
+## 데이터 병합이 필요한 경우
+
+만약 Option 1을 선택하더라도 "병합"은 **절대 하지 마세요**.
+
+### 대신 이렇게:
 
 ```javascript
-// database.js - 개선된 initDatabase()
-export async function initDatabase() {
-  if (dbInstance) return dbInstance;
-  
-  console.log('🚀 [DB] 초기화 시작...');
-  const start = performance.now();
-  
-  try {
-    const db = await SQLite.openDatabaseAsync('mydb.db');
-    console.log('✅ [DB] Database opened');
-    
-    // 1. PRAGMA 최적화
-    await db.execAsync('PRAGMA journal_mode = WAL');
-    await db.execAsync('PRAGMA cache_size = -4000'); // 4MB 캐시
-    await db.execAsync('PRAGMA temp_store = MEMORY');
-    console.log('✅ [DB] PRAGMA 설정 완료');
-    
-    // 2. 스키마 생성
-    await db.execAsync(`
-      CREATE TABLE IF NOT EXISTS todos (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        title TEXT NOT NULL,
-        category_id INTEGER,
-        created_at TEXT DEFAULT CURRENT_TIMESTAMP
-      );
-      
-      CREATE TABLE IF NOT EXISTS completions (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        todo_id INTEGER NOT NULL,
-        date TEXT NOT NULL,
-        completed_at TEXT DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY (todo_id) REFERENCES todos (id)
-      );
-      
-      -- 인덱스 생성
-      CREATE INDEX IF NOT EXISTS idx_completions_date 
-      ON completions(date DESC);
-      
-      CREATE INDEX IF NOT EXISTS idx_completions_date_todo 
-      ON completions(date, todo_id);
-    `);
-    console.log('✅ [DB] Schema created');
-    
-    // 3. 실제 데이터 워밍업
-    const warmupStart = performance.now();
-    
-    // 각 테이블의 실제 데이터 로드
-    const tables = ['todos', 'categories', 'completions'];
-    for (const table of tables) {
-      const t = performance.now();
-      const result = await db.getAllAsync(`SELECT * FROM ${table} LIMIT 10`);
-      console.log(`  ✅ [Warmup] ${table}: ${(performance.now() - t).toFixed(2)}ms (${result.length} rows)`);
-    }
-    
-    // 최근 데이터 프리로드
-    const today = new Date().toISOString().split('T')[0];
-    const t = performance.now();
-    await db.getAllAsync('SELECT * FROM completions WHERE date >= ?', [today]);
-    console.log(`  ✅ [Warmup] 오늘 데이터: ${(performance.now() - t).toFixed(2)}ms`);
-    
-    console.log(`🔥 [DB] 워밍업 완료 (${(performance.now() - warmupStart).toFixed(2)}ms)`);
-    
-    dbInstance = db;
-    console.log(`✅ [App] SQLite 초기화 완료 (${(performance.now() - start).toFixed(2)}ms)`);
-    
-    return db;
-    
-  } catch (error) {
-    console.error('❌ [DB] 초기화 실패:', error);
-    throw error;
-  }
+// 기존 계정 로그인 시
+if (hasLocalGuestData) {
+  showDialog({
+    title: '게스트 데이터가 있습니다',
+    message: '게스트로 만든 할일이 3개 있습니다.',
+    options: [
+      {
+        text: '게스트 데이터 삭제하고 로그인',
+        onPress: () => {
+          deleteGuestData();
+          loginExistingUser();
+        }
+      },
+      {
+        text: '게스트로 계속 사용',
+        onPress: () => {
+          // 로그인 취소
+        }
+      }
+    ]
+  });
 }
 ```
 
-## 추가 디버깅 로그
+**병합은 하지 않습니다. 선택하게 합니다.**
+
+---
+
+## 최종 추천: 하이브리드 방식
+
+### 화면 흐름
+
+```
+1. 앱 설치
+   ↓
+2. Welcome 화면
+   - [시작하기] ← 70% 사용자
+   - [로그인] ← 30% 사용자
+   ↓
+3a. 시작하기 → 자동 게스트 생성 → Todo 화면
+3b. 로그인 → 로그인 화면 → Todo 화면 (기존 데이터)
+```
+
+### 구현 코드
 
 ```javascript
-// services/todoService.js - getCompletionsByDate 수정
-export async function getCompletionsByDate(date) {
-  const start = performance.now();
-  const db = await getDatabase();
+// App.js
+function AppNavigator() {
+  const { token, user } = useAuthStore();
+  const [isFirstLaunch, setIsFirstLaunch] = useState(null);
   
-  // 쿼리 플랜 확인
-  const plan = await db.getAllAsync(
-    'EXPLAIN QUERY PLAN SELECT * FROM completions WHERE date = ?',
-    [date]
-  );
-  console.log('📋 [Query Plan]:', plan);
+  useEffect(() => {
+    const checkFirstLaunch = async () => {
+      const hasLaunched = await AsyncStorage.getItem('hasLaunched');
+      
+      if (!hasLaunched && !token) {
+        // 최초 실행 → Welcome 화면
+        setIsFirstLaunch(true);
+      } else if (token) {
+        // 토큰 있음 → 메인 화면
+        setIsFirstLaunch(false);
+      } else {
+        // 이전에 실행했지만 토큰 없음 → 로그인 화면
+        setIsFirstLaunch(false);
+      }
+    };
+    
+    checkFirstLaunch();
+  }, [token]);
   
-  const result = await db.getAllAsync(
-    'SELECT * FROM completions WHERE date = ?',
-    [date]
-  );
-  
-  const duration = performance.now() - start;
-  console.log(`⏱️ [getCompletionsByDate] ${duration.toFixed(2)}ms (${result.length} rows)`);
-  
-  // 느린 쿼리 경고
-  if (duration > 100) {
-    console.warn(`⚠️ 느린 쿼리 감지! ${duration.toFixed(2)}ms`);
+  if (isFirstLaunch === null) {
+    return <LoadingScreen />;
   }
   
-  return result;
+  if (isFirstLaunch) {
+    return <WelcomeScreen />;
+  }
+  
+  if (!token) {
+    return <LoginScreen />;
+  }
+  
+  return <MainApp />;
+}
+
+// WelcomeScreen.js
+function WelcomeScreen() {
+  const navigation = useNavigation();
+  const { loginAsGuest } = useAuthStore();
+  
+  const handleStart = async () => {
+    await AsyncStorage.setItem('hasLaunched', 'true');
+    await loginAsGuest();
+    navigation.replace('Home');
+  };
+  
+  const handleLogin = () => {
+    AsyncStorage.setItem('hasLaunched', 'true');
+    navigation.replace('Login');
+  };
+  
+  return (
+    <SafeAreaView className="flex-1 bg-white">
+      <View className="flex-1 justify-center px-8">
+        {/* 일러스트 or 로고 */}
+        <View className="items-center mb-12">
+          <Text className="text-5xl mb-4">📝</Text>
+          <Text className="text-3xl font-bold text-gray-800 mb-2">
+            Welcome to Todo
+          </Text>
+          <Text className="text-gray-500 text-center">
+            하루를 체계적으로 관리하세요
+          </Text>
+        </View>
+        
+        {/* 메인 CTA */}
+        <TouchableOpacity
+          className="bg-blue-500 py-4 rounded-xl mb-4 shadow-sm"
+          onPress={handleStart}
+        >
+          <Text className="text-white text-center font-bold text-lg">
+            시작하기
+          </Text>
+        </TouchableOpacity>
+        
+        {/* 세컨더리 액션 */}
+        <View className="flex-row justify-center items-center mt-4">
+          <Text className="text-gray-600 mr-2">이미 계정이 있으신가요?</Text>
+          <TouchableOpacity onPress={handleLogin}>
+            <Text className="text-blue-500 font-semibold">로그인</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    </SafeAreaView>
+  );
 }
 ```
 
-## 권장 조치 순서
+---
 
-1. **즉시 적용**: 해결책 1 (실제 데이터 워밍업) - 가장 효과적
-2. **함께 적용**: 해결책 2 (PRAGMA 최적화) - 부작용 없음
-3. **확인**: 인덱스가 제대로 생성되었는지 체크
-4. **선택 적용**: 해결책 4 (백그라운드 프리로딩) - UX 개선
+## 왜 하이브리드가 최선인가?
 
-테스트 후 결과를 공유해주시면 추가 분석 도와드리겠습니다!
+| 측면 | Option 1 (자동) | Option 2 (로그인) | 하이브리드 (추천) |
+|------|----------------|------------------|------------------|
+| **신규 사용자 마찰** | 0번 클릭 | 1번 클릭 | 1번 클릭 |
+| **기존 사용자 경험** | 혼란 😱 | 명확 ✅ | 명확 ✅ |
+| **데이터 병합** | 필수 (지옥) | 불필요 | 불필요 |
+| **코드 복잡도** | 매우 높음 | 낮음 | 낮음 |
+| **UX 명확성** | 낮음 | 높음 | 높음 |
+
+**결론: 하이브리드가 압승**
+
+---
+
+## 구현 우선순위
+
+### Phase 1 (MVP)
+```javascript
+✅ Welcome 화면 (시작하기 + 로그인)
+✅ 자동 게스트 생성
+✅ 로그인 화면
+```
+
+### Phase 2 (개선)
+```javascript
+✅ Welcome 화면에 앱 기능 소개 슬라이드 (선택)
+✅ "시작하기" 후 간단한 튜토리얼 (선택)
+```
+
+### ❌ 절대 하지 마세요
+```javascript
+❌ 데이터 병합 로직
+❌ "게스트 데이터를 기존 계정으로 이동하시겠습니까?"
+❌ 복잡한 충돌 해결 알고리즘
+```
+
+---
+
+## 최종 답변
+
+**하이브리드 방식 (Welcome 화면)을 강력히 추천합니다.**
+
+**이유:**
+1. ✅ 신규 사용자: 1번 클릭으로 바로 시작 (충분히 빠름)
+2. ✅ 기존 사용자: 명확하게 "로그인" 선택 (혼란 없음)
+3. ✅ 개발자: 데이터 병합 지옥 회피
+4. ✅ 유지보수: 코드 단순
+
+**Option 1 (자동 게스트)은 절대 비추천:**
+- 데이터 병합 로직 = 버그 공장
+- 기존 사용자 혼란
+- 개발 공수 3배
+
+클릭 1번 차이가 앱 개발 난이도를 10배 바꿉니다. **하이브리드로 가세요.**

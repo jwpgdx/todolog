@@ -112,6 +112,175 @@ exports.register = async (req, res) => {
   }
 };
 
+// 게스트 생성
+exports.createGuest = async (req, res) => {
+  try {
+    const { userId, timeZone } = req.body;
+
+    // UUID 유효성 검증
+    const { isValidUUID } = require('../utils/idGenerator');
+    if (!userId || !isValidUUID(userId)) {
+      return res.status(400).json({ message: '유효하지 않은 UUID입니다' });
+    }
+
+    // 중복 체크
+    const existing = await User.findById(userId);
+    if (existing) {
+      return res.status(400).json({ message: '이미 존재하는 사용자입니다' });
+    }
+
+    // 게스트 사용자 생성
+    const user = await User.create({
+      _id: userId,
+      email: null,
+      password: null,
+      accountType: 'anonymous',
+      name: 'Guest User',
+      provider: 'local',
+      settings: {
+        timeZone: timeZone || 'Asia/Seoul',
+        theme: 'system',
+        language: 'system',
+      }
+    });
+
+    // Inbox 카테고리 생성
+    await Category.create({
+      _id: generateId(),
+      userId: user._id,
+      name: 'Inbox',
+      isDefault: true,
+      color: '#CCCCCC'
+    });
+
+    // Access Token (7일)
+    const accessToken = jwt.sign({ userId: user._id }, process.env.JWT_SECRET, {
+      expiresIn: '7d',
+    });
+
+    // Refresh Token (90일)
+    const refreshToken = jwt.sign({ userId: user._id }, process.env.JWT_REFRESH_SECRET || process.env.JWT_SECRET, {
+      expiresIn: '90d',
+    });
+
+    // Refresh Token DB 저장
+    user.refreshToken = refreshToken;
+    await user.save();
+
+    res.status(201).json({
+      accessToken,
+      refreshToken,
+      user: {
+        id: user._id,
+        email: user.email,
+        name: user.name,
+        accountType: user.accountType,
+        provider: user.provider,
+        hasCalendarAccess: !!user.googleAccessToken,
+        settings: user.settings,
+      },
+    });
+  } catch (error) {
+    console.error('Create guest error:', error);
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+};
+
+// Refresh Token으로 Access Token 갱신
+exports.refreshToken = async (req, res) => {
+  try {
+    const { refreshToken } = req.body;
+
+    if (!refreshToken) {
+      return res.status(401).json({ message: 'Refresh token required' });
+    }
+
+    // Refresh Token 검증
+    const decoded = jwt.verify(refreshToken, process.env.JWT_REFRESH_SECRET || process.env.JWT_SECRET);
+
+    // DB에서 사용자 조회
+    const user = await User.findById(decoded.userId);
+
+    if (!user || user.refreshToken !== refreshToken) {
+      return res.status(401).json({ message: 'Invalid refresh token' });
+    }
+
+    // 새 Access Token 발급
+    const newAccessToken = jwt.sign(
+      { userId: user._id },
+      process.env.JWT_SECRET,
+      { expiresIn: '7d' }
+    );
+
+    res.json({ accessToken: newAccessToken });
+  } catch (error) {
+    console.error('Refresh token error:', error);
+    res.status(401).json({ message: 'Token expired or invalid' });
+  }
+};
+
+// 게스트 → 정회원 전환
+exports.convertGuest = async (req, res) => {
+  try {
+    const { email, password, name } = req.body;
+    const userId = req.userId; // auth 미들웨어에서 추출
+
+    // 현재 사용자 조회
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({ message: '사용자를 찾을 수 없습니다' });
+    }
+
+    // 게스트가 아니면 에러
+    if (user.accountType !== 'anonymous') {
+      return res.status(400).json({ message: '이미 정회원입니다' });
+    }
+
+    // 이메일 중복 체크
+    const existingUser = await User.findOne({ email });
+    if (existingUser) {
+      return res.status(400).json({ message: '이미 사용 중인 이메일입니다' });
+    }
+
+    // 이메일 형식 검증
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      return res.status(400).json({ message: '유효하지 않은 이메일 형식입니다' });
+    }
+
+    // 비밀번호 길이 검증
+    if (password.length < 6) {
+      return res.status(400).json({ message: '비밀번호는 최소 6자 이상이어야 합니다' });
+    }
+
+    // 비밀번호 해싱
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    // 사용자 정보 업데이트
+    user.email = email;
+    user.password = hashedPassword;
+    user.name = name || user.name;
+    user.accountType = 'local';
+    await user.save();
+
+    res.json({
+      message: '회원 전환 완료',
+      user: {
+        id: user._id,
+        email: user.email,
+        name: user.name,
+        accountType: user.accountType,
+        provider: user.provider,
+        hasCalendarAccess: !!user.googleAccessToken,
+        settings: user.settings,
+      },
+    });
+  } catch (error) {
+    console.error('Convert guest error:', error);
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+};
+
 exports.login = async (req, res) => {
   try {
     console.log('Login request received:', req.body);
@@ -733,5 +902,169 @@ exports.deleteAccount = async (req, res) => {
   } catch (error) {
     console.error('Delete account error:', error);
     res.status(500).json({ message: '회원 탈퇴 실패', error: error.message });
+  }
+};
+
+// 게스트 데이터 마이그레이션
+exports.migrateGuestData = async (req, res) => {
+  const mongoose = require('mongoose');
+  const session = await mongoose.startSession();
+  session.startTransaction();
+  
+  try {
+    const { email, password, guestData } = req.body;
+    
+    // 1. 사용자 인증
+    const user = await User.findOne({ email }).session(session);
+    
+    if (!user) {
+      await session.abortTransaction();
+      return res.status(404).json({ 
+        success: false,
+        message: '사용자를 찾을 수 없습니다' 
+      });
+    }
+    
+    const isMatch = await bcrypt.compare(password, user.password);
+    if (!isMatch) {
+      await session.abortTransaction();
+      return res.status(401).json({ 
+        success: false,
+        message: '비밀번호가 일치하지 않습니다' 
+      });
+    }
+    
+    // 2. 마이그레이션된 카테고리 생성
+    const migratedCategoryId = generateId();
+    const categoryName = user.settings?.language === 'en' 
+      ? 'Migrated Category' 
+      : '마이그레이션된 카테고리';
+    
+    await Category.create([{
+      _id: migratedCategoryId,
+      userId: user._id,
+      name: categoryName,
+      color: '#9CA3AF',  // Gray-400
+      order: 999,  // 맨 뒤로
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    }], { session });
+    
+    console.log(`✅ [Migration] Created migrated category: ${migratedCategoryId}`);
+    
+    // 3. Todos 삽입
+    const Todo = require('../models/Todo');
+    const todosToInsert = guestData.todos.map(todo => ({
+      _id: todo._id,
+      userId: user._id,
+      title: todo.title,
+      // 클라이언트의 date 필드를 startDate로 매핑
+      startDate: todo.startDate || todo.date,
+      endDate: todo.endDate || null,
+      recurrence: todo.recurrence || [],
+      categoryId: migratedCategoryId,  // 모두 새 카테고리로
+      isAllDay: todo.isAllDay !== undefined ? todo.isAllDay : true,
+      // 시간 필드는 서버 모델에 맞게 변환 (문자열 → Date 또는 null)
+      startDateTime: todo.startDateTime || null,
+      endDateTime: todo.endDateTime || null,
+      timeZone: todo.timeZone || 'Asia/Seoul',
+      memo: todo.memo || null,
+      createdAt: todo.createdAt || new Date(),
+      updatedAt: todo.updatedAt || new Date(),
+      syncStatus: 'synced',
+      deletedAt: null,
+      // order 필드 추가
+      order: todo.order || {},
+    }));
+    
+    if (todosToInsert.length > 0) {
+      await Todo.insertMany(todosToInsert, { session });
+      console.log(`✅ [Migration] Inserted ${todosToInsert.length} todos`);
+    }
+    
+    // 4. Completions 삽입
+    const Completion = require('../models/Completion');
+    const completionsToInsert = guestData.completions.map(comp => ({
+      key: comp.key,
+      todoId: comp.todoId,
+      userId: user._id,
+      date: comp.date,
+      completedAt: comp.completedAt,
+    }));
+    
+    if (completionsToInsert.length > 0) {
+      await Completion.insertMany(completionsToInsert, { session });
+      console.log(`✅ [Migration] Inserted ${completionsToInsert.length} completions`);
+    }
+    
+    // 5. 데이터 무결성 검증
+    const verifyTodos = await Todo.find({ 
+      userId: user._id,
+      _id: { $in: todosToInsert.map(t => t._id) }
+    }).session(session);
+    
+    if (verifyTodos.length !== todosToInsert.length) {
+      throw new Error('Todo insertion verification failed');
+    }
+    
+    const allHaveCorrectCategory = verifyTodos.every(
+      t => t.categoryId === migratedCategoryId
+    );
+    
+    if (!allHaveCorrectCategory) {
+      throw new Error('Category assignment verification failed');
+    }
+    
+    console.log('✅ [Migration] Data integrity verified');
+    
+    // 6. 트랜잭션 커밋
+    await session.commitTransaction();
+    
+    // 7. JWT 토큰 생성
+    const token = jwt.sign({ userId: user._id }, process.env.JWT_SECRET, {
+      expiresIn: '7d',
+    });
+    
+    console.log(`✅ [Migration] Completed for user: ${user.email}`);
+    
+    res.json({
+      success: true,
+      message: '마이그레이션 완료',
+      token,
+      user: {
+        id: user._id,
+        email: user.email,
+        name: user.name,
+        accountType: user.accountType,
+        provider: user.provider,
+        hasCalendarAccess: !!user.googleAccessToken,
+        settings: user.settings,
+      },
+      migratedCategoryId,
+      stats: {
+        todosInserted: todosToInsert.length,
+        completionsInserted: completionsToInsert.length,
+      },
+    });
+  } catch (error) {
+    await session.abortTransaction();
+    console.error('❌ [Migration] Error:', {
+      userId: req.body.email,
+      error: error.message,
+      stack: error.stack,
+      guestDataSize: {
+        todos: req.body.guestData?.todos?.length || 0,
+        categories: req.body.guestData?.categories?.length || 0,
+        completions: req.body.guestData?.completions?.length || 0,
+      },
+    });
+    
+    res.status(500).json({ 
+      success: false,
+      message: '마이그레이션 실패', 
+      error: error.message 
+    });
+  } finally {
+    session.endSession();
   }
 };

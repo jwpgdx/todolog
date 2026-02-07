@@ -10,6 +10,56 @@
 
 ## 📋 Recent Updates & Optimizations
 
+### Guest Data Migration (Feb 6, 2026)
+
+**Phase 4 Complete**: 통합 테스트 및 마이그레이션 플로우 검증 완료
+
+**구현된 기능:**
+- ✅ 테스트 데이터 생성 유틸리티 (`guestDataHelper.js`)
+  - 시나리오별 테스트 데이터 생성 (소량/대량/빈 데이터)
+  - 테스트 계정 자동 생성
+  - 게스트 데이터 통계 조회
+- ✅ 테스트 화면 (`GuestMigrationTestScreen.js`)
+  - 시나리오별 버튼 UI
+  - DebugScreen에서 접근 가능
+- ✅ 마이그레이션 플로우 검증
+  - LoginScreen ActionSheet 구현
+  - 게스트 데이터 감지 및 선택 UI
+  - 마이그레이션/삭제/취소 처리
+
+**해결된 주요 이슈:**
+1. **MongoDB Index 중복 키 에러**
+   - 문제: `googleCalendarEventId` unique index에서 null 값 중복 에러
+   - 해결: 중복 인덱스 정의 제거, `sparse: true` 옵션 추가
+   - 스크립트: `server/src/scripts/fixGoogleCalendarIndex.js`
+
+2. **테스트 데이터 스키마 불일치**
+   - 문제: 클라이언트 `date` 필드 vs 서버 `startDate` 필드
+   - 해결: 서버 마이그레이션 API에 필드 매핑 로직 추가
+   - 결과: 5 todos, 3 categories, 3 completions 마이그레이션 성공
+
+**테스트 결과:**
+```
+✅ [Migration] Created migrated category
+✅ [Migration] Inserted 5 todos
+✅ [Migration] Inserted 3 completions
+✅ [Migration] Data integrity verified
+```
+
+**남은 작업 (Optional):**
+- Guest User Cleanup: 마이그레이션 후 게스트 계정 자동 삭제
+- 대용량 데이터 마이그레이션 테스트 (100+ todos)
+
+**Files Modified:**
+- `client/src/test/guestDataHelper.js` (NEW)
+- `client/src/test/GuestMigrationTestScreen.js` (NEW)
+- `client/src/screens/LoginScreen.js` (마이그레이션 플로우)
+- `server/src/controllers/authController.js` (필드 매핑)
+- `server/src/models/Todo.js` (인덱스 수정)
+- `server/src/scripts/fixGoogleCalendarIndex.js` (NEW)
+
+---
+
 ### Cache Invalidation Optimization (Feb 3, 2026)
 
 **Problem**: Unnecessary calendar re-renders on Todo CRUD operations

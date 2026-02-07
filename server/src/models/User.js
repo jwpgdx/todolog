@@ -15,9 +15,10 @@ const userSchema = new mongoose.Schema({
     type: String,
     // 소셜 로그인은 비밀번호 없음
   },
-  isGuest: {
-    type: Boolean,
-    default: false,
+  accountType: {
+    type: String,
+    enum: ['anonymous', 'local', 'google', 'apple'],
+    default: 'anonymous',
   },
   name: {
     type: String,
@@ -42,6 +43,10 @@ const userSchema = new mongoose.Schema({
   },
   picture: {
     type: String, // 프로필 이미지 URL
+  },
+  // === [인증 토큰] ===
+  refreshToken: {
+    type: String, // JWT Refresh Token
   },
   // === [외부 API 토큰] (민감 정보는 루트에 유지) ===
   googleAccessToken: {

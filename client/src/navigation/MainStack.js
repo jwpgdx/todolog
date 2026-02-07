@@ -138,6 +138,23 @@ export default function MainStack() {
           headerShown: true,
         }}
       />
+      <Stack.Screen
+        name="ConvertGuest"
+        component={require('../screens/ConvertGuestScreen').default}
+        options={{
+          headerShown: false,
+          presentation: 'modal',
+        }}
+      />
+      <Stack.Screen
+        name="GuestMigrationTest"
+        component={require('../test/GuestMigrationTestScreen').default}
+        options={{
+          title: 'Guest Migration Test',
+          headerBackTitle: '뒤로',
+          headerShown: true,
+        }}
+      />
     </Stack.Navigator>
   );
 }

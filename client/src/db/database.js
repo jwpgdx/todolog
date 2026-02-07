@@ -160,35 +160,32 @@ export async function initDatabase() {
 
             console.log('✅ [DB] Database initialized successfully');
 
-            // ⚡ 즉시 테이블 워밍업 (WASM 콜드 스타트 방지)
-            // 첫 실제 쿼리가 느린 문제 해결 - 실제 사용 순서대로 워밍업
+            // ⚡ 테이블 워밍업 (WASM 콜드 스타트 방지)
+            // 실제 데이터 페이지를 메모리에 로드하여 첫 쿼리 성능 개선
             try {
                 const warmupStart = performance.now();
                 console.log('🔥 [DB] 테이블 워밍업 시작...');
                 
-                // 실제 사용 순서: todos → categories → completions
-                // 각 테이블의 첫 쿼리가 WASM 메타데이터를 로드하므로 순서 중요
+                // PRAGMA 최적화
+                await db.execAsync('PRAGMA cache_size = -20000'); // 20MB 캐시
+                await db.execAsync('PRAGMA mmap_size = 268435456'); // 256MB (지원 시)
+                console.log('  ⚙️ [Warmup] PRAGMA 최적화 완료');
                 
+                // 실제 사용 순서대로 워밍업 (실제 데이터 페이지 로드)
                 const todosStart = performance.now();
-                await db.getFirstAsync('SELECT 1 FROM todos WHERE date = ? LIMIT 1', ['1970-01-01']);
+                await db.getAllAsync('SELECT * FROM todos LIMIT 1');
                 const todosEnd = performance.now();
-                console.log(`  ✅ [Warmup] todos (getFirstAsync): ${(todosEnd - todosStart).toFixed(2)}ms`);
+                console.log(`  ✅ [Warmup] todos: ${(todosEnd - todosStart).toFixed(2)}ms`);
                 
                 const categoriesStart = performance.now();
-                await db.getFirstAsync('SELECT 1 FROM categories WHERE _id = ? LIMIT 1', ['warmup']);
+                await db.getAllAsync('SELECT * FROM categories LIMIT 1');
                 const categoriesEnd = performance.now();
-                console.log(`  ✅ [Warmup] categories (getFirstAsync): ${(categoriesEnd - categoriesStart).toFixed(2)}ms`);
+                console.log(`  ✅ [Warmup] categories: ${(categoriesEnd - categoriesStart).toFixed(2)}ms`);
                 
-                const completionsFirstStart = performance.now();
-                await db.getFirstAsync('SELECT 1 FROM completions WHERE date = ? LIMIT 1', ['1970-01-01']);
-                const completionsFirstEnd = performance.now();
-                console.log(`  ✅ [Warmup] completions (getFirstAsync): ${(completionsFirstEnd - completionsFirstStart).toFixed(2)}ms`);
-                
-                // 🔬 추가 테스트: getAllAsync도 워밍업
-                const completionsAllStart = performance.now();
-                await db.getAllAsync('SELECT * FROM completions WHERE date = ? LIMIT 1', ['1970-01-01']);
-                const completionsAllEnd = performance.now();
-                console.log(`  ✅ [Warmup] completions (getAllAsync): ${(completionsAllEnd - completionsAllStart).toFixed(2)}ms`);
+                const completionsStart = performance.now();
+                await db.getAllAsync('SELECT * FROM completions ORDER BY date DESC LIMIT 1');
+                const completionsEnd = performance.now();
+                console.log(`  ✅ [Warmup] completions: ${(completionsEnd - completionsStart).toFixed(2)}ms`);
                 
                 const warmupEnd = performance.now();
                 console.log(`🔥 [DB] 테이블 워밍업 완료 (${(warmupEnd - warmupStart).toFixed(2)}ms)`);
@@ -569,6 +566,28 @@ export async function resetDatabase() {
     await db.execAsync('DELETE FROM metadata');
 
     console.log('✅ [DB] Database reset completed');
+}
+
+/**
+ * 모든 사용자 데이터 삭제 (로그아웃 시 사용)
+ * metadata는 유지 (마이그레이션 버전 등)
+ */
+export async function clearAllData() {
+    console.log('🗑️ [DB] Clearing all user data...');
+
+    try {
+        await ensureDatabase();
+        
+        await db.execAsync('DELETE FROM pending_changes');
+        await db.execAsync('DELETE FROM completions');
+        await db.execAsync('DELETE FROM todos');
+        await db.execAsync('DELETE FROM categories');
+
+        console.log('✅ [DB] All user data cleared');
+    } catch (error) {
+        console.error('❌ [DB] Failed to clear data:', error);
+        throw error;
+    }
 }
 
 // ============================================================

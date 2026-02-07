@@ -48,16 +48,50 @@ api.interceptors.request.use(
   (error) => Promise.reject(error)
 );
 
-// Response Interceptor: Handle 401
+// Response Interceptor: Handle 401 with Refresh Token
 api.interceptors.response.use(
   (response) => response,
   async (error) => {
-    if (error.response?.status === 401) {
-      console.log('Session expired, logging out via handler...');
-      if (logoutHandler) {
-        logoutHandler();
+    const originalRequest = error.config;
+
+    // 401 에러이고, 재시도하지 않은 요청인 경우
+    if (error.response?.status === 401 && !originalRequest._retry) {
+      originalRequest._retry = true;
+
+      try {
+        // Refresh Token 가져오기
+        const refreshToken = await AsyncStorage.getItem('refreshToken');
+        
+        if (!refreshToken) {
+          // Refresh Token이 없으면 로그아웃
+          if (logoutHandler) {
+            logoutHandler();
+          }
+          return Promise.reject(error);
+        }
+
+        // Refresh Token으로 새 Access Token 발급
+        const response = await axios.post(`${API_URL}/auth/refresh`, { refreshToken });
+        const { accessToken } = response.data;
+
+        // 새 Access Token 저장
+        await AsyncStorage.setItem('token', accessToken);
+
+        // 원래 요청에 새 토큰 적용
+        originalRequest.headers.Authorization = `Bearer ${accessToken}`;
+
+        // 원래 요청 재시도
+        return api(originalRequest);
+      } catch (refreshError) {
+        // Refresh Token도 만료되었으면 로그아웃
+        console.log('Refresh token expired, logging out...');
+        if (logoutHandler) {
+          logoutHandler();
+        }
+        return Promise.reject(refreshError);
       }
     }
+
     return Promise.reject(error);
   }
 );

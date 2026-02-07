@@ -326,3 +326,21 @@ export async function getCompletionCountByDate(date) {
     );
     return result?.count || 0;
 }
+
+/**
+ * 전체 Completion 조회 (Array 형식, 마이그레이션용)
+ * 
+ * @returns {Promise<Array>}
+ */
+export async function getAllCompletionsArray() {
+    const db = getDatabase();
+
+    const result = await db.getAllAsync('SELECT * FROM completions');
+
+    return result.map(row => ({
+        key: row.key,
+        todoId: row.todo_id,
+        date: row.date,
+        completedAt: row.completed_at,
+    }));
+}

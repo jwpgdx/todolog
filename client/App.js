@@ -20,9 +20,9 @@ import { useColorScheme } from 'nativewind';
 
 import { useAuthStore, setQueryClient } from './src/store/authStore';
 import { useTodoFormStore } from './src/store/todoFormStore';
-import LoginScreen from './src/screens/LoginScreen';
 import { toastConfig } from './src/config/toastConfig';
 import MainStack from './src/navigation/MainStack';
+import AuthStack from './src/navigation/AuthStack';
 import GlobalFormOverlay from './src/features/todo/form/GlobalFormOverlay';
 import { SyncProvider } from './src/providers/SyncProvider';
 import { ensureDatabase } from './src/db/database';
@@ -93,7 +93,7 @@ export default function App() {
               <View style={{ flex: 1 }}>
                 <NavigationContainer>
                   <StatusBar style="auto" />
-                  {user ? <MainStack /> : <LoginScreen />}
+                  {user ? <MainStack /> : <AuthStack />}
                 </NavigationContainer>
 
                 <Toast config={toastConfig} topOffset={10} visibilityTime={3000} style={{ zIndex: 9999 }} />

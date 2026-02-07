@@ -69,3 +69,33 @@ npx expo run:android --device
 - 웹 앱: http://localhost:8081
 - API 서버: http://localhost:5000
 
+DEVELOPMENT METHODOLOGY 🔴 CRITICAL
+Spec-Driven Development (MANDATORY) 섹션을 추가했습니다:
+
+핵심 내용
+3단계 워크플로우
+
+
+
+Requirements → Design → Tasks
+각 단계마다 사용자 승인 필수
+언제 사용할지 명확히 정의
+
+MUST USE: 새 기능, 아키텍처 변경, API 수정 등
+CAN SKIP: 단순 버그 수정, UI 스타일 조정 등
+Benefits 명시
+
+명확한 요구사항, 체계적 설계, 점진적 구현
+Property-Based Testing으로 정확성 보장
+Example & Command
+
+실제 사용 예시 (guest-data-migration)
+명령어 템플릿 제공
+이제 앞으로 모든 새로운 기능 개발은 이 방법론을 따르게 됩니다!
+
+다음에 새 기능 개발할 때:
+
+"[기능명] 스펙을 만들어줘"
+라고만 하시면 자동으로 Requirements → Design → Tasks 순서로 진행됩니다! 🚀
+
+좋습니다. 이제 전체 스펙을 파악했습니다. "Run All Tasks" 모드로 진입하여 모든 태스크를 순차적으로 실행하겠습니다.

@@ -28,5 +28,8 @@
         "year": "年",
         "month": "月",
         "header_fmt": "YYYY年 M月"
+    },
+        "category": {
+        "migrated": "移行された予定"
     }
 }

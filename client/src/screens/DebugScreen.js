@@ -29,7 +29,7 @@ import {
   getCategoryCount,
 } from '../db/categoryService';
 
-export default function DebugScreen() {
+export default function DebugScreen({ navigation }) {
   const [logs, setLogs] = useState([]);
   const [selectedDate, setSelectedDate] = useState('2026-02-01');
   const queryClient = useQueryClient();
@@ -698,6 +698,17 @@ export default function DebugScreen() {
 
         <TouchableOpacity style={[styles.button, styles.dangerButton]} onPress={resetDb}>
           <Text style={styles.buttonText}>🗑️ SQLite 전체 초기화</Text>
+        </TouchableOpacity>
+
+        <View style={styles.divider} />
+
+        <Text style={styles.sectionTitle}>🧪 통합 테스트</Text>
+
+        <TouchableOpacity
+          style={[styles.button, styles.testButton]}
+          onPress={() => navigation.navigate('GuestMigrationTest')}
+        >
+          <Text style={styles.buttonText}>🔬 Guest Migration Test</Text>
         </TouchableOpacity>
       </ScrollView>
 
