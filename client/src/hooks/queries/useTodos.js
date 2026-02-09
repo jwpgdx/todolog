@@ -33,17 +33,17 @@ export const useTodos = (date) => {
 
       // 2. SQLite에서 Todo + Completion 조회
       const startTime = performance.now();
-      
+
       const todoStart = performance.now();
       const todos = await getTodosByDate(date);
       const todoEnd = performance.now();
       console.log(`  📝 [useTodos] getTodosByDate: ${todos.length}개 (${(todoEnd - todoStart).toFixed(2)}ms)`);
-      
+
       const compStart = performance.now();
       const completions = await getCompletionsByDate(date);
       const compEnd = performance.now();
       console.log(`  ✅ [useTodos] getCompletionsByDate: ${Object.keys(completions).length}개 (${(compEnd - compStart).toFixed(2)}ms)`);
-      
+
       const mergeStart = performance.now();
       // 3. 완료 상태 병합
       console.log(`  🔍 [useTodos] Completion 상세:`, Object.keys(completions).map(key => ({
@@ -51,26 +51,28 @@ export const useTodos = (date) => {
         date: completions[key].date,
         todoId: completions[key].todoId.slice(-8)
       })));
-      
+
       const todosWithCompletion = todos.map(todo => {
-        // 기간 일정인 경우 date=null인 Completion 조회
-        const isRangeTodo = todo.startDate !== todo.endDate;
-        const completionKey = isRangeTodo 
-          ? `${todo._id}_null`  // 기간 일정: date=null
-          : `${todo._id}_${date || 'null'}`;  // 단일 일정: 해당 날짜
-        
+        // 반복 vs 비반복으로만 구분
+        // - 반복 일정: 날짜별로 완료 추적 필요 (매일/매주 다른 완료 상태)
+        // - 비반복 일정 (단일/기간 모두): 한 번 완료하면 끝 → null 사용
+        const isRecurring = !!todo.recurrence;
+        const completionKey = isRecurring
+          ? `${todo._id}_${date}`  // 반복 일정: 해당 날짜
+          : `${todo._id}_null`;    // 비반복 일정: date=null
+
         const hasCompletion = !!completions[completionKey];
-        
+
         console.log(`  📝 [useTodos] Todo 병합:`, {
           id: todo._id.slice(-8),
           title: todo.title,
-          isRangeTodo,
+          isRecurring,
           completionKey,
           hasCompletion,
           startDate: todo.startDate,
           endDate: todo.endDate
         });
-        
+
         return {
           ...todo,
           completed: hasCompletion
@@ -78,7 +80,7 @@ export const useTodos = (date) => {
       });
       const mergeEnd = performance.now();
       console.log(`  🔀 [useTodos] 병합: (${(mergeEnd - mergeStart).toFixed(2)}ms)`);
-      
+
       const endTime = performance.now();
       console.log(`⚡ [useTodos] 전체: ${todosWithCompletion.length}개 (${(endTime - startTime).toFixed(2)}ms)`);
 

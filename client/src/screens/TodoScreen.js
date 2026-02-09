@@ -1,4 +1,4 @@
-import React, { useCallback } from 'react';
+import React, { useCallback, useRef } from 'react';
 import { View, Text, StyleSheet, SafeAreaView, TouchableOpacity } from "react-native";
 import { useDateStore } from '../store/dateStore';
 import { useTodos } from '../hooks/queries/useTodos';
@@ -28,6 +28,10 @@ export default function TodoScreen({ navigation }) {
   const { openDetail } = useTodoFormStore();
   const { t, i18n } = useTranslation();
 
+  // 🔧 Stale closure 방지: currentDate를 ref로 관리
+  const currentDateRef = useRef(currentDate);
+  currentDateRef.current = currentDate;
+
   // 날짜 포맷
   const dateObj = dayjs(currentDate);
   const isToday = dateObj.isSame(dayjs(), 'day');
@@ -35,20 +39,38 @@ export default function TodoScreen({ navigation }) {
   const dayOfWeek = dateObj.locale(i18n.language).format('ddd'); // 요일 (월, 화, 수...)
 
   // 2. 핸들러
+  // 🔧 currentDate 대신 currentDateRef.current 사용하여 항상 최신 값 참조
   const handleToggleComplete = useCallback((todoId) => {
+    const actualDate = currentDateRef.current;  // 항상 최신 날짜
+
+    console.log('🎯 [TodoScreen] 체크박스 클릭:', {
+      todoId: todoId.slice(-8),
+      actualDate,
+      화면날짜: actualDate
+    });
+
     const todo = todos.find(t => t._id === todoId);
     if (!todo) {
       console.error('❌ [TodoScreen] Todo를 찾을 수 없음:', todoId);
       return;
     }
-    
-    toggleCompletion({ 
-      todoId, 
-      date: currentDate, 
-      currentCompleted: todo.completed,
-      todo 
+
+    console.log('🎯 [TodoScreen] 토글 요청:', {
+      todoId: todoId.slice(-8),
+      title: todo.title,
+      isRecurring: !!todo.recurrence,
+      startDate: todo.startDate,
+      endDate: todo.endDate,
+      전달할date: actualDate
     });
-  }, [currentDate, todos, toggleCompletion]);
+
+    toggleCompletion({
+      todoId,
+      date: actualDate,  // ref.current 사용
+      currentCompleted: todo.completed,
+      todo
+    });
+  }, [todos, toggleCompletion]);  // currentDate 제거 (ref 사용)
 
   const handleEdit = useCallback((todo) => {
     console.log('✏️ [TodoScreen] 수정 버튼 클릭:', todo._id);
@@ -63,17 +85,21 @@ export default function TodoScreen({ navigation }) {
   // 날짜 네비게이션
   const handlePrevDay = useCallback(() => {
     const prevDate = dateObj.subtract(1, 'day').format('YYYY-MM-DD');
+    console.log('📆 [TodoScreen] 날짜 이동: ◀️', currentDate, '→', prevDate);
     setCurrentDate(prevDate);
-  }, [dateObj, setCurrentDate]);
+  }, [dateObj, currentDate, setCurrentDate]);
 
   const handleNextDay = useCallback(() => {
     const nextDate = dateObj.add(1, 'day').format('YYYY-MM-DD');
+    console.log('📆 [TodoScreen] 날짜 이동: ▶️', currentDate, '→', nextDate);
     setCurrentDate(nextDate);
-  }, [dateObj, setCurrentDate]);
+  }, [dateObj, currentDate, setCurrentDate]);
 
   const handleToday = useCallback(() => {
-    setCurrentDate(dayjs().format('YYYY-MM-DD'));
-  }, [setCurrentDate]);
+    const today = dayjs().format('YYYY-MM-DD');
+    console.log('📆 [TodoScreen] 오늘로 이동:', currentDate, '→', today);
+    setCurrentDate(today);
+  }, [currentDate, setCurrentDate]);
 
   return (
     <SafeAreaView style={styles.container}>
@@ -87,7 +113,7 @@ export default function TodoScreen({ navigation }) {
         <TouchableOpacity onPress={handlePrevDay} style={styles.arrowButton}>
           <Text style={styles.arrowText}>‹</Text>
         </TouchableOpacity>
-        
+
         <View style={styles.dateCenter}>
           <Text style={styles.dateTitle}>{dateTitle}</Text>
           <Text style={styles.dayOfWeek}>{dayOfWeek}</Text>
@@ -97,7 +123,7 @@ export default function TodoScreen({ navigation }) {
             </TouchableOpacity>
           )}
         </View>
-        
+
         <TouchableOpacity onPress={handleNextDay} style={styles.arrowButton}>
           <Text style={styles.arrowText}>›</Text>
         </TouchableOpacity>

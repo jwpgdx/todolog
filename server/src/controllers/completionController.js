@@ -37,7 +37,7 @@ exports.toggleCompletion = async (req, res) => {
         existingCompletion.updatedAt = new Date();
         existingCompletion.completedAt = new Date(); // 완료 시간 갱신
         await existingCompletion.save();
-        
+
         console.log('✅ [toggleCompletion] 삭제된 기록 복구:', existingCompletion._id);
         res.json({ completed: true, message: '완료 처리됨 (복구)', completion: existingCompletion });
       } else {
@@ -45,7 +45,7 @@ exports.toggleCompletion = async (req, res) => {
         existingCompletion.deletedAt = new Date();
         existingCompletion.updatedAt = new Date();
         await existingCompletion.save();
-        
+
         console.log('✅ [toggleCompletion] 완료 취소 (Soft Delete):', existingCompletion._id);
         res.json({ completed: false, message: '완료 취소됨' });
       }
@@ -60,7 +60,7 @@ exports.toggleCompletion = async (req, res) => {
         completedAt: new Date(),
       });
       await completion.save();
-      
+
       console.log('✅ [toggleCompletion] 새로 생성:', completion._id);
       res.json({ completed: true, message: '완료 처리됨', completion });
     }
@@ -76,22 +76,19 @@ exports.toggleCompletion = async (req, res) => {
 // 완료 기록 생성
 exports.createCompletion = async (req, res) => {
   try {
-    const { todoId, date, type, isRangeTodo } = req.body;
+    const { todoId, date, type, isRecurring } = req.body;
     const userId = req.userId;
 
-    console.log('Creating completion:', { todoId, date, type, isRangeTodo, userId });
+    console.log('Creating completion:', { todoId, date, type, isRecurring, userId });
 
     if (!todoId) {
       return res.status(400).json({ message: 'todoId가 필요합니다' });
     }
 
     // 완료 날짜 결정
-    let completionDate;
-    if (isRangeTodo) {
-      completionDate = null; // 기간 할일은 날짜 없이 저장 (전체 기간에 대한 완료)
-    } else {
-      completionDate = date; // 일반 할일은 특정 날짜로 저장
-    }
+    // - 반복 일정: 날짜별로 완료 추적
+    // - 비반복 일정 (단일/기간 모두): date=null (한 번 완료하면 끝)
+    const completionDate = isRecurring ? date : null;
 
     // 클라이언트가 _id를 보냈으면 사용, 없으면 서버에서 생성
     const completionId = req.body._id || generateId();
@@ -120,16 +117,13 @@ exports.createCompletion = async (req, res) => {
 exports.deleteCompletion = async (req, res) => {
   try {
     const { todoId } = req.params;
-    const { date, type, isRangeTodo } = req.query;
+    const { date, type, isRecurring } = req.query;
     const userId = req.userId;
 
     // 삭제할 완료 기록의 날짜 결정
-    let completionDate;
-    if (isRangeTodo === 'true') {
-      completionDate = null; // 기간 할일은 날짜 없이 삭제
-    } else {
-      completionDate = date; // 일반 할일은 특정 날짜로 삭제
-    }
+    // - 반복 일정: 날짜별로 삭제
+    // - 비반복 일정: date=null로 삭제
+    const completionDate = isRecurring === 'true' ? date : null;
 
     const completion = await Completion.findOneAndDelete({
       todoId,
@@ -212,7 +206,7 @@ exports.getDeltaSync = async (req, res) => {
     }
 
     const syncTime = new Date(lastSyncTime);
-    
+
     // 유효성 검사
     if (isNaN(syncTime.getTime())) {
       return res.status(400).json({ message: '유효하지 않은 lastSyncTime 형식입니다' });
@@ -273,15 +267,15 @@ exports.createRange = async (req, res) => {
     const userId = req.userId;
 
     if (!todoId || !startDate || !endDate) {
-      return res.status(400).json({ 
-        message: 'todoId, startDate, endDate가 필요합니다' 
+      return res.status(400).json({
+        message: 'todoId, startDate, endDate가 필요합니다'
       });
     }
 
     // 날짜 유효성 검사
     if (startDate > endDate) {
-      return res.status(400).json({ 
-        message: 'startDate는 endDate보다 이전이어야 합니다' 
+      return res.status(400).json({
+        message: 'startDate는 endDate보다 이전이어야 합니다'
       });
     }
 
@@ -308,7 +302,7 @@ exports.createRange = async (req, res) => {
     });
 
     if (overlapping) {
-      return res.status(400).json({ 
+      return res.status(400).json({
         message: '이미 완료된 날짜 범위와 겹칩니다',
         existing: {
           startDate: overlapping.startDate,
@@ -357,8 +351,8 @@ exports.checkCompletion = async (req, res) => {
     const userId = req.userId;
 
     if (!todoId || !date) {
-      return res.status(400).json({ 
-        message: 'todoId와 date가 필요합니다' 
+      return res.status(400).json({
+        message: 'todoId와 date가 필요합니다'
       });
     }
 

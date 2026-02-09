@@ -226,14 +226,24 @@ export async function toggleCompletion(todoId, date, completionId) {
     const db = getDatabase();
     const key = `${todoId}_${date || 'null'}`;
 
+    console.log(`🔄 [toggleCompletion] 시작: key=${key}, date=${JSON.stringify(date)}`);
+
     const existing = await db.getFirstAsync(
         'SELECT * FROM completions WHERE key = ?',
         [key]
     );
 
+    console.log(`🔄 [toggleCompletion] 기존 데이터:`, existing ? `있음 (${existing.key})` : '없음');
+
     if (existing) {
         // 완료 → 미완료 (삭제)
         await db.runAsync('DELETE FROM completions WHERE key = ?', [key]);
+        console.log(`🔄 [toggleCompletion] 삭제 완료 → 미완료 상태로 전환`);
+
+        // 삭제 후 확인
+        const afterDelete = await db.getAllAsync('SELECT key, date FROM completions WHERE todo_id = ?', [todoId]);
+        console.log(`🔄 [toggleCompletion] 삭제 후 해당 todo의 completions:`, afterDelete);
+
         return false;
     } else {
         // 미완료 → 완료 (생성)
@@ -241,6 +251,7 @@ export async function toggleCompletion(todoId, date, completionId) {
             'INSERT INTO completions (_id, key, todo_id, date, completed_at) VALUES (?, ?, ?, ?, ?)',
             [completionId, key, todoId, date, new Date().toISOString()]
         );
+        console.log(`🔄 [toggleCompletion] 생성 완료 → 완료 상태로 전환`);
         return true;
     }
 }
