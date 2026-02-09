@@ -1,6 +1,10 @@
 const mongoose = require('mongoose');
 
 const completionSchema = new mongoose.Schema({
+  _id: {
+    type: String,
+    required: true,
+  },
   key: {
     type: String,
     required: true,
@@ -24,6 +28,11 @@ const completionSchema = new mongoose.Schema({
   completedAt: {
     type: Date,
     required: true,
+  },
+  deletedAt: {
+    type: Date,
+    default: null,
+    index: true,  // Soft Delete 조회 최적화
   },
 }, { _id: false, timestamps: true });
 

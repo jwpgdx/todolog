@@ -24,7 +24,7 @@ export const useTodos = (date) => {
         console.log('⚠️ [useTodos] SQLite 초기화 실패 - 서버로 폴백');
         try {
           const res = await todoAPI.getTodos(date);
-          return res.data;
+          return res.data || [];
         } catch (apiError) {
           console.error('❌ [useTodos] 서버 요청도 실패:', apiError.message);
           return [];
@@ -46,11 +46,34 @@ export const useTodos = (date) => {
       
       const mergeStart = performance.now();
       // 3. 완료 상태 병합
+      console.log(`  🔍 [useTodos] Completion 상세:`, Object.keys(completions).map(key => ({
+        key,
+        date: completions[key].date,
+        todoId: completions[key].todoId.slice(-8)
+      })));
+      
       const todosWithCompletion = todos.map(todo => {
-        const key = `${todo._id}_${date || 'null'}`;
+        // 기간 일정인 경우 date=null인 Completion 조회
+        const isRangeTodo = todo.startDate !== todo.endDate;
+        const completionKey = isRangeTodo 
+          ? `${todo._id}_null`  // 기간 일정: date=null
+          : `${todo._id}_${date || 'null'}`;  // 단일 일정: 해당 날짜
+        
+        const hasCompletion = !!completions[completionKey];
+        
+        console.log(`  📝 [useTodos] Todo 병합:`, {
+          id: todo._id.slice(-8),
+          title: todo.title,
+          isRangeTodo,
+          completionKey,
+          hasCompletion,
+          startDate: todo.startDate,
+          endDate: todo.endDate
+        });
+        
         return {
           ...todo,
-          completed: !!completions[key]
+          completed: hasCompletion
         };
       });
       const mergeEnd = performance.now();

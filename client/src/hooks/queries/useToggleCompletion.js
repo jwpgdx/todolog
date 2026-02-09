@@ -28,14 +28,30 @@ export const useToggleCompletion = () => {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async ({ todoId, date, currentCompleted }) => {
+    mutationFn: async ({ todoId, date, currentCompleted, todo }) => {
       console.log('🔄 [useToggleCompletion] 시작:', { todoId, date, currentCompleted });
+
+      // 기간 일정 여부 확인
+      const isRangeTodo = todo && todo.startDate !== todo.endDate;
+      const completionDate = isRangeTodo ? null : date;
+      
+      if (isRangeTodo) {
+        console.log('📅 [useToggleCompletion] 기간 일정 감지:', {
+          startDate: todo.startDate,
+          endDate: todo.endDate,
+          completionDate: 'null (전체 기간)'
+        });
+      }
+
+      // UUID 생성 (완료 생성 시 사용)
+      const completionId = generateId();
+      console.log('🆔 [useToggleCompletion] UUID 생성:', completionId);
 
       // 1. SQLite 초기화 보장 후 토글 (Optimistic)
       let optimisticState;
       try {
         await ensureDatabase();
-        optimisticState = await sqliteToggleCompletion(todoId, date);
+        optimisticState = await sqliteToggleCompletion(todoId, completionDate, completionId);
         console.log(`✅ [useToggleCompletion] SQLite 토글 완료 (Optimistic): ${optimisticState}`);
       } catch (error) {
         console.error('❌ [useToggleCompletion] SQLite 토글 실패:', error.message);
@@ -50,20 +66,17 @@ export const useToggleCompletion = () => {
         console.log('📵 [useToggleCompletion] 오프라인 - Pending Queue 추가');
         await addPendingChange({
           type: optimisticState ? 'createCompletion' : 'deleteCompletion',
-          todoId,
-          date,
+          entityId: completionId,
+          data: { todoId, date: completionDate },
         });
-        return { completed: optimisticState, offline: true };
+        return { completed: optimisticState, offline: true, isRangeTodo };
       }
 
       // 3. 온라인: 서버 요청
       try {
         console.log('🌐 [useToggleCompletion] 서버 요청 시작');
         
-        // Completion ID 생성 (완료 생성 시에만 필요)
-        const completionId = optimisticState ? `${todoId}_${date || 'null'}` : undefined;
-        
-        const res = await completionAPI.toggleCompletion(todoId, date, completionId);
+        const res = await completionAPI.toggleCompletion(todoId, completionDate, completionId);
         console.log('✅ [useToggleCompletion] 서버 요청 성공:', res.data);
 
         // 🔧 FIX: 서버 응답으로 SQLite 동기화
@@ -74,45 +87,59 @@ export const useToggleCompletion = () => {
           
           // SQLite를 서버 상태로 강제 동기화
           if (serverState) {
-            await createCompletion(todoId, date);
+            await createCompletion(todoId, completionDate, completionId);
           } else {
-            await deleteCompletion(todoId, date);
+            await deleteCompletion(todoId, completionDate);
           }
           console.log(`✅ [useToggleCompletion] SQLite 동기화 완료: ${serverState}`);
         }
 
-        return res.data;
+        return { ...res.data, isRangeTodo };
       } catch (error) {
         console.error('❌ [useToggleCompletion] 서버 요청 실패:', error.message);
         await addPendingChange({
           type: optimisticState ? 'createCompletion' : 'deleteCompletion',
-          todoId,
-          date,
+          entityId: completionId,
+          data: { todoId, date: completionDate },
         });
-        return { completed: optimisticState, offline: true };
+        return { completed: optimisticState, offline: true, isRangeTodo };
       }
     },
     onSuccess: (data, variables) => {
       const successStartTime = performance.now();
       console.log('✅ [useToggleCompletion] onSuccess:', data);
       
-      // ✅ 날짜별 캐시 업데이트 (TodoScreen용)
-      if (variables.date) {
-        queryClient.setQueryData(['todos', variables.date], (oldData) => {
-          if (!oldData) return oldData;
-          const updated = oldData.map(todo => {
-            if (todo._id === variables.todoId) {
-              return { ...todo, completed: data.completed };
-            }
-            return todo;
-          });
-          console.log('📅 [useToggleCompletion] 날짜별 캐시 업데이트 완료:', {
-            date: variables.date,
-            todoId: variables.todoId,
-            completed: data.completed
-          });
-          return updated;
+      // 기간 일정인 경우 모든 날짜 캐시 무효화
+      if (data.isRangeTodo) {
+        console.log('📅 [useToggleCompletion] 기간 일정 - 모든 날짜별 캐시 무효화');
+        queryClient.invalidateQueries({ 
+          queryKey: ['todos'], 
+          predicate: (query) => {
+            // ['todos', 'YYYY-MM-DD'] 형식의 쿼리만 무효화
+            return query.queryKey[0] === 'todos' && 
+                   typeof query.queryKey[1] === 'string' && 
+                   query.queryKey[1].match(/^\d{4}-\d{2}-\d{2}$/);
+          }
         });
+      } else {
+        // 단일 일정인 경우 해당 날짜만 업데이트
+        if (variables.date) {
+          queryClient.setQueryData(['todos', variables.date], (oldData) => {
+            if (!oldData) return oldData;
+            const updated = oldData.map(todo => {
+              if (todo._id === variables.todoId) {
+                return { ...todo, completed: data.completed };
+              }
+              return todo;
+            });
+            console.log('📅 [useToggleCompletion] 날짜별 캐시 업데이트 완료:', {
+              date: variables.date,
+              todoId: variables.todoId,
+              completed: data.completed
+            });
+            return updated;
+          });
+        }
       }
       
       // ❌ 제거: ['todos', 'all'] 업데이트 불필요

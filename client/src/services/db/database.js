@@ -16,7 +16,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 let db = null;
 
 // 현재 마이그레이션 버전
-const MIGRATION_VERSION = 2;
+const MIGRATION_VERSION = 3;
 
 // ============================================================
 // 스키마 정의
@@ -63,7 +63,8 @@ CREATE INDEX IF NOT EXISTS idx_todos_category ON todos(category_id);
 CREATE INDEX IF NOT EXISTS idx_todos_updated ON todos(updated_at);
 
 CREATE TABLE IF NOT EXISTS completions (
-  key TEXT PRIMARY KEY,
+  _id TEXT PRIMARY KEY,
+  key TEXT NOT NULL UNIQUE,
   todo_id TEXT NOT NULL,
   date TEXT,
   completed_at TEXT NOT NULL,
@@ -151,6 +152,11 @@ export async function initDatabase() {
                 // v2: pending_changes에 entity_id 컬럼 추가 (UUID 마이그레이션)
                 if (currentVersion < 2) {
                     await migrateV2AddEntityId();
+                }
+
+                // v3: completions 테이블에 _id 컬럼 추가 (UUID 전환)
+                if (currentVersion < 3) {
+                    await migrateV3AddCompletionId();
                 }
 
                 await setMetadata('migration_version', String(MIGRATION_VERSION));
@@ -408,6 +414,58 @@ export async function migrateFromAsyncStorage() {
 
     } catch (error) {
         console.error('❌ [Migration] Migration failed:', error);
+        throw error;
+    }
+}
+
+/**
+ * v3 마이그레이션: completions 테이블 재생성 (_id 컬럼 추가)
+ */
+async function migrateV3AddCompletionId() {
+    console.log('🔄 [Migration v3] Recreating completions table with _id column...');
+
+    try {
+        // 1. 기존 데이터 백업
+        const existingData = await db.getAllAsync('SELECT * FROM completions');
+        console.log(`📦 [Migration v3] Backing up ${existingData.length} completions`);
+
+        // 2. 기존 테이블 삭제
+        await db.runAsync('DROP TABLE IF EXISTS completions');
+        console.log('🗑️ [Migration v3] Dropped old completions table');
+
+        // 3. 새 스키마로 테이블 생성
+        await db.execAsync(`
+            CREATE TABLE IF NOT EXISTS completions (
+              _id TEXT PRIMARY KEY,
+              key TEXT NOT NULL UNIQUE,
+              todo_id TEXT NOT NULL,
+              date TEXT,
+              completed_at TEXT NOT NULL,
+              FOREIGN KEY (todo_id) REFERENCES todos(_id) ON DELETE CASCADE
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_completions_date ON completions(date);
+            CREATE INDEX IF NOT EXISTS idx_completions_todo ON completions(todo_id);
+        `);
+        console.log('✅ [Migration v3] Created new completions table with _id column');
+
+        // 4. 데이터 복원 (UUID 생성)
+        if (existingData.length > 0) {
+            const { generateId } = require('../../utils/idGenerator');
+            
+            for (const row of existingData) {
+                const newId = generateId();
+                await db.runAsync(
+                    'INSERT INTO completions (_id, key, todo_id, date, completed_at) VALUES (?, ?, ?, ?, ?)',
+                    [newId, row.key, row.todo_id, row.date, row.completed_at]
+                );
+            }
+            console.log(`✅ [Migration v3] Restored ${existingData.length} completions with UUIDs`);
+        }
+
+        console.log('✅ [Migration v3] Completed successfully');
+    } catch (error) {
+        console.error('❌ [Migration v3] Failed:', error);
         throw error;
     }
 }

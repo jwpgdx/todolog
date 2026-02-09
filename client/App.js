@@ -1,7 +1,7 @@
 // App.js
 import 'react-native-gesture-handler';
 import "./global.css";
-import './src/db/database'; // ⚡ DB 조기 초기화 (모듈 로드 시 자동 시작)
+import './src/services/db/database'; // ⚡ DB 조기 초기화 (모듈 로드 시 자동 시작)
 import './src/utils/i18n';
 import i18n from './src/utils/i18n';
 import * as Localization from 'expo-localization';
@@ -25,7 +25,7 @@ import MainStack from './src/navigation/MainStack';
 import AuthStack from './src/navigation/AuthStack';
 import GlobalFormOverlay from './src/features/todo/form/GlobalFormOverlay';
 import { SyncProvider } from './src/providers/SyncProvider';
-import { ensureDatabase } from './src/db/database';
+import { ensureDatabase } from './src/services/db/database';
 
 const queryClient = new QueryClient();
 
@@ -41,7 +41,7 @@ export default function App() {
     const initializeDatabase = async () => {
       const startTime = performance.now();
       console.log('🚀 [App] SQLite 초기화 시작 (워밍업 포함)...');
-      
+
       try {
         await ensureDatabase(); // 워밍업 완료까지 대기
         const endTime = performance.now();

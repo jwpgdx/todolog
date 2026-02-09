@@ -53,15 +53,6 @@ export const useCalendarEvents = (year, month, options = {}) => {
                     const endTime = performance.now();
                     console.log(`⚡ [useCalendarEvents] SQLite 조회 (${y}-${m}): ${todos.length}개 (${(endTime - startTime).toFixed(2)}ms)`);
 
-                    // 백그라운드 서버 동기화
-                    todoAPI.getMonthEvents(y, m)
-                        .then(res => {
-                            if (res.data.length !== todos.length) {
-                                console.log(`🔄 [useCalendarEvents] 서버 데이터 차이 감지 (${y}-${m})`);
-                            }
-                        })
-                        .catch(() => { });
-
                     return todosWithCompletion;
                 } catch (error) {
                     console.log(`⚠️ [useCalendarEvents] SQLite 실패 - 서버 폴백 (${y}-${m})`);

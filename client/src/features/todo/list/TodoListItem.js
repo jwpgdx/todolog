@@ -46,6 +46,16 @@ const TodoListItem = memo(({ item, onToggleComplete, onEdit, onDelete }) => {
                             <Text style={styles.timeText}>하루 종일</Text>
                         )}
                     </View>
+
+                    {/* 🔍 디버깅 정보 */}
+                    <View style={styles.debugContainer}>
+                        <Text style={styles.debugText}>ID: {item._id?.slice(0, 8)}...</Text>
+                        <Text style={styles.debugText}>완료: {item.completed ? '✅' : '❌'}</Text>
+                        <Text style={styles.debugText}>날짜: {item.startDate || item.date || 'N/A'}</Text>
+                        {item.categoryId && (
+                            <Text style={styles.debugText}>카테고리: {item.categoryId.slice(0, 8)}...</Text>
+                        )}
+                    </View>
                 </View>
             </TouchableOpacity>
 
@@ -144,6 +154,20 @@ const styles = StyleSheet.create({
     timeText: {
         fontSize: 12,
         color: '#6B7280',
+    },
+    debugContainer: {
+        marginTop: 8,
+        padding: 8,
+        backgroundColor: '#FEF3C7',
+        borderRadius: 6,
+        borderWidth: 1,
+        borderColor: '#FCD34D',
+    },
+    debugText: {
+        fontSize: 10,
+        color: '#92400E',
+        fontFamily: 'monospace',
+        marginBottom: 2,
     },
     actionButtons: {
         flexDirection: 'row',

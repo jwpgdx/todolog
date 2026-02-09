@@ -111,16 +111,16 @@ client/src/services/
 - [x] 5.1 useTodos.js 백그라운드 서버 호출 삭제
 - [x] 5.2 useCategories.js 백그라운드 서버 호출 삭제
 - [x] 5.3 ✅ **체크포인트**: 빌드 + Network 탭 확인
-- [-] 5.4 **커밋**: "perf: remove background API calls from query hooks"
+- [x] 5.4 **커밋**: "perf: remove background API calls from query hooks"
 
 ---
 
 ### Phase 6: 최종 테스트
 
-- [ ] 6.1 로그인 후 동기화 확인
-- [ ] 6.2 백그라운드 복귀 시 동기화 확인
-- [ ] 6.3 오프라인 → 온라인 전환 확인
-- [ ] 6.4 ✅ **최종 체크포인트**: 전체 기능 정상 동작
+- [x] 6.1 로그인 후 동기화 확인
+- [x] 6.2 백그라운드 복귀 시 동기화 확인
+- [x] 6.3 오프라인 → 온라인 전환 확인
+- [x] 6.4 ✅ **최종 체크포인트**: 전체 기능 정상 동작
 
 ---
 

@@ -10,7 +10,7 @@
  */
 
 import { getDatabase } from './database';
-import { generateId } from '../utils/idGenerator';
+import { generateId } from '../../utils/idGenerator';
 
 // ============================================================
 // 조회

@@ -36,8 +36,19 @@ export default function TodoScreen({ navigation }) {
 
   // 2. 핸들러
   const handleToggleComplete = useCallback((todoId) => {
-    toggleCompletion({ todoId, date: currentDate });
-  }, [currentDate, toggleCompletion]);
+    const todo = todos.find(t => t._id === todoId);
+    if (!todo) {
+      console.error('❌ [TodoScreen] Todo를 찾을 수 없음:', todoId);
+      return;
+    }
+    
+    toggleCompletion({ 
+      todoId, 
+      date: currentDate, 
+      currentCompleted: todo.completed,
+      todo 
+    });
+  }, [currentDate, todos, toggleCompletion]);
 
   const handleEdit = useCallback((todo) => {
     console.log('✏️ [TodoScreen] 수정 버튼 클릭:', todo._id);

@@ -155,12 +155,29 @@ export async function getTodosByCategory(categoryId) {
 export async function upsertTodo(todo) {
   const db = getDatabase();
 
+  // ⚠️ INSERT OR REPLACE는 내부적으로 DELETE + INSERT로 동작하여
+  // FOREIGN KEY ON DELETE CASCADE가 트리거되어 completions가 삭제됨
+  // → INSERT ... ON CONFLICT DO UPDATE 사용 (진정한 UPSERT)
   await db.runAsync(`
-    INSERT OR REPLACE INTO todos 
+    INSERT INTO todos 
     (_id, title, date, start_date, end_date, recurrence, 
      category_id, is_all_day, start_time, end_time, color, memo,
      created_at, updated_at, deleted_at)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(_id) DO UPDATE SET
+      title = excluded.title,
+      date = excluded.date,
+      start_date = excluded.start_date,
+      end_date = excluded.end_date,
+      recurrence = excluded.recurrence,
+      category_id = excluded.category_id,
+      is_all_day = excluded.is_all_day,
+      start_time = excluded.start_time,
+      end_time = excluded.end_time,
+      color = excluded.color,
+      memo = excluded.memo,
+      updated_at = excluded.updated_at,
+      deleted_at = excluded.deleted_at
   `, serializeTodoForInsert(todo));
 }
 
@@ -175,12 +192,27 @@ export async function upsertTodos(todos) {
 
   await db.withTransactionAsync(async () => {
     for (const todo of todos) {
+      // ⚠️ INSERT OR REPLACE 대신 ON CONFLICT DO UPDATE 사용 (CASCADE DELETE 방지)
       await db.runAsync(`
-        INSERT OR REPLACE INTO todos 
+        INSERT INTO todos 
         (_id, title, date, start_date, end_date, recurrence, 
          category_id, is_all_day, start_time, end_time, color, memo,
          created_at, updated_at, deleted_at)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(_id) DO UPDATE SET
+          title = excluded.title,
+          date = excluded.date,
+          start_date = excluded.start_date,
+          end_date = excluded.end_date,
+          recurrence = excluded.recurrence,
+          category_id = excluded.category_id,
+          is_all_day = excluded.is_all_day,
+          start_time = excluded.start_time,
+          end_time = excluded.end_time,
+          color = excluded.color,
+          memo = excluded.memo,
+          updated_at = excluded.updated_at,
+          deleted_at = excluded.deleted_at
       `, serializeTodoForInsert(todo));
     }
   });

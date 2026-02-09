@@ -57,8 +57,10 @@ export const useSyncService = () => {
       await syncCompletions();
       
       // 4. React Query 캐시 무효화
+      console.log('🔄 [useSyncService] 캐시 무효화 시작');
       queryClient.invalidateQueries({ queryKey: ['todos'] });
       queryClient.invalidateQueries({ queryKey: ['categories'] });
+      console.log('✅ [useSyncService] 캐시 무효화 완료');
       
       console.log('✅ [useSyncService] 전체 동기화 완료');
     } catch (err) {
@@ -77,8 +79,10 @@ export const useSyncService = () => {
   const triggerSync = useCallback(() => {
     if (debounceTimerRef.current) {
       clearTimeout(debounceTimerRef.current);
+      console.log('⏱️ [useSyncService] 디바운스: 이전 타이머 취소');
     }
     
+    console.log('⏱️ [useSyncService] 디바운스: 300ms 후 실행 예약');
     debounceTimerRef.current = setTimeout(() => {
       syncAll();
     }, 300);
@@ -103,8 +107,10 @@ export const useSyncService = () => {
    */
   useEffect(() => {
     const unsubscribe = NetInfo.addEventListener((state) => {
+      console.log(`🌐 [useSyncService] 네트워크 상태: ${state.isConnected ? '온라인' : '오프라인'} (type: ${state.type})`);
+      
       if (state.isConnected) {
-        console.log('🌐 [useSyncService] 온라인 복귀 → 동기화');
+        console.log('🌐 [useSyncService] 온라인 복귀 → 동기화 트리거');
         triggerSync();
       }
     });

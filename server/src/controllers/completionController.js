@@ -4,64 +4,68 @@ const { generateId } = require('../utils/idGenerator');
 // 완료 토글 (생성/삭제를 한 번에 처리) - Soft Delete 방식
 exports.toggleCompletion = async (req, res) => {
   try {
-    const { todoId, date } = req.body;
+    const { todoId, date, _id } = req.body;
     const userId = req.userId;
 
     if (!todoId) {
       return res.status(400).json({ message: 'todoId가 필요합니다' });
     }
 
-    // 기존 완료 기록 확인 (deletedAt=null만)
+    if (!_id) {
+      return res.status(400).json({ message: '_id가 필요합니다' });
+    }
+
+    // key로 기존 완료 기록 확인 (deletedAt 상태 무관)
+    const key = `${todoId}_${date || 'null'}`;
     const existingCompletion = await Completion.findOne({
-      todoId,
+      key,
       userId,
-      date: date || null,
-      deletedAt: null,
+    });
+
+    console.log('🔍 [toggleCompletion] 기존 기록 조회:', {
+      key,
+      found: !!existingCompletion,
+      _id: existingCompletion?._id,
+      deletedAt: existingCompletion?.deletedAt,
     });
 
     if (existingCompletion) {
-      // 완료 기록 있음 → Soft Delete (완료 취소)
-      existingCompletion.deletedAt = new Date();
-      existingCompletion.updatedAt = new Date();
-      await existingCompletion.save();
-      
-      console.log('✅ [toggleCompletion] 완료 취소 (Soft Delete):', existingCompletion._id);
-      res.json({ completed: false, message: '완료 취소됨' });
+      // 기록 있음 → deletedAt 상태에 따라 토글
+      if (existingCompletion.deletedAt) {
+        // Soft Delete 상태 → 복구 (완료)
+        existingCompletion.deletedAt = null;
+        existingCompletion.updatedAt = new Date();
+        existingCompletion.completedAt = new Date(); // 완료 시간 갱신
+        await existingCompletion.save();
+        
+        console.log('✅ [toggleCompletion] 삭제된 기록 복구:', existingCompletion._id);
+        res.json({ completed: true, message: '완료 처리됨 (복구)', completion: existingCompletion });
+      } else {
+        // 활성 상태 → Soft Delete (완료 취소)
+        existingCompletion.deletedAt = new Date();
+        existingCompletion.updatedAt = new Date();
+        await existingCompletion.save();
+        
+        console.log('✅ [toggleCompletion] 완료 취소 (Soft Delete):', existingCompletion._id);
+        res.json({ completed: false, message: '완료 취소됨' });
+      }
     } else {
-      // 완료 기록 없음 → 삭제된 기록 확인
-      const deletedCompletion = await Completion.findOne({
+      // 기록 없음 → 새로 생성 (클라이언트 UUID 사용)
+      const completion = new Completion({
+        _id,  // 클라이언트가 생성한 UUID 사용
+        key,
         todoId,
         userId,
         date: date || null,
-        deletedAt: { $ne: null },
+        completedAt: new Date(),
       });
-
-      if (deletedCompletion) {
-        // 삭제된 기록 복구
-        deletedCompletion.deletedAt = null;
-        deletedCompletion.updatedAt = new Date();
-        deletedCompletion.completedAt = new Date(); // 완료 시간 갱신
-        await deletedCompletion.save();
-        
-        console.log('✅ [toggleCompletion] 삭제된 기록 복구:', deletedCompletion._id);
-        res.json({ completed: true, message: '완료 처리됨 (복구)' });
-      } else {
-        // 새로 생성 - 클라이언트가 _id를 보냈으면 사용, 없으면 서버에서 생성
-        const completionId = req.body._id || generateId();
-        const completion = new Completion({
-          _id: completionId,
-          todoId,
-          userId,
-          date: date || null,
-        });
-        await completion.save();
-        
-        console.log('✅ [toggleCompletion] 새로 생성:', completion._id);
-        res.json({ completed: true, message: '완료 처리됨', completion });
-      }
+      await completion.save();
+      
+      console.log('✅ [toggleCompletion] 새로 생성:', completion._id);
+      res.json({ completed: true, message: '완료 처리됨', completion });
     }
   } catch (error) {
-    console.error('Toggle completion error:', error);
+    console.error('❌ [toggleCompletion] 에러:', error);
     if (error.code === 11000) {
       return res.status(400).json({ message: '이미 완료된 할일입니다' });
     }
@@ -93,9 +97,11 @@ exports.createCompletion = async (req, res) => {
     const completionId = req.body._id || generateId();
     const completion = new Completion({
       _id: completionId,
+      key: `${todoId}_${completionDate || 'null'}`,  // key 필드 추가
       todoId,
       userId,
       date: completionDate,
+      completedAt: new Date(),  // completedAt 필드 추가
     });
 
     await completion.save();
@@ -315,12 +321,14 @@ exports.createRange = async (req, res) => {
     const completionId = req.body._id || generateId();
     const completion = new Completion({
       _id: completionId,
+      key: `${todoId}_range_${startDate}_${endDate}`,  // key 필드 추가 (Range용)
       todoId,
       userId,
       isRange: true,
       startDate,
       endDate,
       date: null, // Range는 date 필드 사용 안 함
+      completedAt: new Date(),  // completedAt 필드 추가
     });
 
     await completion.save();

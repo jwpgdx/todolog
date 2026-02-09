@@ -12,9 +12,9 @@ export const syncTodos = async () => {
     
     await ensureDatabase();
     
-    // 서버에서 모든 할일 가져오기
-    const response = await todoAPI.getTodos();
-    const serverTodos = response.data;
+    // 서버에서 모든 할일 가져오기 (response.data 반환)
+    const response = await todoAPI.getAllTodos();
+    const serverTodos = response.data || [];
     
     console.log(`📥 [syncTodos] 서버: ${serverTodos.length}개`);
     

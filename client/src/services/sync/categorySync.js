@@ -1,4 +1,4 @@
-import { categoryApi } from '../../api/categories';
+import * as categoryApi from '../../api/categories';
 import { upsertCategories } from '../db/categoryService';
 import { ensureDatabase } from '../db/database';
 
@@ -12,9 +12,8 @@ export const syncCategories = async () => {
     
     await ensureDatabase();
     
-    // 서버에서 모든 카테고리 가져오기
-    const response = await categoryApi.getCategories();
-    const serverCategories = response.data;
+    // 서버에서 모든 카테고리 가져오기 (이미 response.data 반환됨)
+    const serverCategories = await categoryApi.getCategories();
     
     console.log(`📥 [syncCategories] 서버: ${serverCategories.length}개`);
     

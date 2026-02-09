@@ -27,7 +27,7 @@ import { clearAllData, initDatabase } from '../services/db/database';
 export async function createCategory({ name, color, icon = null, order = 0 }) {
   // 데이터베이스 초기화 확인
   await initDatabase();
-  
+
   const category = {
     _id: Crypto.randomUUID(),
     name,
@@ -40,7 +40,7 @@ export async function createCategory({ name, color, icon = null, order = 0 }) {
 
   await upsertCategory(category);
   console.log(`✅ [Test] Category created: ${name} (${category._id})`);
-  
+
   return category;
 }
 
@@ -53,7 +53,7 @@ export async function createCategory({ name, color, icon = null, order = 0 }) {
 export async function createCategories(count = 2) {
   const categories = [];
   const colors = ['#FF5733', '#33FF57', '#3357FF', '#FF33F5', '#F5FF33'];
-  
+
   for (let i = 0; i < count; i++) {
     const category = await createCategory({
       name: `Category ${i + 1}`,
@@ -62,7 +62,7 @@ export async function createCategories(count = 2) {
     });
     categories.push(category);
   }
-  
+
   console.log(`✅ [Test] ${count} categories created`);
   return categories;
 }
@@ -112,7 +112,7 @@ export async function createTodo({
 
   await upsertTodo(todo);
   console.log(`✅ [Test] Todo created: ${title} (${todo._id})`);
-  
+
   return todo;
 }
 
@@ -127,12 +127,12 @@ export async function createTodo({
 export async function createTodos(count = 5, categoryId, startDate = '2025-02-10') {
   const todos = [];
   const baseDate = new Date(startDate);
-  
+
   for (let i = 0; i < count; i++) {
     const date = new Date(baseDate);
     date.setDate(date.getDate() + i);
     const dateStr = date.toISOString().split('T')[0];
-    
+
     const todo = await createTodo({
       title: `Todo ${i + 1}`,
       date: dateStr,
@@ -141,7 +141,7 @@ export async function createTodos(count = 5, categoryId, startDate = '2025-02-10
     });
     todos.push(todo);
   }
-  
+
   console.log(`✅ [Test] ${count} todos created`);
   return todos;
 }
@@ -171,11 +171,11 @@ export async function toggleCompletion(todoId, date) {
  */
 export async function createCompletions(todos, count = null) {
   const completionCount = count || Math.floor(todos.length / 2);
-  
+
   for (let i = 0; i < completionCount && i < todos.length; i++) {
     await createCompletion(todos[i]._id, todos[i].date);
   }
-  
+
   console.log(`✅ [Test] ${completionCount} completions created`);
 }
 
@@ -193,63 +193,63 @@ export async function createCompletions(todos, count = null) {
  */
 export async function createScenario1Data() {
   console.log('📦 [Test] Creating Scenario 1 data...');
-  
+
   // 1. 카테고리 생성
   const workCategory = await createCategory({
     name: 'Work',
     color: '#FF5733',
     order: 0,
   });
-  
+
   const personalCategory = await createCategory({
     name: 'Personal',
     color: '#33FF57',
     order: 1,
   });
-  
+
   // 2. 일정 생성
   const todos = [];
-  
+
   todos.push(await createTodo({
     title: 'Buy groceries',
     date: '2025-02-10',
     categoryId: workCategory._id,
     memo: 'Milk, eggs, bread',
   }));
-  
+
   todos.push(await createTodo({
     title: 'Team meeting',
     date: '2025-02-11',
     categoryId: workCategory._id,
     memo: 'Discuss Q1 goals',
   }));
-  
+
   todos.push(await createTodo({
     title: 'Gym',
     date: '2025-02-12',
     categoryId: personalCategory._id,
   }));
-  
+
   todos.push(await createTodo({
     title: 'Read book',
     date: '2025-02-13',
     categoryId: personalCategory._id,
     memo: 'Finish chapter 5',
   }));
-  
+
   todos.push(await createTodo({
     title: 'Call mom',
     date: '2025-02-14',
     categoryId: personalCategory._id,
   }));
-  
+
   // 3. 완료 정보 생성
   await createCompletion(todos[0]._id, todos[0].date);
   await createCompletion(todos[1]._id, todos[1].date);
   await createCompletion(todos[2]._id, todos[2].date);
-  
+
   console.log('✅ [Test] Scenario 1 data created successfully');
-  
+
   return {
     categories: [workCategory, personalCategory],
     todos,
@@ -267,21 +267,21 @@ export async function createScenario1Data() {
  */
 export async function createScenario6Data() {
   console.log('📦 [Test] Creating Scenario 6 data (large dataset)...');
-  
+
   // 1. 10개 카테고리 생성
   const categories = await createCategories(10);
-  
+
   // 2. 100개 일정 생성
   const todos = [];
   const baseDate = new Date('2025-02-01');
-  
+
   for (let i = 0; i < 100; i++) {
     const date = new Date(baseDate);
     date.setDate(date.getDate() + (i % 28)); // 28일 주기로 반복
     const dateStr = date.toISOString().split('T')[0];
-    
+
     const categoryIndex = i % categories.length;
-    
+
     const todo = await createTodo({
       title: `Todo ${i + 1}`,
       date: dateStr,
@@ -290,14 +290,14 @@ export async function createScenario6Data() {
     });
     todos.push(todo);
   }
-  
+
   // 3. 50개 완료 정보 생성
   for (let i = 0; i < 50; i++) {
     await createCompletion(todos[i]._id, todos[i].date);
   }
-  
+
   console.log('✅ [Test] Scenario 6 data created successfully');
-  
+
   return {
     categories,
     todos,
@@ -329,15 +329,15 @@ export async function createScenario3Data() {
 export async function getGuestDataStats() {
   // 데이터베이스 초기화 확인
   await initDatabase();
-  
-  const { getTodoCount } = await import('../db/todoService');
-  const { getCategoryCount } = await import('../db/categoryService');
-  const { getCompletionCount } = await import('../db/completionService');
-  
+
+  const { getTodoCount } = await import('../services/db/todoService');
+  const { getCategoryCount } = await import('../services/db/categoryService');
+  const { getCompletionCount } = await import('../services/db/completionService');
+
   const todoCount = await getTodoCount();
   const categoryCount = await getCategoryCount();
   const completionCount = await getCompletionCount();
-  
+
   return { todoCount, categoryCount, completionCount };
 }
 
@@ -366,23 +366,23 @@ export async function printGuestDataStats() {
 export async function createTestAccount() {
   const email = `test_${Date.now()}@example.com`;
   const password = 'test1234';
-  
+
   console.log('📦 [Test] Creating test account...');
   console.log(`  Email: ${email}`);
   console.log(`  Password: ${password}`);
-  
+
   try {
     const { authAPI } = await import('../api/auth');
-    
+
     // 회원가입 시도
     const response = await authAPI.register({
       email,
       password,
       name: 'Test User',
     });
-    
+
     console.log('✅ [Test] Test account created successfully');
-    
+
     return {
       email,
       password,

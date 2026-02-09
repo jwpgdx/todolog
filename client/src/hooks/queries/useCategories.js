@@ -35,9 +35,11 @@ export const useCategories = () => {
       } catch (error) {
         console.log('⚠️ [useCategories] SQLite 실패 - 서버 폴백');
         const serverCategories = await categoryApi.getCategories();
-        // 서버 데이터를 SQLite에 저장
-        await upsertCategories(serverCategories);
-        return serverCategories;
+        // 서버 데이터를 SQLite에 저장 (이미 response.data 반환됨)
+        if (serverCategories && serverCategories.length > 0) {
+          await upsertCategories(serverCategories);
+        }
+        return serverCategories || [];
       }
     },
     enabled: !!user,

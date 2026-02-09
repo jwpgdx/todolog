@@ -13,24 +13,41 @@ import { getDatabase } from './database';
 /**
  * 날짜별 Completion 조회
  * 
+ * 기간 일정 지원:
+ * - 단일 일정: date = 'YYYY-MM-DD'
+ * - 기간 일정: date = null (모든 날짜에서 완료 표시)
+ * 
  * @param {string} date - YYYY-MM-DD
- * @returns {Promise<Object>} - { key: { todoId, date, completedAt } }
+ * @returns {Promise<Object>} - { key: { _id, todoId, date, completedAt } }
  */
 export async function getCompletionsByDate(date) {
     const startTotal = performance.now();
     const db = getDatabase();
 
+    // 🔍 DEBUG: 쿼리 전 전체 completions 확인
+    const allCompletions = await db.getAllAsync('SELECT * FROM completions');
+    console.log(`🔍 [DEBUG] getCompletionsByDate 호출 - 요청 date: ${JSON.stringify(date)}`);
+    console.log(`🔍 [DEBUG] 현재 completions 테이블 전체 (${allCompletions.length}개):`);
+    allCompletions.forEach((comp, i) => {
+        console.log(`  [${i}] key: ${comp.key}`);
+        console.log(`       date: ${JSON.stringify(comp.date)} (type: ${typeof comp.date}, isNull: ${comp.date === null})`);
+    });
+
     const startQuery = performance.now();
+    // 해당 날짜 + date=null (기간 일정) 모두 조회
     const result = await db.getAllAsync(
-        'SELECT * FROM completions WHERE date = ?',
+        'SELECT * FROM completions WHERE date = ? OR date IS NULL',
         [date]
     );
     const endQuery = performance.now();
+
+    console.log(`🔍 [DEBUG] 쿼리 결과: ${result.length}개 (date=${JSON.stringify(date)} OR date IS NULL)`);
 
     // Map 형태로 변환 (기존 형식 호환)
     const map = {};
     result.forEach(row => {
         map[row.key] = {
+            _id: row._id,
             todoId: row.todo_id,
             date: row.date,
             completedAt: row.completed_at,
@@ -39,6 +56,11 @@ export async function getCompletionsByDate(date) {
     const endTotal = performance.now();
 
     console.log(`⏱️ [getCompletionsByDate] ${(endTotal - startTotal).toFixed(2)}ms | Query: ${(endQuery - startQuery).toFixed(2)}ms | Rows: ${result.length}`);
+    console.log(`  📋 [getCompletionsByDate] 조회 결과:`, result.map(row => ({
+        key: row.key,
+        date: row.date,
+        todoId: row.todo_id.slice(-8)
+    })));
 
     return map;
 }
@@ -62,6 +84,7 @@ export async function getCompletionsByMonth(year, month) {
     const map = {};
     result.forEach(row => {
         map[row.key] = {
+            _id: row._id,
             todoId: row.todo_id,
             date: row.date,
             completedAt: row.completed_at,
@@ -89,6 +112,7 @@ export async function getCompletionsByRange(startDate, endDate) {
     const map = {};
     result.forEach(row => {
         map[row.key] = {
+            _id: row._id,
             todoId: row.todo_id,
             date: row.date,
             completedAt: row.completed_at,
@@ -113,6 +137,7 @@ export async function getCompletionsByTodoId(todoId) {
     );
 
     return result.map(row => ({
+        _id: row._id,
         key: row.key,
         todoId: row.todo_id,
         date: row.date,
@@ -133,6 +158,7 @@ export async function getAllCompletions() {
     const map = {};
     result.forEach(row => {
         map[row.key] = {
+            _id: row._id,
             todoId: row.todo_id,
             date: row.date,
             completedAt: row.completed_at,
@@ -193,9 +219,10 @@ export async function hasCompletion(todoId, date) {
  * 
  * @param {string} todoId
  * @param {string|null} date - null for period todo
+ * @param {string} completionId - UUID (클라이언트 생성)
  * @returns {Promise<boolean>} - 새 완료 상태
  */
-export async function toggleCompletion(todoId, date) {
+export async function toggleCompletion(todoId, date, completionId) {
     const db = getDatabase();
     const key = `${todoId}_${date || 'null'}`;
 
@@ -211,8 +238,8 @@ export async function toggleCompletion(todoId, date) {
     } else {
         // 미완료 → 완료 (생성)
         await db.runAsync(
-            'INSERT INTO completions (key, todo_id, date, completed_at) VALUES (?, ?, ?, ?)',
-            [key, todoId, date, new Date().toISOString()]
+            'INSERT INTO completions (_id, key, todo_id, date, completed_at) VALUES (?, ?, ?, ?, ?)',
+            [completionId, key, todoId, date, new Date().toISOString()]
         );
         return true;
     }
@@ -223,15 +250,16 @@ export async function toggleCompletion(todoId, date) {
  * 
  * @param {string} todoId
  * @param {string|null} date
+ * @param {string} completionId - UUID (클라이언트 생성)
  * @returns {Promise<void>}
  */
-export async function createCompletion(todoId, date) {
+export async function createCompletion(todoId, date, completionId) {
     const db = getDatabase();
     const key = `${todoId}_${date || 'null'}`;
 
     await db.runAsync(
-        'INSERT OR REPLACE INTO completions (key, todo_id, date, completed_at) VALUES (?, ?, ?, ?)',
-        [key, todoId, date, new Date().toISOString()]
+        'INSERT OR REPLACE INTO completions (_id, key, todo_id, date, completed_at) VALUES (?, ?, ?, ?, ?)',
+        [completionId, key, todoId, date, new Date().toISOString()]
     );
 }
 
@@ -274,17 +302,18 @@ export async function deleteCompletionsByTodoId(todoId) {
 /**
  * 다중 Completion Upsert (동기화용)
  * 
- * @param {Object} completions - { key: { todoId, date, completedAt } }
+ * @param {Array} completions - [{ _id, todoId, date, completedAt }]
  * @returns {Promise<void>}
  */
 export async function upsertCompletions(completions) {
     const db = getDatabase();
 
     await db.withTransactionAsync(async () => {
-        for (const [key, comp] of Object.entries(completions)) {
+        for (const comp of completions) {
+            const key = `${comp.todoId}_${comp.date || 'null'}`;
             await db.runAsync(
-                'INSERT OR REPLACE INTO completions (key, todo_id, date, completed_at) VALUES (?, ?, ?, ?)',
-                [key, comp.todoId, comp.date, comp.completedAt]
+                'INSERT OR REPLACE INTO completions (_id, key, todo_id, date, completed_at) VALUES (?, ?, ?, ?, ?)',
+                [comp._id, key, comp.todoId, comp.date, comp.completedAt]
             );
         }
     });
@@ -338,6 +367,7 @@ export async function getAllCompletionsArray() {
     const result = await db.getAllAsync('SELECT * FROM completions');
 
     return result.map(row => ({
+        _id: row._id,
         key: row.key,
         todoId: row.todo_id,
         date: row.date,

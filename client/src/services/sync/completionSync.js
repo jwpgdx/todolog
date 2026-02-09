@@ -14,11 +14,11 @@ export const syncCompletions = async () => {
     
     // 서버에서 모든 완료 기록 가져오기
     const response = await api.get('/completions/all');
-    const serverCompletions = response.data;
+    const serverCompletions = response.data || [];
     
     console.log(`📥 [syncCompletions] 서버: ${serverCompletions.length}개`);
     
-    // SQLite에 저장
+    // SQLite에 저장 (Array 형식으로 전달)
     if (serverCompletions.length > 0) {
       await upsertCompletions(serverCompletions);
       console.log(`✅ [syncCompletions] SQLite 저장 완료: ${serverCompletions.length}개`);
