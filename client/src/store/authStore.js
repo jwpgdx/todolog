@@ -17,7 +17,7 @@ export const setQueryClient = (client) => {
   queryClientInstance = client;
 };
 
-export const useAuthStore = create((set) => ({
+export const useAuthStore = create((set, get) => ({
   user: null,
   token: null,
   isLoading: true,
@@ -45,7 +45,63 @@ export const useAuthStore = create((set) => ({
     set({ user });
   },
 
-  // updateSetting은 useSettings 훅으로 이관됨
+  // ✅ Settings 업데이트 (Offline-First)
+  updateSettings: async (key, value) => {
+    const { user, isLoggedIn } = get();
+    if (!user) {
+      console.warn('⚠️ [updateSettings] No user found');
+      return;
+    }
+    
+    // Phase 1: Local Update (즉시)
+    const updatedUser = {
+      ...user,
+      settings: {
+        ...user.settings,
+        [key]: value,
+      },
+    };
+    
+    await AsyncStorage.setItem('user', JSON.stringify(updatedUser));
+    set({ user: updatedUser });
+    console.log(`✅ [updateSettings] Local update: ${key} = ${value}`);
+    
+    // Phase 2: Server Sync (백그라운드, 로그인 사용자만)
+    if (isLoggedIn) {
+      try {
+        const response = await api.patch('/auth/settings', { [key]: value });
+        const serverSettings = response.data.settings; // ✅ settings만 받음
+        
+        if (!serverSettings) {
+          console.warn('⚠️ [updateSettings] Server response missing settings');
+          return;
+        }
+        
+        // ⚠️ 서버 응답 반영 시 변경된 key만 확인 (깜빡임 방지)
+        const currentUser = get().user;
+        if (currentUser.settings[key] === value) {
+          // 로컬과 서버가 동일하면 서버 settings 병합
+          const updatedUser = {
+            ...currentUser,
+            settings: serverSettings,
+          };
+          await AsyncStorage.setItem('user', JSON.stringify(updatedUser));
+          set({ user: updatedUser });
+          console.log(`✅ [updateSettings] Server sync: ${key} = ${value}`);
+        } else {
+          // 로컬이 변경되었으면 서버 응답 무시 (사용자가 다시 변경한 경우)
+          console.log(`⚠️ [updateSettings] Local changed during sync, keeping local`);
+        }
+      } catch (error) {
+        console.log(`⚠️ [updateSettings] Server sync failed (offline?): ${error.message}`);
+        // 오프라인이면 무시 (로컬 설정 유지)
+      }
+    } else {
+      console.log('📱 [updateSettings] Guest mode - local only');
+    }
+  },
+
+  // updateSetting은 useSettings 훅으로 이관됨 (deprecated)
 
   updateProfile: async (data) => {
     try {
@@ -108,13 +164,44 @@ export const useAuthStore = create((set) => ({
     try {
       const token = await AsyncStorage.getItem('token');
       const userStr = await AsyncStorage.getItem('user');
-      const user = userStr ? JSON.parse(userStr) : null;
+      let user = userStr ? JSON.parse(userStr) : null;
+
+      // 🔄 Migration: @userSettings → user.settings
+      const oldSettingsStr = await AsyncStorage.getItem('@userSettings');
+      if (oldSettingsStr) {
+        console.log('🔄 [Migration] Found old settings, merging...');
+        const parsedOldSettings = JSON.parse(oldSettingsStr);
+        
+        if (user) {
+          // Case 1: user 존재 - 병합 (로컬 최신 변경 우선)
+          user.settings = {
+            ...user.settings,        // 서버 기본값 (베이스)
+            ...parsedOldSettings,    // 로컬 최신 변경 (우선) ✅
+          };
+          
+          await AsyncStorage.setItem('user', JSON.stringify(user));
+        } else {
+          // Case 2: user 없음 (게스트가 설정만 변경한 경우)
+          // 기본 user 객체 생성 후 oldSettings 적용
+          user = {
+            _id: 'guest_temp',
+            settings: parsedOldSettings,
+          };
+          await AsyncStorage.setItem('user', JSON.stringify(user));
+          console.log('🔄 [Migration] Created user from old settings (guest case)');
+        }
+        
+        // 마이그레이션 완료 후 삭제
+        await AsyncStorage.removeItem('@userSettings');
+        console.log('✅ [Migration] Old settings migrated and removed');
+      }
 
       // isLoggedIn 계산
       const isLoggedIn = !!(user && token && !user._id?.startsWith('guest_'));
 
       set({ token, user, isLoading: false, isLoggedIn, shouldShowLogin: false });
     } catch (error) {
+      console.error('❌ [loadAuth] Failed:', error);
       set({ isLoading: false });
     }
   },

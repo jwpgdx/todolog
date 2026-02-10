@@ -92,10 +92,19 @@ export const useDeleteTodo = () => {
         return result;
       }
     },
-    onSuccess: () => {
+    onSuccess: (data, variables) => {
       const successStartTime = performance.now();
       
-      // 모든 todos 캐시 무효화 (단순화)
+      // 1. 모든 캐시에서 삭제된 Todo 제거 (Ghosting 방지)
+      queryClient.setQueriesData(
+        { queryKey: ['todos'] },
+        (oldData) => {
+          if (!oldData) return oldData;
+          return oldData.filter(todo => todo._id !== variables._id);
+        }
+      );
+      
+      // 2. 서버 데이터 재검증
       queryClient.invalidateQueries({ queryKey: ['todos'] });
       
       const successEndTime = performance.now();
