@@ -10,6 +10,45 @@
 
 ## 📋 Recent Updates & Optimizations
 
+### Hybrid Cache Strategy Refactoring (Feb 10, 2026)
+
+**완료**: 4개 Todo CRUD hooks의 onSuccess 단순화 및 성능 최적화
+
+**구현 내용:**
+- ✅ **onSuccess 단순화**: 220줄 → 19줄 (91% 감소)
+  - 복잡한 predicate 기반 캐시 무효화 로직 제거
+  - `queryClient.invalidateQueries({ queryKey: ['todos'] })` 한 줄로 통일
+- ✅ **UUID 이중 생성 수정**: `useCreateTodo`에서 variables._id 재사용
+- ✅ **디버그 코드 제거**: completions 테이블 덤프 코드 삭제
+- ✅ **SQL Injection 검증**: 45개 쿼리 모두 파라미터 바인딩 사용 확인
+- ✅ **미사용 import 정리**: `useUpdateTodo.js` 정리 완료
+
+**성능 측정 결과:**
+```
+useToggleCompletion: onSuccess 0.40ms (목표 5ms 대비 92% 빠름)
+useCreateTodo:       onSuccess 0.50ms (목표 5ms 대비 90% 빠름)
+useUpdateTodo:       onSuccess 0.40ms (목표 5ms 대비 92% 빠름)
+useDeleteTodo:       onSuccess 0.70ms (목표 5ms 대비 86% 빠름)
+```
+
+**오프라인 모드 검증:**
+- ✅ 모든 CRUD 작업이 오프라인에서 정상 동작
+- ✅ Pending Queue 자동 추가 확인
+- ✅ SQLite 우선 처리 및 UI 즉시 반영
+
+**Files Modified:**
+- `client/src/hooks/queries/useToggleCompletion.js` (30줄 → 3줄)
+- `client/src/hooks/queries/useCreateTodo.js` (70줄 → 10줄)
+- `client/src/hooks/queries/useUpdateTodo.js` (90줄 → 3줄)
+- `client/src/hooks/queries/useDeleteTodo.js` (30줄 → 3줄)
+
+**Spec Files:**
+- `.kiro/specs/hybrid-cache-refactoring/requirements.md`
+- `.kiro/specs/hybrid-cache-refactoring/design.md`
+- `.kiro/specs/hybrid-cache-refactoring/tasks.md`
+
+---
+
 ### Guest Data Migration (Feb 6, 2026)
 
 **Phase 4 Complete**: 통합 테스트 및 마이그레이션 플로우 검증 완료

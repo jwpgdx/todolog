@@ -1,0 +1,157 @@
+# 🔍 개발자 분석 문서 기술 검토 보고서
+
+> 분석내용_1.md / 분석내용_2.md에 대해 **실제 프로젝트 코드**와 교차 검증한 결과입니다.
+
+---
+
+## 🚨 결론부터: 이 문서는 AI가 생성한 것이며, 실제 코드를 안 본 상태에서 작성됨
+
+> [!CAUTION]
+> 두 문서 모두 **ChatGPT/Claude 등의 AI가 생성한 컨설팅 문서**입니다. "네, 아주 좋은 생각입니다!", "그대로 복사해서 공유 문서에 올리시면 됩니다" 등의 어투가 전형적인 AI 응답 패턴입니다. **실제 프로젝트 코드를 분석하지 않고** 일반론적 조언을 한 것이므로, 이 문서를 그대로 개발자에게 보내면 **신뢰도에 타격**을 받을 수 있습니다.
+
+---
+
+## 📋 항목별 검증 결과
+
+### 1. ✅ 맞는 내용: SQLite + React Query 스택 유지
+
+| 문서 주장 | 검증 결과 |
+|---|---|
+| WatermelonDB는 RN 0.76+ 호환성 이슈 | ✅ 사실 |
+| TinyBase는 메모리 리스크 | ✅ 사실 |
+| SQLite 쿼리 1~2ms | ✅ 사실 (인덱스 있을 때) |
+| 현재 스택 유지가 합리적 | ✅ **동의** |
+
+**→ 이 부분은 정확합니다. 반박할 필요 없음.**
+
+---
+
+### 2. ⚠️ 부분적으로 틀림: "invalidate-all 전략을 쓰자"
+
+> [!WARNING]
+> 문서는 코드가 `setQueryData` + [predicate](file:///Users/admin/Documents/github/todo/client/src/hooks/queries/useCreateTodo.js#172-178)를 사용 중이고 이를 단순한 `invalidateQueries(['todos'])`로 바꾸자고 주장합니다. **그러나 실제 코드를 보면 이미 타협점에 와 있으며, 단순 교체하면 UX가 퇴보합니다.**
+
+#### 실제 코드 현황 (문서가 모르는 부분)
+
+현재 코드는 이미 **3단계 하이브리드 전략**을 사용 중:
+
+```
+onMutate → setQueryData (Optimistic Update, 즉시 UI 반영)
+    ↓
+mutationFn → SQLite 저장 + 서버 동기화
+    ↓
+onSuccess → predicate 기반 invalidation (최종 정합성 보장)
+```
+
+| 훅 | `setQueryData` (Optimistic) | [predicate](file:///Users/admin/Documents/github/todo/client/src/hooks/queries/useCreateTodo.js#172-178) invalidation | 단순 `invalidate-all` |
+|---|:---:|:---:|:---:|
+| [useCreateTodo.js](file:///Users/admin/Documents/github/todo/client/src/hooks/queries/useCreateTodo.js) | ✅ 14곳 | ✅ 반복/기간만 | ❌ 미사용 |
+| [useUpdateTodo.js](file:///Users/admin/Documents/github/todo/client/src/hooks/queries/useUpdateTodo.js) | ✅ 12곳 | ✅ 반복/기간만 | ❌ 미사용 |
+| [useDeleteTodo.js](file:///Users/admin/Documents/github/todo/client/src/hooks/queries/useDeleteTodo.js) | ✅ 6곳 | ✅ 반복/기간만 | ❌ 미사용 |
+| [useToggleCompletion.js](file:///Users/admin/Documents/github/todo/client/src/hooks/queries/useToggleCompletion.js) | ❌ | ✅ 전체 | ❌ 미사용 |
+
+#### 왜 현재 방식이 문서 제안보다 나은가
+
+```
+[문서 제안] invalidateQueries(['todos']) 한 줄
+  → DB 재조회까지 ~2ms 딜레이 발생
+  → 사용자가 체크박스 누르면 잠깐 "깜빡임" 발생 가능
+
+[현재 코드] onMutate에서 setQueryData로 즉시 반영
+  → 0ms 딜레이 (Optimistic Update)
+  → 서버/DB 응답 기다리지 않고 UI 즉시 변경
+  → onSuccess에서 최종 정합성 보장
+```
+
+> [!IMPORTANT]
+> **Optimistic Update는 버그가 아니라 의도된 UX 최적화입니다.** 문서가 이것을 "복잡한 분기 처리 (삭제 대상)"이라고 한 것은 **코드를 읽지 않은 증거**입니다.
+
+---
+
+### 3. ❌ 틀린 내용: SQL 쿼리 예시에 보안 취약점
+
+문서의 "캘린더 Dot 쿼리" 코드 제안:
+
+```javascript
+// ❌ 분석내용_2.md의 제안 (SQL Injection 취약)
+const result = await db.getAllAsync(`
+  SELECT DISTINCT date, category_color 
+  FROM todos 
+  WHERE date LIKE '${year}-${month}%'
+`);
+```
+
+> [!CAUTION]
+> **String interpolation을 SQL에 직접 사용 → SQL Injection 취약점.** 파라미터 바인딩을 써야 합니다:
+
+```javascript
+// ✅ 올바른 방법
+const result = await db.getAllAsync(
+  `SELECT DISTINCT date, category_color FROM todos WHERE date LIKE ?`,
+  [`${year}-${month}%`]
+);
+```
+
+---
+
+### 4. ⚠️ 문서가 언급하지 않은 실제 코드 문제점
+
+실제로 개발자에게 전달하면 좋을 **진짜 이슈**는 따로 있습니다:
+
+#### 4-1. 디버그 코드가 프로덕션에 남아있음
+
+[useUpdateTodo.js L201-213](file:///Users/admin/Documents/github/todo/client/src/hooks/queries/useUpdateTodo.js#L201-L213)에 completions 테이블 전체를 덤프하는 디버그 코드가 남아 있습니다:
+
+```javascript
+// 🔍 DEBUG: upsertTodo 직후 completions 테이블 전체 덤프
+const allCompletions = await db.getAllAsync('SELECT * FROM completions');
+```
+
+→ 매 업데이트마다 **전체 completions을 읽는 불필요한 I/O** 발생 중.
+
+#### 4-2. console.log 과다
+
+4개 훅 모두 **수십 개의 console.log**가 남아 있습니다. 프로덕션 빌드에서 성능에 영향을 줄 수 있습니다.
+
+#### 4-3. onMutate에서 UUID를 2번 생성
+
+[useCreateTodo.js](file:///Users/admin/Documents/github/todo/client/src/hooks/queries/useCreateTodo.js)에서 [onMutate](file:///Users/admin/Documents/github/todo/client/src/hooks/queries/useUpdateTodo.js#13-141) (L34)와 [mutationFn](file:///Users/admin/Documents/github/todo/client/src/hooks/queries/useUpdateTodo.js#141-227) (L92)에서 각각 다른 `generateId()`를 호출합니다. Optimistic Todo와 실제 저장된 Todo의 `_id`가 **다릅니다.** onSuccess에서 교체하긴 하지만, 이 사이 시간 동안 캐시에 존재하는 optimistic todo의 ID와 DB의 ID가 불일치합니다.
+
+---
+
+## 📊 개발자 역량 평가
+
+| 평가 항목 | 점수 | 근거 |
+|---|---|---|
+| 아키텍처 이해 | ⭐⭐⭐ | Offline-First 개념 자체는 이해하고 있음 |
+| 실제 코드 분석 | ⭐ | 코드를 안 보고 일반론만 제시 |
+| React Query 이해 | ⭐⭐ | `invalidateQueries` 동작은 맞지만 Optimistic Update 패턴을 무시 |
+| 보안 의식 | ⭐ | SQL Injection 취약 코드를 제안 |
+| 실용성 | ⭐⭐ | 방향은 맞지만 구체적 Action Plan이 현 코드와 맞지 않음 |
+
+**총평:** 해당 문서는 **AI가 생성한 일반론적 조언**이며, 실제 프로젝트를 심층 분석한 결과물이 아닙니다. 큰 방향(스택 유지)은 맞지만, 세부 Action Plan은 현재 코드 구조를 모르고 작성된 것입니다.
+
+---
+
+## ✅ 개발자에게 전달할 내용 (추천)
+
+### 동의하고 진행해도 되는 것
+1. **SQLite + React Query 스택 유지** — 전적으로 동의
+2. **`invalidateQueries`를 적극 활용** — 방향은 맞지만, Optimistic Update는 유지해야 함
+
+### 반박/수정해야 하는 것
+1. **"setQueryData를 모두 제거하자"는 제안은 거부** — Optimistic Update는 UX 핵심 기능
+2. **SQL 쿼리 예시는 파라미터 바인딩으로 수정 필요**
+3. **실제 리팩토링이 필요한 부분은 따로 있음:**
+   - 디버그 코드 제거 ([useUpdateTodo.js](file:///Users/admin/Documents/github/todo/client/src/hooks/queries/useUpdateTodo.js) L201-213)
+   - console.log 정리
+   - [useCreateTodo.js](file:///Users/admin/Documents/github/todo/client/src/hooks/queries/useCreateTodo.js)의 이중 UUID 생성 문제 해결
+
+### 개발자에게 새로 전달할 메시지 (제안)
+
+> "분석 문서 잘 봤습니다. SQLite + React Query 유지하는 방향에는 동의합니다.
+> 
+> 다만 몇 가지 확인 부탁드릴게요:
+> 1. 현재 코드에서 [onMutate](file:///Users/admin/Documents/github/todo/client/src/hooks/queries/useUpdateTodo.js#13-141) → `setQueryData`로 Optimistic Update를 하고 있는데, 이걸 제거하면 체크박스 반응이 느려질 수 있지 않을까요? 이 부분은 유지하면서 [onSuccess](file:///Users/admin/Documents/github/todo/client/src/hooks/queries/useUpdateTodo.js#227-322)에서만 정리하는 게 맞을 것 같습니다.
+> 2. [useUpdateTodo.js](file:///Users/admin/Documents/github/todo/client/src/hooks/queries/useUpdateTodo.js)에 디버그용 completions 테이블 덤프 코드가 남아있는데, 이건 제거해주세요.
+> 3. SQL 쿼리 작성 시 string interpolation 대신 파라미터 바인딩을 사용해주세요."

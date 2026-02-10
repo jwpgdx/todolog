@@ -1,0 +1,14 @@
+# Hook Refactoring — 하이브리드 캐시 전략 + 클린업
+
+## 1. onSuccess 단순화 (4개 훅)
+- [ ] [useToggleCompletion.js](file:///Users/admin/Documents/github/todo/client/src/hooks/queries/useToggleCompletion.js) — onSuccess를 `invalidateQueries(['todos'])` 한 줄로 교체
+- [ ] [useCreateTodo.js](file:///Users/admin/Documents/github/todo/client/src/hooks/queries/useCreateTodo.js) — onSuccess 단순화 (ID 교체 로직 제거), UUID 이중 생성 수정
+- [ ] [useDeleteTodo.js](file:///Users/admin/Documents/github/todo/client/src/hooks/queries/useDeleteTodo.js) — onSuccess 단순화
+- [ ] [useUpdateTodo.js](file:///Users/admin/Documents/github/todo/client/src/hooks/queries/useUpdateTodo.js) — onSuccess 단순화 + 디버그 코드 삭제 (L201-213)
+
+## 2. 클린업
+- [ ] 4개 훅의 불필요한 `console.log` 정리
+- [ ] SQL Injection 취약점 확인 (실제 프로덕션 코드)
+
+## 3. 검증
+- [ ] 변경 후 코드 구조 확인
