@@ -1,32 +1,35 @@
 import React, { useMemo } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import WeekRow from './WeekRow';
-import { generateWeeks } from '../utils/calendarHelpers';
+import { generateWeeks, formatMonthTitle } from '../utils/calendarHelpers';
 
 /**
  * MonthSection Component
  * 
  * 월 단위 렌더링 (weeks 배열 생성)
- * Apple Calendar style: Month title visible, weekday header fixed at top
+ * Supports dynamic startDayOfWeek and language settings
  * 
  * @param {Object} props
  * @param {Object} props.monthMetadata - 월 메타데이터
  * @param {number} props.monthMetadata.year - 연도 (예: 2025)
  * @param {number} props.monthMetadata.month - 월 (1~12)
  * @param {string} props.monthMetadata.id - 고유 ID (예: "2025-01")
+ * @param {number} props.startDayOfWeek - 0 (Sunday) or 1 (Monday)
+ * @param {string} props.language - 'ko' | 'en' | 'ja' | 'system'
  * 
  * Requirements: 2.4, 3.1, 4.5, 9.2
  */
-function MonthSection({ monthMetadata }) {
+function MonthSection({ monthMetadata, startDayOfWeek = 0, language = 'ko' }) {
   // useMemo로 weeks 배열 생성 (6주 × 7일 = 42개 날짜)
+  // startDayOfWeek 설정에 따라 첫 주 시작일이 달라짐
   const weeks = useMemo(() => {
-    return generateWeeks(monthMetadata.year, monthMetadata.month);
-  }, [monthMetadata.year, monthMetadata.month]);
+    return generateWeeks(monthMetadata.year, monthMetadata.month, startDayOfWeek);
+  }, [monthMetadata.year, monthMetadata.month, startDayOfWeek]);
 
-  // useMemo로 monthTitle 생성 (예: "2025년 1월")
+  // useMemo로 monthTitle 생성 (언어 설정 반영)
   const monthTitle = useMemo(() => {
-    return `${monthMetadata.year}년 ${monthMetadata.month}월`;
-  }, [monthMetadata.year, monthMetadata.month]);
+    return formatMonthTitle(monthMetadata.year, monthMetadata.month, language);
+  }, [monthMetadata.year, monthMetadata.month, language]);
 
   return (
     <View style={styles.container}>

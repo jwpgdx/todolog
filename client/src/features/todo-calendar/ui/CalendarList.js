@@ -1,17 +1,20 @@
-import React, { useCallback, useRef } from 'react';
+import React, { useCallback, useRef, useState, useMemo } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { FlashList } from '@shopify/flash-list';
 import { useInfiniteCalendar } from '../hooks/useInfiniteCalendar';
+import { getWeekdayNames, formatMonthTitle } from '../utils/calendarHelpers';
+import { useAuthStore } from '../../../store/authStore';
 import MonthSection from './MonthSection';
 
 /**
  * CalendarList Component
  * 
- * FlashList container for infinite scroll calendar with fixed weekday header (Apple Calendar style).
+ * FlashList container for infinite scroll calendar with fixed header (Apple Calendar style).
  * 
  * Features:
- * - Fixed weekday header at top (scrolls with content but visually fixed)
- * - Month titles visible in each MonthSection
+ * - Fixed header showing current visible month (e.g., "2025년 5월")
+ * - Fixed weekday header below month title
+ * - Month titles visible in each MonthSection (for user convenience)
  * - Fixed height estimation (450px per month: 30px title + 420px weeks)
  * - Bottom scroll: append 6 future months
  * - Top scroll: prepend 6 past months (via onViewableItemsChanged)
@@ -40,17 +43,44 @@ export default function CalendarList() {
   } = useInfiniteCalendar();
 
   const flashListRef = useRef(null);
+  const [currentMonth, setCurrentMonth] = useState(
+    months[initialScrollIndex] || months[0]
+  );
+
+  // Subscribe to settings from authStore (Selector pattern for optimization)
+  const startDayOfWeek = useAuthStore(state => 
+    state.user?.settings?.startDayOfWeek === 'monday' ? 1 : 0
+  );
+  const language = useAuthStore(state => 
+    state.user?.settings?.language || 'ko'
+  );
+
+  // Generate weekday names based on settings (cached with useMemo)
+  const weekdayNames = useMemo(() => {
+    return getWeekdayNames(language, startDayOfWeek);
+  }, [language, startDayOfWeek]);
+
+  // Format current month title based on language
+  const currentMonthTitle = useMemo(() => {
+    if (!currentMonth) return '';
+    return formatMonthTitle(currentMonth.year, currentMonth.month, language);
+  }, [currentMonth, language]);
 
   /**
    * Render individual month section
+   * Pass startDayOfWeek and language to MonthSection
    * Validates: Requirements 1.2, 1.3
    */
   const renderMonth = useCallback(({ item }) => (
-    <MonthSection monthMetadata={item} />
-  ), []);
+    <MonthSection 
+      monthMetadata={item} 
+      startDayOfWeek={startDayOfWeek}
+      language={language}
+    />
+  ), [startDayOfWeek, language]);
 
   /**
-   * Handle viewable items change to detect top scroll
+   * Handle viewable items change to detect top scroll and update current month
    * FlashList does not support onStartReached, so we use onViewableItemsChanged
    * Validates: Requirements 1.3, 1.4
    */
@@ -61,6 +91,11 @@ export default function CalendarList() {
     }
 
     const firstIdx = viewableItems[0].index;
+
+    // Update current visible month for header
+    if (viewableItems[0]?.item) {
+      setCurrentMonth(viewableItems[0].item);
+    }
 
     // Trigger prepend when user reaches top 3 months
     if (firstIdx !== undefined && firstIdx <= 3) {
@@ -98,15 +133,27 @@ export default function CalendarList() {
 
   return (
     <View style={styles.container}>
-      {/* Fixed Weekday Header */}
+      {/* Fixed Header: Current Month Title */}
+      <View style={styles.header}>
+        <Text style={styles.headerTitle}>
+          {currentMonthTitle}
+        </Text>
+      </View>
+
+      {/* Fixed Weekday Header (Dynamic based on settings) */}
       <View style={styles.weekdayHeader}>
-        <Text style={[styles.weekdayText, styles.sunday]}>일</Text>
-        <Text style={styles.weekdayText}>월</Text>
-        <Text style={styles.weekdayText}>화</Text>
-        <Text style={styles.weekdayText}>수</Text>
-        <Text style={styles.weekdayText}>목</Text>
-        <Text style={styles.weekdayText}>금</Text>
-        <Text style={[styles.weekdayText, styles.saturday]}>토</Text>
+        {weekdayNames.map((name, index) => (
+          <Text 
+            key={index} 
+            style={[
+              styles.weekdayText,
+              index === 0 && styles.sunday,  // First day (Sun or Mon)
+              index === 6 && styles.saturday, // Last day (Sat or Sun)
+            ]}
+          >
+            {name}
+          </Text>
+        ))}
       </View>
 
       {/* Scrollable Calendar List */}
@@ -133,6 +180,20 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#fff',
+  },
+  header: {
+    width: '100%',
+    paddingVertical: 16,
+    paddingHorizontal: 16,
+    backgroundColor: '#fff',
+    borderBottomWidth: 1,
+    borderBottomColor: '#e0e0e0',
+  },
+  headerTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#333',
+    textAlign: 'center',
   },
   weekdayHeader: {
     flexDirection: 'row',

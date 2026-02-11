@@ -6,7 +6,6 @@ import NotificationScreen from '../screens/NotificationScreen';
 import ProfileScreen from '../screens/ProfileScreen';
 import CalendarScreen from '../screens/CalendarScreen';
 import DebugScreen from '../screens/DebugScreen';
-import TodoCalendarScreen from '../features/todo-calendar/TodoCalendarScreen';
 import { useTodoFormStore } from '../store/todoFormStore';
 
 const Tab = createBottomTabNavigator();
@@ -30,16 +29,6 @@ export default function MainTabs() {
         name="Calendar"
         component={CalendarScreen}
         options={{ tabBarLabel: '캘린더' }}
-      />
-      <Tab.Screen
-        name="CalendarTest"
-        component={TodoCalendarScreen}
-        options={{
-          tabBarLabel: '테스트',
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="flask-outline" size={size} color={color} />
-          ),
-        }}
       />
       <Tab.Screen
         name="Profile"

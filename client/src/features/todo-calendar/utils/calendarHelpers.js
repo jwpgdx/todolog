@@ -1,9 +1,59 @@
 import dayjs from 'dayjs';
 
 /**
+ * Get weekday names based on language and start day
+ * @param {string} language - 'ko' | 'en' | 'ja' | 'system'
+ * @param {number} startDayOfWeek - 0 (Sunday) or 1 (Monday)
+ * @returns {Array<string>} - Array of 7 weekday names
+ */
+export function getWeekdayNames(language = 'ko', startDayOfWeek = 0) {
+  const weekdays = {
+    ko: ['일', '월', '화', '수', '목', '금', '토'],
+    en: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'],
+    ja: ['日', '月', '火', '水', '木', '金', '土'],
+  };
+  
+  // system은 한국어로 fallback
+  const lang = language === 'system' ? 'ko' : language;
+  const names = weekdays[lang] || weekdays.ko;
+  
+  // Rotate array based on startDayOfWeek
+  if (startDayOfWeek === 1) {
+    // Monday first: [Mon, Tue, Wed, Thu, Fri, Sat, Sun]
+    return [...names.slice(1), names[0]];
+  }
+  
+  // Sunday first (default)
+  return names;
+}
+
+/**
+ * Format month title based on language
+ * @param {number} year - Year (e.g., 2025)
+ * @param {number} month - Month (1~12)
+ * @param {string} language - 'ko' | 'en' | 'ja' | 'system'
+ * @returns {string} - Formatted month title
+ */
+export function formatMonthTitle(year, month, language = 'ko') {
+  const lang = language === 'system' ? 'ko' : language;
+  
+  switch (lang) {
+    case 'en':
+      const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+      return `${monthNames[month - 1]} ${year}`;
+    case 'ja':
+      return `${year}年${month}月`;
+    case 'ko':
+    default:
+      return `${year}년 ${month}월`;
+  }
+}
+
+/**
  * 특정 월의 6주 고정 weeks 배열 생성
  * @param {number} year - 연도 (예: 2025)
  * @param {number} month - 월 (1~12)
+ * @param {number} startDayOfWeek - 0 (Sunday) or 1 (Monday)
  * @returns {Array<Array<DayObject>>} - 6주 × 7일 배열
  * 
  * DayObject: {
@@ -13,7 +63,7 @@ import dayjs from 'dayjs';
  *   isToday: boolean
  * }
  */
-export function generateWeeks(year, month) {
+export function generateWeeks(year, month, startDayOfWeek = 0) {
   try {
     const firstDay = dayjs(`${year}-${String(month).padStart(2, '0')}-01`);
     
@@ -22,8 +72,18 @@ export function generateWeeks(year, month) {
       return generateEmptyWeeks();
     }
     
-    // 첫 주 시작일 (일요일 기준)
-    const startDay = firstDay.day(0);  // 이전 주 일요일
+    // Calculate first day of the week based on startDayOfWeek setting
+    // startDayOfWeek: 0 (Sunday) or 1 (Monday)
+    let startDay;
+    if (startDayOfWeek === 1) {
+      // Monday first: find previous Monday (or current day if it's Monday)
+      const dayOfWeek = firstDay.day(); // 0 (Sun) ~ 6 (Sat)
+      const daysToSubtract = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+      startDay = firstDay.subtract(daysToSubtract, 'day');
+    } else {
+      // Sunday first (default)
+      startDay = firstDay.day(0);  // Previous Sunday
+    }
     
     const weeks = [];
     let currentDay = startDay;
