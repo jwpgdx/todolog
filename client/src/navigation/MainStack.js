@@ -8,6 +8,7 @@ import StartDaySettingsScreen from '../screens/settings/StartDaySettingsScreen';
 import TimeZoneSettingsScreen from '../screens/settings/TimeZoneSettingsScreen';
 import TimeZoneSelectionScreen from '../screens/settings/TimeZoneSelectionScreen';
 import GoogleCalendarSettingsScreen from '../screens/settings/GoogleCalendarSettingsScreen';
+import TodoCalendarScreen from '../features/todo-calendar/TodoCalendarScreen';
 
 const Stack = createStackNavigator();
 
@@ -151,6 +152,23 @@ export default function MainStack() {
         component={require('../test/GuestMigrationTestScreen').default}
         options={{
           title: 'Guest Migration Test',
+          headerBackTitle: '뒤로',
+          headerShown: true,
+        }}
+      />
+      <Stack.Screen
+        name="TodoCalendar"
+        component={TodoCalendarScreen}
+        options={{
+          title: '무한 스크롤 캘린더',
+          headerShown: true,
+        }}
+      />
+      <Stack.Screen
+        name="CalendarPerformanceBenchmark"
+        component={require('../test/CalendarPerformanceBenchmark').default}
+        options={{
+          title: '캘린더 성능 벤치마크',
           headerBackTitle: '뒤로',
           headerShown: true,
         }}
