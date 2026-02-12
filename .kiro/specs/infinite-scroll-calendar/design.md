@@ -78,24 +78,27 @@ export default function TodoCalendarScreen() {
 
 **Hooks**:
 - `useInfiniteCalendar()`: 월 메타데이터 배열 및 스크롤 핸들러 제공
+- `authStore` (Phase 1.5): 설정값 구독 (startDayOfWeek, language)
 
 **주요 기능**:
 - FlashList 설정 (estimatedItemSize: 정확한 높이 계산)
 - 스크롤 이벤트 처리 (onEndReached, onViewableItemsChanged)
 - MonthSection 렌더링
+- 고정 헤더 (Phase 1.5): 현재 보고 있는 월 표시 + 요일 헤더
 
 **높이 계산**:
 ```javascript
+const FIXED_HEADER_HEIGHT = 80;    // 고정 헤더 (월 타이틀 + 요일 헤더) [Phase 1.5]
 const TITLE_HEIGHT = 30;           // 월 타이틀
-const WEEKDAY_HEADER_HEIGHT = 30;  // 요일 헤더
 const WEEK_ROW_HEIGHT = 70;        // 주 행 높이
-const MONTH_HEIGHT = TITLE_HEIGHT + WEEKDAY_HEADER_HEIGHT + (6 * WEEK_ROW_HEIGHT);
-// → 480px (정확한 높이)
+const MONTH_HEIGHT = TITLE_HEIGHT + (6 * WEEK_ROW_HEIGHT);
+// → 450px (정확한 높이)
 ```
 
 ```javascript
-// CalendarList.js
-const MONTH_HEIGHT = 480;  // 30 + 30 + (6 × 70)
+// CalendarList.js (Phase 1.5 업데이트)
+const MONTH_HEIGHT = 450;  // 30 + (6 × 70)
+const FIXED_HEADER_HEIGHT = 80;
 
 export default function CalendarList() {
   const {
@@ -105,49 +108,91 @@ export default function CalendarList() {
     initialScrollIndex
   } = useInfiniteCalendar();
 
-  const renderMonth = useCallback(({ item }) => (
-    <MonthSection monthMetadata={item} />
-  ), []);
+  // Phase 1.5: authStore에서 설정값 구독 (Selector 패턴)
+  const startDayOfWeek = authStore((state) => state.settings?.startDayOfWeek ?? 0);
+  const language = authStore((state) => state.settings?.language ?? 'ko');
 
-  // ✅ onViewableItemsChanged로 상단 스크롤 감지
-  const onViewableItemsChanged = useRef(({ viewableItems }) => {
+  // Phase 1.5: 현재 보고 있는 월 추적
+  const [currentVisibleMonth, setCurrentVisibleMonth] = useState(months[initialScrollIndex]);
+
+  const renderMonth = useCallback(({ item }) => (
+    <MonthSection 
+      monthMetadata={item} 
+      startDayOfWeek={startDayOfWeek}
+      language={language}
+    />
+  ), [startDayOfWeek, language]);
+
+  // Phase 1.5: 요일 헤더 동적 생성
+  const weekdayNames = useMemo(() => 
+    getWeekdayNames(language, startDayOfWeek), 
+    [language, startDayOfWeek]
+  );
+
+  // Phase 1.5: 월 타이틀 동적 생성
+  const currentMonthTitle = useMemo(() => 
+    formatMonthTitle(currentVisibleMonth.year, currentVisibleMonth.month, language),
+    [currentVisibleMonth, language]
+  );
+
+  // ✅ onViewableItemsChanged로 상단 스크롤 감지 + 현재 월 추적
+  const onViewableItemsChanged = useCallback(({ viewableItems }) => {
     if (viewableItems.length > 0) {
       const firstIdx = viewableItems[0].index;
+      
+      // Phase 1.5: 현재 보고 있는 월 업데이트
+      setCurrentVisibleMonth(months[firstIdx]);
       
       // 상단 3개월 이내 도달 시 과거 데이터 로드
       if (firstIdx <= 3) {
         handleStartReached();
       }
     }
-  }).current;
+  }, [months, handleStartReached]);
 
   const viewabilityConfig = useRef({
     itemVisiblePercentThreshold: 30
   }).current;
 
   return (
-    <FlashList
-      data={months}
-      renderItem={renderMonth}
-      keyExtractor={(item) => item.id}
-      estimatedItemSize={MONTH_HEIGHT}
-      initialScrollIndex={initialScrollIndex}
-      onEndReached={handleEndReached}
-      onEndReachedThreshold={0.2}
-      onViewableItemsChanged={onViewableItemsChanged}
-      viewabilityConfig={viewabilityConfig}
-      maintainVisibleContentPosition={{ minIndexForVisible: 0 }}
-      onScrollToIndexFailed={(info) => {
-        console.warn('Scroll to index failed:', info);
-        flatListRef.current?.scrollToOffset({
-          offset: info.averageItemLength * info.index,
-          animated: false
-        });
-      }}
-    />
+    <View style={styles.container}>
+      {/* Phase 1.5: 고정 헤더 */}
+      <View style={styles.fixedHeader}>
+        <Text style={styles.fixedMonthTitle}>{currentMonthTitle}</Text>
+        <View style={styles.weekdayHeader}>
+          {weekdayNames.map((day, idx) => (
+            <Text key={idx} style={styles.weekdayText}>{day}</Text>
+          ))}
+        </View>
+      </View>
+
+      <FlashList
+        data={months}
+        renderItem={renderMonth}
+        keyExtractor={(item) => item.id}
+        estimatedItemSize={MONTH_HEIGHT}
+        initialScrollIndex={initialScrollIndex}
+        onEndReached={handleEndReached}
+        onEndReachedThreshold={0.2}
+        onViewableItemsChanged={onViewableItemsChanged}
+        viewabilityConfig={viewabilityConfig}
+        maintainVisibleContentPosition={{ minIndexForVisible: 0 }}
+        onScrollToIndexFailed={(info) => {
+          console.warn('Scroll to index failed:', info);
+          flatListRef.current?.scrollToOffset({
+            offset: info.averageItemLength * info.index,
+            animated: false
+          });
+        }}
+      />
+    </View>
   );
 }
 ```
+
+**Phase 1.5 버그 수정**:
+- `MainTabs.js`에서 CalendarTest 탭 제거: CalendarTest 탭이 백그라운드에서 항상 마운트되어 있어 무한 루프 발생
+- FlashList의 `extraData` prop 제거: 설정 변경 시 `renderMonth` 함수의 의존성 배열이 자동으로 리렌더링 트리거
 
 ---
 
@@ -212,29 +257,33 @@ export function useInfiniteCalendar() {
 **Props**:
 ```javascript
 {
-  monthMetadata: { year: number, month: number, id: string }
+  monthMetadata: { year: number, month: number, id: string },
+  startDayOfWeek: number,  // Phase 1.5: 0 (일요일) or 1 (월요일)
+  language: string         // Phase 1.5: 'ko' or 'en'
 }
 ```
 
 **Computed State (useMemo)**:
 - `weeks`: Array<Array<DayObject>> (6주 × 7일 = 42개 날짜)
-- `monthTitle`: string (예: "2025년 1월")
+- `monthTitle`: string (예: "2025년 1월" 또는 "January 2025")
 
 **주요 기능**:
 - monthMetadata로부터 weeks 배열 동기 생성 (useMemo)
+- Phase 1.5: startDayOfWeek 기반 주 시작일 계산
+- Phase 1.5: language 기반 월 타이틀 포맷팅
 - 6주 고정 (부족한 주는 빈 셀로 패딩)
 - WeekRow 컴포넌트 렌더링
 
 ```javascript
-// MonthSection.js
-export default function MonthSection({ monthMetadata }) {
+// MonthSection.js (Phase 1.5 업데이트)
+export default function MonthSection({ monthMetadata, startDayOfWeek = 0, language = 'ko' }) {
   const weeks = useMemo(() => {
-    return generateWeeks(monthMetadata.year, monthMetadata.month);
-  }, [monthMetadata.year, monthMetadata.month]);
+    return generateWeeks(monthMetadata.year, monthMetadata.month, startDayOfWeek);
+  }, [monthMetadata.year, monthMetadata.month, startDayOfWeek]);
 
   const monthTitle = useMemo(() => {
-    return `${monthMetadata.year}년 ${monthMetadata.month}월`;
-  }, [monthMetadata.year, monthMetadata.month]);
+    return formatMonthTitle(monthMetadata.year, monthMetadata.month, language);
+  }, [monthMetadata.year, monthMetadata.month, language]);
 
   return (
     <View style={styles.container}>
@@ -297,16 +346,18 @@ export default function WeekRow({ week }) {
 **주요 기능**:
 - 날짜 숫자 표시
 - 스타일링 (현재 월 여부, 오늘 날짜)
-- 이전/다음 월 날짜: opacity 30%
+- Phase 1.5: 이전/다음 월 날짜는 완전히 숨김 (빈 공간)
 
 ```javascript
-// DayCell.js
+// DayCell.js (Phase 1.5 업데이트)
 export default function DayCell({ day }) {
+  // Phase 1.5: 다른 월 날짜는 빈 공간으로 표시
+  if (!day.isCurrentMonth) {
+    return <View style={styles.cell} />;
+  }
+
   return (
-    <View style={[
-      styles.cell,
-      !day.isCurrentMonth && styles.otherMonth
-    ]}>
+    <View style={styles.cell}>
       <Text style={styles.dateText}>{day.date}</Text>
     </View>
   );
@@ -321,9 +372,6 @@ const styles = StyleSheet.create({
     height: 70,
     justifyContent: 'center',
     alignItems: 'center',
-  },
-  otherMonth: {
-    opacity: 0.3,
   },
   dateText: {
     fontSize: 16,
@@ -347,14 +395,15 @@ const styles = StyleSheet.create({
  * 특정 월의 6주 고정 weeks 배열 생성
  * @param {number} year - 연도 (예: 2025)
  * @param {number} month - 월 (1~12)
+ * @param {number} startDayOfWeek - 시작 요일 (0: 일요일, 1: 월요일) [Phase 1.5]
  * @returns {Array<Array<DayObject>>} - 6주 × 7일 배열
  */
-export function generateWeeks(year, month) {
+export function generateWeeks(year, month, startDayOfWeek = 0) {
   const firstDay = dayjs(`${year}-${month}-01`);
   const lastDay = firstDay.endOf('month');
   
-  // 첫 주 시작일 (일요일 기준)
-  const startDay = firstDay.day(0);  // 이전 주 일요일
+  // 첫 주 시작일 (startDayOfWeek 기준)
+  const startDay = firstDay.day(startDayOfWeek);  // 이전 주 시작 요일
   
   const weeks = [];
   let currentDay = startDay;
@@ -375,6 +424,45 @@ export function generateWeeks(year, month) {
   }
   
   return weeks;
+}
+
+/**
+ * 요일 이름 배열 생성 (언어 및 시작 요일 기반) [Phase 1.5]
+ * @param {string} language - 언어 코드 ('ko', 'en')
+ * @param {number} startDayOfWeek - 시작 요일 (0: 일요일, 1: 월요일)
+ * @returns {Array<string>} - 요일 이름 배열 (7개)
+ */
+export function getWeekdayNames(language = 'ko', startDayOfWeek = 0) {
+  const weekdays = language === 'ko' 
+    ? ['일', '월', '화', '수', '목', '금', '토']
+    : ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  
+  if (startDayOfWeek === 1) {
+    // 월요일 시작: [월, 화, 수, 목, 금, 토, 일]
+    return [...weekdays.slice(1), weekdays[0]];
+  }
+  
+  return weekdays;  // 일요일 시작
+}
+
+/**
+ * 월 타이틀 포맷팅 (언어 기반) [Phase 1.5]
+ * @param {number} year - 연도
+ * @param {number} month - 월 (1~12)
+ * @param {string} language - 언어 코드 ('ko', 'en')
+ * @returns {string} - 포맷된 월 타이틀
+ */
+export function formatMonthTitle(year, month, language = 'ko') {
+  if (language === 'ko') {
+    return `${year}년 ${month}월`;
+  }
+  
+  const monthNames = [
+    'January', 'February', 'March', 'April', 'May', 'June',
+    'July', 'August', 'September', 'October', 'November', 'December'
+  ];
+  
+  return `${monthNames[month - 1]} ${year}`;
 }
 
 /**
@@ -895,12 +983,29 @@ const handleEndReached = useCallback(() => {
 - ✅ 테스트 진입점
 - ✅ `isToday` 필드 생성 (시각적 하이라이트는 Phase 2)
 
+### Phase 1.5 Scope (Settings Integration)
+
+Phase 1과 Phase 2 사이에 추가된 설정 연동 작업:
+- ✅ `startDayOfWeek` 설정 지원 (0: 일요일, 1: 월요일)
+- ✅ `language` 설정 지원 (ko, en)
+- ✅ authStore 직접 구독 (Selector 패턴)
+- ✅ 동적 요일 헤더 생성
+- ✅ 언어별 월 타이틀 포맷팅
+- ✅ 고정 헤더 (현재 보고 있는 월 표시)
+- ✅ 무한 루프 버그 수정 (CalendarTest 탭 제거)
+
+**주요 변경 사항**:
+1. `calendarHelpers.js`에 `getWeekdayNames()`, `formatMonthTitle()` 함수 추가
+2. `generateWeeks()` 함수에 `startDayOfWeek` 파라미터 추가
+3. `CalendarList.js`에서 authStore 구독 및 고정 헤더 추가
+4. `MonthSection.js`에 `startDayOfWeek`, `language` props 추가
+5. `MainTabs.js`에서 CalendarTest 탭 제거 (무한 루프 원인)
+
 Phase 2 (향후):
 - ❌ Todo 데이터 연동 (SQLite 조회)
 - ❌ 완료 표시 (점/체크마크)
 - ❌ 날짜 클릭 이벤트
 - ❌ 오늘 날짜 시각적 하이라이트 (배경색, 테두리)
-- ❌ `startDayOfWeek` 설정 지원 (월요일 시작)
 
 **Note**: Phase 1에서는 `isToday` 필드를 DayObject에 포함하지만, 시각적 하이라이트(배경색, 테두리 등)는 구현하지 않습니다. 이는 Phase 2에서 Todo 데이터와 함께 구현됩니다.
 

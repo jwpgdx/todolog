@@ -4,7 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import TodoScreen from '../screens/TodoScreen';
 import NotificationScreen from '../screens/NotificationScreen';
 import ProfileScreen from '../screens/ProfileScreen';
-import CalendarScreen from '../screens/CalendarScreen';
+import TodoCalendarScreen from '../screens/TodoCalendarScreen';
 import DebugScreen from '../screens/DebugScreen';
 import { useTodoFormStore } from '../store/todoFormStore';
 
@@ -23,17 +23,32 @@ export default function MainTabs() {
       <Tab.Screen
         name="Home"
         component={TodoScreen}
-        options={{ tabBarLabel: '홈' }}
+        options={{
+          tabBarLabel: '홈',
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="home-outline" size={size} color={color} />
+          ),
+        }}
       />
       <Tab.Screen
         name="Calendar"
-        component={CalendarScreen}
-        options={{ tabBarLabel: '캘린더' }}
+        component={TodoCalendarScreen}
+        options={{
+          tabBarLabel: '캘린더',
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="calendar-outline" size={size} color={color} />
+          ),
+        }}
       />
       <Tab.Screen
         name="Profile"
         component={ProfileScreen}
-        options={{ tabBarLabel: 'My' }}
+        options={{
+          tabBarLabel: 'My',
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="person-outline" size={size} color={color} />
+          ),
+        }}
       />
       {/* 모든 플랫폼: 탭 바 맨 오른쪽에 추가 버튼 */}
       <Tab.Screen

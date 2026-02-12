@@ -10,11 +10,6 @@ import { useTranslation } from 'react-i18next';
 
 import DailyTodoList from '../features/todo/list/DailyTodoList';
 
-// ⚠️ [2026-02-06] UltimateCalendar 임시 비활성화
-// 이유: SQLite/서버 동기화/카테고리 색상 동기화 이슈 해결 후 재활성화
-// 복구 방법: 아래 주석 해제
-// import UltimateCalendar from '../components/ui/ultimate-calendar/UltimateCalendar';
-
 /**
  * TodoScreen
  * 메인 투두 리스트 화면
@@ -103,11 +98,6 @@ export default function TodoScreen({ navigation }) {
 
   return (
     <SafeAreaView style={styles.container}>
-      {/* ⚠️ [2026-02-06] UltimateCalendar 임시 비활성화 */}
-      {/* 이유: SQLite/서버 동기화/카테고리 색상 동기화 이슈 */}
-      {/* 복구 방법: 아래 주석 해제 */}
-      {/* <UltimateCalendar /> */}
-
       {/* 임시 날짜 네비게이션 헤더 */}
       <View style={styles.dateHeader}>
         <TouchableOpacity onPress={handlePrevDay} style={styles.arrowButton}>

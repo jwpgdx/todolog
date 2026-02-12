@@ -162,17 +162,14 @@ export default function SettingsScreen({ navigation }) {
                 </View>
 
                 {/* 개발자 테스트 */}
-                <SectionHeader title="개발자 테스트" />
+                {/* Archived: Phase 1 테스트 완료 - 이제 Bottom Tab에서 캘린더 접근 가능 */}
+                {/* <SectionHeader title="개발자 테스트" />
                 <View className="bg-white dark:bg-gray-800">
                     <SettingsRow
                         title="무한 스크롤 캘린더 테스트"
                         onPress={() => navigation.navigate('TodoCalendar')}
                     />
-                    <SettingsRow
-                        title="📊 캘린더 성능 벤치마크"
-                        onPress={() => navigation.navigate('CalendarPerformanceBenchmark')}
-                    />
-                </View>
+                </View> */}
 
             </ScrollView>
         </SafeAreaView>

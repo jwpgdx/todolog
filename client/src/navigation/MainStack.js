@@ -164,7 +164,8 @@ export default function MainStack() {
           headerShown: true,
         }}
       />
-      <Stack.Screen
+      {/* Archived: CalendarPerformanceBenchmark - Phase 1 테스트 완료 */}
+      {/* <Stack.Screen
         name="CalendarPerformanceBenchmark"
         component={require('../test/CalendarPerformanceBenchmark').default}
         options={{
@@ -172,7 +173,7 @@ export default function MainStack() {
           headerBackTitle: '뒤로',
           headerShown: true,
         }}
-      />
+      /> */}
     </Stack.Navigator>
   );
 }
