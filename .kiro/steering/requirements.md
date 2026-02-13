@@ -1,228 +1,178 @@
-# AGENT PERSONA & BEHAVIOR
-- 
-**Role:**
- You are a Senior Principal Engineer. You prioritize safety, correctness, and planning over speed.
-- 
-**Planning:**
- You MUST emulate the design philosophy of Claude Opus. Before writing code, you must briefly outline your plan.
-- 
-**Tone:**
- Be concise. No fluff. Just the solution.
-- 
-**Language:**
- ALWAYS respond in Korean (한글) unless the user explicitly requests English. Code comments, variable names, and technical documentation should remain in English, but all explanations, summaries, and conversations must be in Korean.
-- 
-**Code Modification Protocol:**
- ALWAYS ask for user confirmation before modifying code. Even if the user asks a question that implies a fix is needed, explain the issue and proposed solution first, then wait for explicit approval before making changes.
+# Todolog AI Steering Requirements
 
+Last Updated: 2026-02-13
+Scope: Rules for AI agents working in this repository.
 
-# DEVELOPMENT METHODOLOGY 🔴 CRITICAL
+## 1. Purpose
 
-## Spec-Driven Development (MANDATORY)
+This document defines how an AI agent must operate in the Todolog repository.
+It is focused on execution behavior, safety, and delivery quality.
 
-**모든 새로운 기능 개발 및 주요 수정 작업은 반드시 Spec-Driven Development 방법론을 따라야 합니다.**
+This file is not a feature spec. Feature details belong under `.kiro/specs/<feature>/`.
 
-### Workflow
+## 2. Instruction Priority
 
-1. **Requirements Phase** (`.kiro/specs/{feature-name}/requirements.md`)
-   - User Stories 작성
-   - Acceptance Criteria 정의
-   - Glossary 작성
-   - 사용자 검토 및 승인 필수
+When instructions conflict, use this order:
 
-2. **Design Phase** (`.kiro/specs/{feature-name}/design.md`)
-   - Architecture Overview (Mermaid 다이어그램)
-   - Components & Interfaces 설계
-   - API Design (Request/Response 명세)
-   - Data Models (SQLite, MongoDB 스키마)
-   - Error Handling 전략
-   - **Correctness Properties** (Property-Based Testing용)
-   - Testing Strategy (Unit + Property Tests)
-   - 사용자 검토 및 승인 필수
+1. System / platform-level instructions
+2. `AGENTS.md`
+3. This file (`.kiro/steering/requirements.md`)
+4. Feature specs under `.kiro/specs/<feature>/`
+5. User request in the current conversation
 
-3. **Tasks Phase** (`.kiro/specs/{feature-name}/tasks.md`)
-   - 구현 태스크 분해 (의존성 순서 고려)
-   - 각 태스크에 Requirements 매핑
-   - Property-Based Tests 포함
-   - Checkpoint 태스크로 점진적 검증
-   - 사용자 검토 및 승인 필수
+If the user gives explicit direction for the current task, follow it unless it violates a higher-priority rule.
 
-4. **Implementation Phase**
-   - Tasks.md의 태스크를 순서대로 실행
-   - "Run All Tasks" 버튼으로 자동 실행 가능
-   - 각 태스크 완료 후 체크박스 업데이트
-   - Checkpoint에서 중간 검증
+## 3. Working Style
 
-### When to Use Spec-Driven Development
+- Prioritize correctness, safety, and clarity over speed.
+- Start with a short plan before making changes.
+- Keep communication concise and factual.
+- Use English for project documentation unless the user asks otherwise.
 
-**MUST USE (필수)**:
-- 새로운 기능 개발
-- 주요 아키텍처 변경
-- 데이터 모델 변경
-- API 엔드포인트 추가/수정
-- 복잡한 비즈니스 로직 구현
+## 4. Code Modification Protocol
 
-**CAN SKIP (선택)**:
-- 단순 버그 수정 (1-2 파일)
-- UI 스타일 조정
-- 로그 추가
-- 문서 업데이트
+- Ask for explicit user confirmation before modifying code or docs.
+- For substantial changes, explain the plan first, then execute after approval.
+- For high-risk refactors, propose working on a separate branch.
+- Never run destructive git commands (`git reset --hard`, `git clean -fd`) without explicit approval.
+- Never revert unrelated user changes.
 
-### Benefits
+## 5. Mandatory Development Method
 
-✅ **명확한 요구사항**: 구현 전 요구사항 합의
-✅ **체계적인 설계**: 아키텍처 사전 검증
-✅ **점진적 구현**: 태스크 단위로 안전하게 진행
-✅ **각 단계 검토**: 사용자 승인 후 다음 단계
-✅ **정확성 보장**: Property-Based Testing
-✅ **추적 가능성**: Requirements ↔ Design ↔ Tasks 매핑
+Use Spec-Driven Development for all new features and major changes.
 
-### Example
+### 5.1 Spec Location (Source of Truth)
 
-```bash
-# 1. Spec 생성 요청
-"게스트 데이터 마이그레이션 기능을 만들고 싶어"
+All feature specs must live in:
 
-# 2. Agent가 자동으로 생성
-.kiro/specs/guest-data-migration/
-  ├── requirements.md  (9개 요구사항)
-  ├── design.md        (아키텍처, API, 12개 Properties)
-  └── tasks.md         (14개 구현 태스크)
+`.kiro/specs/<feature>/`
 
-# 3. 각 단계마다 사용자 승인
-Requirements 검토 → Design 검토 → Tasks 검토
+Each feature folder must contain:
 
-# 4. 구현 시작
-"Run All Tasks" 버튼 클릭 또는 개별 태스크 실행
-```
+- `requirements.md`
+- `design.md`
+- `tasks.md`
 
-### Command
+### 5.2 Required Flow
 
-새로운 기능 개발 시:
-```
-"[기능명] 스펙을 만들어줘"
-또는
-"[기능명] 기능을 Spec-Driven으로 개발하고 싶어"
-```
+1. Requirements phase
+- user stories
+- acceptance criteria
+- glossary
+- explicit user approval
 
+2. Design phase
+- architecture and interfaces
+- API contracts
+- data models
+- error handling
+- correctness properties
+- testing strategy
+- explicit user approval
 
-# SAFETY & GIT PROTOCOLS
-- 
-**Git Operations:**
-  - NEVER run `git reset --hard` or `git clean -fd` without explicitly asking for user confirmation.
-  - Before making complex changes, always offer to create a new branch.
-- 
-**File Safety:**
-  - Do not delete or overwrite non-code files (images, PDFs, certificates) without permission.
+3. Tasks phase
+- dependency-ordered tasks
+- requirement traceability
+- checkpoint tasks
+- explicit user approval
 
+4. Implementation phase
+- execute tasks in order
+- update task checkboxes
+- verify at checkpoints
 
-# DYNAMIC TECH STACK & STANDARDS (WILL BE DIFFERENT BASES ON YOUR PROJECT)
-**Instruction:** Scan the current file structure and dependency files (e.g., `client/package.json`, `server/package.json`, or `README.md`). Apply the following constraints **only** if the relevant language or framework is detected in the active project.
+### 5.3 When Spec-Driven Is Mandatory
 
-## Client / Mobile (React Native + Expo)
-- **Framework:** React Native (Expo SDK 52)
-- **Styling:** NativeWind (Tailwind CSS v3) - *Configured & Allowed*
-- **State Management:** Zustand + React Query
-- **Navigation:** React Navigation (Stack + Bottom Tabs)
-- **Database:** SQLite (expo-sqlite) - Local storage for todos, completions, categories
-- **Testing:**
-  - **Automated:** None (No Jest/Vitest detected)
-  - **Manual:** Custom manual test screens in `src/test` (e.g., `TestDashboard`, `KeyboardStickyTest`)
-- **Localization:**
-  - Libraries: `i18next`, `expo-localization`
-  - Management: `react-i18next`
+- New features
+- Data model changes
+- API additions or contract changes
+- Architecture-level refactors
+- Complex business logic
 
-## Server / Backend (Node.js + Express)
-- **Framework:** Express.js
-- **Database:** MongoDB (Mongoose ORM)
-- **Authentication:** JWT + Google OAuth (`google-auth-library`)
-- **Type Hinting:** Plain JavaScript (CommonJS) - *No TypeScript detected*
-- **Linter:** No explicit ESLint or Prettier configuration found
+### 5.4 When Spec-Driven Can Be Skipped
 
+- Small bug fix (1-2 files)
+- Style-only UI tweak
+- Logging-only change
+- Documentation-only update
 
-# CODING STANDARDS
-- 
-**Completeness:**
- NEVER leave "TODO" comments or "// ... existing code" placeholders. Write the full, working file.
-- 
-**No Hallucinations:**
- Verify libraries in `package.json` or `requirements.txt` before importing.
+## 6. Non-Negotiable Architecture Constraints
 
+### 6.1 Offline-First
 
-# PROJECT CONTEXT & KEY FILES
+- Core flows must work without network.
+- Client writes locally first; server sync is asynchronous.
+- UI must not block on server availability.
 
-## Recently Completed (2026-02-03)
-- **UUID Migration (Phase 6)**: tempId → UUID v4 완전 전환
-  - 클라이언트: expo-crypto 기반 UUID 생성
-  - 서버: 모든 Model String _id로 전환
-  - Offline-First: Category hooks 오프라인 지원 추가
-  - tempId 매핑 로직 완전 제거
-  - pending_changes 스키마: todo_id → entity_id
+### 6.2 Local Source of Truth
 
-- **SQLite Migration (Phase 5)**: AsyncStorage → SQLite 전환 완료
-  - 성능: 앱 시작 15배, Completion 토글 160배, 메모리 10배 감소
-  - 모든 CRUD hooks SQLite 기반으로 전환
-  - WASM 콜드 스타트 해결 (워밍업 로직)
-  
-- **UltimateCalendar**: Infinite scroll + dynamic events implementation
-- **Performance**: <10ms event calculation, 90%+ cache hit rate
-- **Cache Optimization**: range: 12 (±12주), maxCacheSize: 60주
+- SQLite is the primary source for todos, completions, categories, and pending changes.
+- Settings persist via `authStore` + AsyncStorage.
 
-## Key Architecture Patterns
+### 6.3 Identity
 
-### 1. **Offline-First Architecture** 🔴 CRITICAL
-   - **All features MUST work offline first**
-   - Client generates data locally (SQLite) → Sync to server when online
-   - Server is optional: App fully functional without network
-   - Sync is background process, never blocks UI
-   - Guest mode: No server account required
+- IDs are generated client-side as UUID v4.
+- Server models use String `_id`.
 
-### 2. **ID Generation**: UUID v4 (클라이언트에서 생성)
-   - 클라이언트: `expo-crypto.randomUUID()`
-   - 서버: `crypto.randomUUID()` (fallback)
-   - Completion ID: `todoId_date` 형식
-   - Guest ID: `guest_${UUID}` 형식
+### 6.4 Sync Ordering
 
-### 3. **Data Storage**: SQLite as Source of Truth
-   - Todos, Completions, Categories, Pending Changes all in SQLite
-   - Settings remain in AsyncStorage (intentional)
-   - Local data persists even without server account
+Always preserve dependency order:
 
-### 4. **Pending Change Types**: 
-   - Category: `createCategory`, `updateCategory`, `deleteCategory`
-   - Todo: `createTodo`, `updateTodo`, `deleteTodo` (legacy: `create`, `update`, `delete`)
-   - Completion: `createCompletion`, `deleteCompletion`
+Category -> Todo -> Completion
 
-### 5. **Sync Order**: Category → Todo → Completion (의존성 순서)
-   - Only syncs when user has server account (not guest)
-   - Pending changes queued in SQLite until online
+### 6.5 Date/Time Contract (Phase 2.5)
 
-### 6. **Cache Strategy**: Single-source cache (`['todos', 'all']`) with on-demand filtering
+Todo schedule fields must follow floating string format:
 
-### 7. **Cache Invalidation**: Optimistic Updates only - no redundant invalidation on success
+- Date: `YYYY-MM-DD` or `null`
+- Time: `HH:mm` or `null`
 
-## Key Files Reference
-- **ID Generation**: `client/src/utils/idGenerator.js` - UUID 생성 유틸리티
-- **Database Layer**: `client/src/db/*.js` - SQLite services (todo, completion, category, pending)
-- **Query Hooks**: `client/src/hooks/queries/*.js` - React Query hooks with offline support
-- **Server Models**: `server/src/models/*.js` - MongoDB models (String _id)
-- **Server Controllers**: `server/src/controllers/*.js` - REST API endpoints
-- **Documentation**: See "Key Files Reference" section below for full list
+Legacy schedule fields are disallowed in API payloads:
 
-## Important Documentation
-- **README.md**: Architecture overview, performance (this file)
-- **UUID_MIGRATION_PLAN.md**: UUID 마이그레이션 계획서 (완료)
-- **CACHE_INVALIDATION_ANALYSIS.md**: 캐시 무효화 최적화 분석
-- **client/docs/ROADMAP.md**: Next tasks and priorities
-- **client/docs/OPTIMISTIC_UPDATE_COMPLETED.md**: Optimistic Update 구현
-- **.kiro/steering/requirements.md**: Development guidelines and tech stack
+- `date`
+- `startDateTime`
+- `endDateTime`
+- `timeZone`
 
-## Next Session Start Guide
-When starting a new session:
-1. Check **client/docs/ROADMAP.md** for next tasks
-2. Review recent updates in this README (Recent Updates & Optimizations section)
-3. For testing: MongoDB 초기화 → 서버 시작 → 앱 테스트
+Timezone source of truth is `user.settings.timeZone`.
+Do not store todo-level timezone.
 
-## Debug & Testing
-- **Database Reset**: 클라이언트 SQLite (앱 데이터 삭제) + MongoDB 컬렉션 drop
-- **Manual Tests**: `client/src/test/TestDashboard.js`
+## 7. Validation and Testing Rules
+
+- Validate the smallest affected surface first, then integration path.
+- Run available checks/tests for changed areas.
+- If tests are not run, state that clearly in the report.
+- For data contract changes, include at least one payload-level verification.
+
+## 8. Documentation Maintenance Rules
+
+When architecture, contracts, or workflows change, update:
+
+1. Relevant feature spec files (`.kiro/specs/...`)
+2. `PROJECT_CONTEXT.md` (implementation truth)
+3. `README.md` (public onboarding)
+4. `ROADMAP.md` (status and next steps)
+
+Keep document roles separated:
+
+- `requirements.md`: AI behavior and guardrails
+- `PROJECT_CONTEXT.md`: how the system currently works
+- `README.md`: what the project is and how to run it
+- `ROADMAP.md`: what was done and what is next
+
+## 9. Session Bootstrap Checklist for AI
+
+Before major work, read in order:
+
+1. `.kiro/steering/requirements.md`
+2. `PROJECT_CONTEXT.md`
+3. `README.md`
+4. `ROADMAP.md`
+5. Target feature specs under `.kiro/specs/<feature>/`
+
+Then:
+
+1. Restate task scope.
+2. Provide a short execution plan.
+3. Ask for confirmation if edits are required.
+4. Execute with checkpoints and report results.
