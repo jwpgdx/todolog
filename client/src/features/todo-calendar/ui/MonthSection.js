@@ -2,6 +2,8 @@ import React, { useMemo } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import WeekRow from './WeekRow';
 import { generateWeeks, formatMonthTitle } from '../utils/calendarHelpers';
+import { useTodoCalendarStore } from '../store/todoCalendarStore';
+import dayjs from 'dayjs';
 
 /**
  * MonthSection Component
@@ -20,6 +22,14 @@ import { generateWeeks, formatMonthTitle } from '../utils/calendarHelpers';
  * Requirements: 2.4, 3.1, 4.5, 9.2
  */
 function MonthSection({ monthMetadata, startDayOfWeek = 0, language = 'ko' }) {
+  // Selector: 이 월의 데이터만 구독 (다른 월 변경 시 리렌더 안 함)
+  const todos = useTodoCalendarStore(
+    state => state.todosByMonth[monthMetadata.id]
+  );
+  const completions = useTodoCalendarStore(
+    state => state.completionsByMonth[monthMetadata.id]
+  );
+
   // useMemo로 weeks 배열 생성 (6주 × 7일 = 42개 날짜)
   // startDayOfWeek 설정에 따라 첫 주 시작일이 달라짐
   const weeks = useMemo(() => {
@@ -31,6 +41,35 @@ function MonthSection({ monthMetadata, startDayOfWeek = 0, language = 'ko' }) {
     return formatMonthTitle(monthMetadata.year, monthMetadata.month, language);
   }, [monthMetadata.year, monthMetadata.month, language]);
 
+  // Todo를 날짜별로 그룹핑 (DayCell에 전달용)
+  // Critical Fix: 기간 일정은 startDate ~ endDate 사이의 모든 날짜에 매핑
+  const todosByDate = useMemo(() => {
+    if (!todos || todos.length === 0) return {};
+    
+    const map = {};
+    for (const todo of todos) {
+      if (todo.startDate && todo.endDate) {
+        // 기간 일정: startDate ~ endDate 사이의 모든 날짜에 추가
+        let current = dayjs(todo.startDate);
+        const end = dayjs(todo.endDate);
+        
+        while (current.isBefore(end) || current.isSame(end, 'day')) {
+          const dateKey = current.format('YYYY-MM-DD');
+          if (!map[dateKey]) map[dateKey] = [];
+          map[dateKey].push(todo);
+          current = current.add(1, 'day');
+        }
+      } else {
+        // 단일 일정: date 하나에만 추가
+        const dateKey = todo.date || todo.startDate;
+        if (!dateKey) continue;
+        if (!map[dateKey]) map[dateKey] = [];
+        map[dateKey].push(todo);
+      }
+    }
+    return map;
+  }, [todos]);
+
   return (
     <View style={styles.container}>
       {/* 월 타이틀 렌더링 */}
@@ -38,7 +77,12 @@ function MonthSection({ monthMetadata, startDayOfWeek = 0, language = 'ko' }) {
       
       {/* 6개 WeekRow 렌더링 */}
       {weeks.map((week, idx) => (
-        <WeekRow key={idx} week={week} />
+        <WeekRow
+          key={idx}
+          week={week}
+          todosByDate={todosByDate}
+          completions={completions}
+        />
       ))}
     </View>
   );

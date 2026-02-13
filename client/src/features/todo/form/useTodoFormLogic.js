@@ -278,9 +278,7 @@ export const useTodoFormLogic = (initialTodo, onClose, visible) => {
                 recurrenceEndDate,
             });
             payload.recurrence = recurrenceRule ? [recurrenceRule] : null;
-            payload.recurrenceEndDate = recurrenceEndDate
-                ? dayjs(recurrenceEndDate).toDate()
-                : null;
+            payload.recurrenceEndDate = recurrenceEndDate || null;
         } else {
             payload.recurrence = null;
             payload.recurrenceEndDate = null;

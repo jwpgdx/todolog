@@ -216,6 +216,95 @@ Phase 2는 데이터 연동에 집중하며, 날짜 클릭 이벤트나 상세 U
 4. WHEN a todo matches multiple ranges, THEN THE service SHALL add it to all matching months
 5. THE service SHALL NOT duplicate todos within the same month
 
+### Requirement 16: 날짜/시간 Canonical Contract 통일
+
+**User Story:** 개발자로서, Client -> API -> Server 전 구간에서 날짜/시간 포맷을 일관되게 유지하여 타임존 오차와 타입 혼용을 제거하고 싶습니다.
+
+#### Acceptance Criteria
+
+1. THE Todo contract SHALL use `startDate`, `endDate`, `startTime`, `endTime`, `recurrenceEndDate` fields only
+2. THE date fields SHALL use `YYYY-MM-DD` string format or `null`
+3. THE time fields SHALL use `HH:mm` string format or `null`
+4. THE API payload SHALL NOT include `startDateTime` and `endDateTime` fields
+5. THE server SHALL NOT persist Date-typed schedule fields for Todo domain data
+
+### Requirement 17: SQLite 반복 종료일 정규화
+
+**User Story:** 개발자로서, 반복 일정 조회 성능과 정합성을 위해 SQLite에 반복 종료일을 명시적으로 저장하고 싶습니다.
+
+#### Acceptance Criteria
+
+1. THE `todos` table SHALL include `recurrence_end_date TEXT NULL`
+2. THE schema migration SHALL backfill `recurrence_end_date` for existing recurring todos
+3. THE system SHALL create index `idx_todos_recurrence_window(start_date, recurrence_end_date)`
+4. THE query layer SHALL include `(recurrence_end_date IS NULL OR recurrence_end_date >= ?)` predicate for recurring candidates
+
+### Requirement 18: Server Todo 스키마 정규화
+
+**User Story:** 개발자로서, 서버 Todo 저장 구조를 Floating string 중심으로 단순화하고 싶습니다.
+
+#### Acceptance Criteria
+
+1. THE Todo schema SHALL remove `startDateTime`, `endDateTime`, and todo-level `timeZone` fields
+2. THE Todo schema SHALL store `startDate`, `endDate`, `startTime`, `endTime`, `recurrenceEndDate` as strings
+3. THE `startTime` and `endTime` fields SHALL be treated as newly introduced persistent fields
+4. THE schema SHALL keep compatibility only for migration/read fallback period
+
+### Requirement 19: Controller 문자열 저장/검증 강제
+
+**User Story:** 개발자로서, Controller 계층에서 Date 객체 자동 캐스팅을 제거하고 문자열 검증 기반으로 저장하고 싶습니다.
+
+#### Acceptance Criteria
+
+1. THE create/update controllers SHALL NOT construct schedule values using `new Date(...)`
+2. THE controllers SHALL validate `startDate/endDate/recurrenceEndDate` with `YYYY-MM-DD` pattern
+3. THE controllers SHALL validate `startTime/endTime` with `HH:mm` pattern
+4. WHEN invalid date/time format is received, THEN THE API SHALL return validation error without partial write
+
+### Requirement 20: 타임존 Source of Truth 고정
+
+**User Story:** 개발자로서, 마이그레이션/연동 시 타임존 기준을 단일화하여 변환 오차를 줄이고 싶습니다.
+
+#### Acceptance Criteria
+
+1. THE system SHALL use `user.settings.timeZone` as the only timezone source of truth
+2. THE system SHALL NOT detect device timezone for migration or Google adapter conversion
+3. WHEN user timezone is missing, THEN THE system SHALL use `'Asia/Seoul'` default
+
+### Requirement 21: Mongo 마이그레이션 분해 규칙
+
+**User Story:** 개발자로서, 기존 Date 필드를 안전하게 문자열 필드로 분해/이관하고 싶습니다.
+
+#### Acceptance Criteria
+
+1. THE migration SHALL split `startDateTime` into `startDate(YYYY-MM-DD)` and `startTime(HH:mm)` using user timezone
+2. THE migration SHALL split `endDateTime` into `endDate(YYYY-MM-DD)` and `endTime(HH:mm)` using user timezone
+3. THE migration SHALL resolve timezone by `todo.userId -> User` lookup
+4. THE migration SHALL cache user timezone values with `Map<userId, timeZone>` to avoid repeated DB lookups
+5. THE migration SHALL use dry-run, backup, and batched write strategy
+
+### Requirement 22: Google 연동 호환성 패치 범위 제한
+
+**User Story:** 개발자로서, Phase 2.5에서 구글 연동 로직을 과도하게 변경하지 않고 타입 호환성만 확보하고 싶습니다.
+
+#### Acceptance Criteria
+
+1. THE Phase 2.5 Google integration changes SHALL be limited to compatibility adapter patch
+2. THE adapter SHALL build Google API payload from DB string fields + `user.settings.timeZone`
+3. THE adapter changes SHALL prevent Date/String type errors after migration
+4. THE phase SHALL NOT introduce advanced sync behavior changes beyond compatibility
+
+### Requirement 23: 단계적 배포와 검증
+
+**User Story:** 개발자로서, 데이터 모델 전환을 무중단에 가깝게 배포하고 실패 시 복구 가능해야 합니다.
+
+#### Acceptance Criteria
+
+1. THE rollout SHALL follow `compat release -> migration -> cleanup release`
+2. THE migration SHALL create backup collection before write operations
+3. THE migration SHALL emit report including total/updated/failed counts
+4. WHEN validation fails for a row, THEN THE row SHALL be logged and skipped without aborting whole batch
+
 ## Phase 2 Scope
 
 이 요구사항 문서는 Phase 2 범위를 다룹니다:
@@ -232,6 +321,32 @@ Phase 3 (향후):
 - ❌ 오늘 날짜 시각적 하이라이트 (배경색, 테두리)
 - ❌ Todo 개수 표시 (숫자 뱃지)
 - ❌ 완료율 표시 (프로그레스 바)
+
+## Phase 2.5 Scope
+
+이 요구사항 문서의 Phase 2.5 추가 범위:
+- ✅ date/time 문자열 계약 통일 (`YYYY-MM-DD`, `HH:mm`)
+- ✅ Todo 스키마 Date 필드 제거 및 `startTime/endTime` 신규 도입
+- ✅ SQLite `recurrence_end_date` 컬럼/인덱스/백필
+- ✅ `user.settings.timeZone` 단일 기준 정책 확정
+- ✅ Mongo 마이그레이션(분해 변환 + 유저 타임존 캐싱 + dry-run/backup)
+- ✅ Google 연동 호환성 패치(타입 에러 방지 범위)
+
+## Phase 2.5 Spec Sync Notes (Task 17)
+
+Task 17 기준 동기화 결과:
+1. Requirement 16~23은 본 문서에 반영 완료 상태로 유지한다.
+2. Phase 2.5 구현/검증의 Source of Truth는 `requirements.md`, `design.md`, `tasks.md` 3문서다.
+3. `phase2_5_data_normalization_technical_spec.md`는 참고 문서로 사용하며, 충돌 시 본 문서와 `design.md`를 우선한다.
+
+충돌 항목 정리:
+
+| 항목 | technical spec 문구 | 동기화 결정(최종) |
+|------|---------------------|------------------|
+| 타임존 키 명칭 | `userSettings.timeZone` | `user.settings.timeZone`으로 통일 |
+| 호환 릴리스/정리 릴리스 경계 | 구필드 fallback 유지(개념) | `Task 28` 전까지만 fallback 허용, 이후 제거 |
+| 마이그레이션 실패 로깅 형식 | JSONL 로그 제안 | 필수 요건은 row 단위 skip + id/원인 보고, 저장 형식은 구현 선택 |
+| 백업 컬렉션 네이밍 | `todos_backup_phase2_5_YYYYMMDD` 예시 | 백업 생성은 필수, 이름 패턴은 운영/스크립트 정책에 위임 |
 
 ## Performance Targets
 

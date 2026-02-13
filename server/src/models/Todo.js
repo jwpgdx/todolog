@@ -47,20 +47,14 @@ const todoSchema = new mongoose.Schema({
   },
 
   // 3. 시간 (시간 지정 일정용)
-  // Google: start.dateTime / end.dateTime
-  startDateTime: {
-    type: Date,
-  },
-  endDateTime: {
-    type: Date,
-  },
-
-  // 4. 타임존 (필수!)
-  // Google: start.timeZone
-  // 시간 지정 반복 일정에서 썸머타임 등을 계산하기 위해 구글이 꼭 필요로 함
-  timeZone: {
+  // 포맷: "HH:mm" | null
+  startTime: {
     type: String,
-    default: 'Asia/Seoul',
+    default: null,
+  },
+  endTime: {
+    type: String,
+    default: null,
   },
 
   // --- 반복 (Recurrence) ---
@@ -72,11 +66,11 @@ const todoSchema = new mongoose.Schema({
     type: String,
   }],
 
-  // 2. 우리 DB 검색용 (Date 객체)
+  // 2. 우리 DB 검색용 (문자열)
   // "RRULE 문자열"을 파싱하지 않고도, "2026년에 유효한 반복인가?"를 쿼리로 찾기 위함
   // 무한 반복이면 null
   recurrenceEndDate: {
-    type: Date,
+    type: String,
     default: null,
     index: true, // 인덱스 필수 (조회 성능 핵심)
   },

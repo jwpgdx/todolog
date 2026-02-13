@@ -1400,6 +1400,253 @@ export function useUpdateTodo() {
 
 ---
 
+## Phase 2.5 Design Addendum: Data Normalization (Floating Only)
+
+### Overview
+
+Phase 2.5는 Phase 3 선행 과제로서 날짜/시간 타입 혼용(String vs Date)을 제거한다.  
+핵심 설계 원칙은 다음과 같다.
+
+1. Todo 도메인 저장값은 date/time 분리 문자열만 사용한다.
+2. Todo 단위 `timeZone`은 저장하지 않는다.
+3. 타임존 기준은 `user.settings.timeZone` 단일 소스로 고정한다.
+4. Google 연동은 호환성 패치 범위(타입 에러 방지)로 제한한다.
+
+---
+
+### Architecture Overview (Phase 2.5)
+
+```mermaid
+flowchart LR
+  A[Client Form State<br/>startDate/endDate<br/>startTime/endTime<br/>recurrenceEndDate] --> B[Client API Payload<br/>String-only Contract]
+  B --> C[Server Controller<br/>String Validation & Persistence]
+  C --> D[(MongoDB Todo<br/>String Fields)]
+  D --> E[Google Adapter<br/>Compatibility Patch]
+  U[(User Collection)] --> E
+  U --> M
+  D --> M[Migration Script<br/>DateTime Split]
+  M --> D
+```
+
+설계 포인트:
+1. Client -> API -> Server 경로에서 `startDateTime/endDateTime` 계약을 제거한다.
+2. Google API 호출 시점에만 문자열 + 사용자 타임존을 조합한다.
+3. 마이그레이션은 User 타임존 조회/캐싱 후 분해 저장을 수행한다.
+
+---
+
+### Components and Interfaces
+
+#### 1) Client
+
+1. `useTodoFormLogic`
+- `recurrenceEndDate`를 `Date`로 변환하지 않고 문자열로 유지한다.
+
+2. SQLite Layer (`database.js`, `todoService.js`)
+- `recurrence_end_date TEXT` 컬럼 추가/백필
+- serialize/deserialize에 `recurrenceEndDate` 매핑
+
+3. API Layer (`api/todos.js`)
+- payload/response 계약을 문자열 필드 중심으로 고정
+
+#### 2) Server
+
+1. `Todo` Model
+- 제거: `startDateTime`, `endDateTime`, `timeZone`(todo-level), Date형 `recurrenceEndDate`
+- 저장: `startDate`, `endDate`, `[NEW] startTime`, `[NEW] endTime`, `recurrenceEndDate`(String)
+
+2. `todoController`
+- `new Date(...)` 조합 제거
+- 정규식 기반 문자열 검증 후 저장
+
+3. `googleCalendar` Adapter
+- DB 문자열 + `user.settings.timeZone` 기반 payload 생성
+- 타입 호환 오류 방지 범위 내 수정만 허용
+
+4. Migration Script
+- 기존 Date 필드 분해(`startDateTime -> startDate/startTime`, `endDateTime -> endDate/endTime`)
+- `todo.userId -> User` 조회 + `Map<userId, timeZone>` 캐싱
+
+---
+
+### API Design (Phase 2.5 Contract)
+
+#### Create/Update Request
+
+```json
+{
+  "title": "프로젝트 보고서",
+  "categoryId": "cat_123",
+  "isAllDay": false,
+  "startDate": "2026-02-13",
+  "startTime": "09:00",
+  "endDate": "2026-02-13",
+  "endTime": "10:00",
+  "recurrence": ["RRULE:FREQ=WEEKLY;BYDAY=FR"],
+  "recurrenceEndDate": "2026-12-31"
+}
+```
+
+#### Response Contract
+
+```json
+{
+  "_id": "todo_123",
+  "startDate": "2026-02-13",
+  "startTime": "09:00",
+  "endDate": "2026-02-13",
+  "endTime": "10:00",
+  "recurrenceEndDate": "2026-12-31"
+}
+```
+
+제약:
+1. `startDateTime`, `endDateTime`는 요청/응답 계약에서 제외한다.
+2. Todo payload에 `timeZone` 필드를 포함하지 않는다.
+
+---
+
+### Data Models (Phase 2.5)
+
+#### SQLite (`todos`)
+
+```sql
+ALTER TABLE todos ADD COLUMN recurrence_end_date TEXT;
+CREATE INDEX IF NOT EXISTS idx_todos_recurrence_window
+ON todos(start_date, recurrence_end_date);
+```
+
+date/time 저장 원칙:
+1. `start_date`, `end_date`, `recurrence_end_date`: `YYYY-MM-DD` 문자열
+2. `start_time`, `end_time`: `HH:mm` 문자열
+
+#### MongoDB (`Todo`)
+
+최종 목표 스키마:
+
+```javascript
+{
+  startDate: String,         // YYYY-MM-DD
+  endDate: String,           // YYYY-MM-DD | null
+  startTime: String,         // HH:mm | null   [NEW]
+  endTime: String,           // HH:mm | null   [NEW]
+  recurrenceEndDate: String, // YYYY-MM-DD | null
+}
+```
+
+제거 필드:
+1. `startDateTime`
+2. `endDateTime`
+3. `timeZone` (todo-level)
+
+---
+
+### Migration Design (MongoDB)
+
+#### Execution Flow
+
+1. `--dry-run` 실행 (변환 통계 확인)
+2. 백업 컬렉션 생성
+3. 배치 변환(bulkWrite)
+4. 검증 리포트 생성(total/updated/failed)
+
+#### Conversion Algorithm
+
+1. Todo 문서 로드
+2. `userId`로 User 조회 -> `user.settings.timeZone` 확보
+3. `Map<userId, timeZone>` 캐시 갱신/조회
+4. `startDateTime` 분해:
+- timezone 변환 후 `YYYY-MM-DD` -> `startDate`
+- timezone 변환 후 `HH:mm` -> `startTime`
+5. `endDateTime` 분해:
+- timezone 변환 후 `YYYY-MM-DD` -> `endDate`
+- timezone 변환 후 `HH:mm` -> `endTime`
+6. `recurrenceEndDate` 변환:
+- RRULE `UNTIL` 우선
+- 없으면 기존 Date 필드 timezone 변환
+7. 검증 실패 row는 skip + 로그 기록
+
+---
+
+### Error Handling
+
+1. Validation Error:
+- 날짜/시간 패턴 불일치 시 `400` 반환
+- 부분 저장 금지
+
+2. Migration Error:
+- row 단위 실패는 배치 전체 중단 없이 skip
+- 실패 row id/원인 로그 저장
+
+3. Timezone Resolution Error:
+- User timezone 없음 -> `'Asia/Seoul'` fallback
+- Device timezone 탐지 로직 사용 금지
+
+---
+
+### Correctness Properties (Phase 2.5)
+
+1. **Property P16: String Contract Preservation**
+- 모든 CRUD payload/response의 Todo 일정 필드는 문자열 또는 null이어야 한다.
+
+2. **Property P17: DateTime Split Determinism**
+- 동일한 `startDateTime/endDateTime`, 동일한 `user.settings.timeZone` 입력은 항상 동일한 `startDate/startTime/endDate/endTime`을 산출해야 한다.
+
+3. **Property P18: Timezone Source Consistency**
+- 마이그레이션/Google 어댑터는 반드시 `user.settings.timeZone`만 참조해야 한다.
+
+4. **Property P19: Recurrence End Normalization**
+- `recurrenceEndDate`는 항상 `YYYY-MM-DD | null`로 정규화된다.
+
+5. **Property P20: Compatibility Adapter Boundary**
+- Phase 2.5 Google 수정은 타입 호환성 보장 범위를 넘는 동작 변경을 포함하지 않는다.
+
+---
+
+### Testing Strategy (Phase 2.5)
+
+#### Unit Tests
+
+1. Controller validation tests (`YYYY-MM-DD`, `HH:mm`)
+2. SQLite serialize/deserialize mapping tests (`recurrence_end_date`)
+3. Google adapter payload build tests (string + timezone)
+
+#### Property-Based Tests
+
+1. `startDateTime/endDateTime` 분해 결정성 테스트
+2. timezone cache (`Map<userId, timeZone>`) hit/miss 동작 테스트
+3. recurrence end normalization invariant 테스트
+
+#### Migration Tests
+
+1. Dry-run report count 일치성
+2. Backup collection 생성 검증
+3. 샘플 row 전/후 비교(날짜 밀림 0건)
+
+#### Manual Checks
+
+1. 오프라인 Todo 생성/수정 후 SQLite 확인
+2. 온라인 동기화 후 서버 문서 필드 확인
+3. Google 연동 Type Error 재발 여부 확인
+
+---
+
+### Spec Sync Matrix (Task 17)
+
+Phase 2.5 동기화 기준:
+1. Source of Truth: `requirements.md`, `design.md`, `tasks.md`
+2. `.kiro/specs/calendar-data-integration/phase2_5_data_normalization_technical_spec.md`는 참고 초안으로 간주
+3. 충돌 항목은 아래 매트릭스 기준으로 정규화한다.
+
+| 항목 | technical spec 문구 | 동기화 결과(본 디자인 기준) |
+|------|---------------------|-----------------------------|
+| 타임존 Source key | `userSettings.timeZone` | `user.settings.timeZone`으로 통일 |
+| Compat/Fallback 기간 | 단계적 릴리스에서 fallback 유지 | `Task 28` 정리 릴리스 전까지만 fallback 허용 |
+| 마이그레이션 실패 로깅 | JSONL 파일 로깅 제안 | row skip + id/원인 보고를 필수로 하고 저장 매체는 선택 |
+| 백업 컬렉션 이름 | 고정 패턴 예시 제시 | 백업 생성 필수, 컬렉션명은 실행 인자/운영 규칙으로 결정 |
+
+---
+
 ## References
 
 - [Phase 1 Design: Infinite Scroll Calendar](../infinite-scroll-calendar/design.md)

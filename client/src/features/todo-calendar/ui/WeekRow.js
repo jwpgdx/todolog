@@ -9,6 +9,8 @@ import DayCell from './DayCell';
  * 
  * @param {Object} props
  * @param {Array<DayObject>} props.week - 7개 날짜 객체 배열
+ * @param {Object} props.todosByDate - 날짜별 Todo 맵 { 'YYYY-MM-DD': [todo, ...] }
+ * @param {Object} props.completions - Completion 맵 { 'todoId_date': completion }
  * 
  * DayObject 구조:
  * {
@@ -18,11 +20,16 @@ import DayCell from './DayCell';
  *   isToday: boolean
  * }
  */
-function WeekRow({ week }) {
+function WeekRow({ week, todosByDate, completions }) {
   return (
     <View style={styles.row}>
       {week.map((day) => (
-        <DayCell key={day.dateString} day={day} />
+        <DayCell
+          key={day.dateString}
+          day={day}
+          todos={todosByDate?.[day.dateString] || []}
+          completions={completions}
+        />
       ))}
     </View>
   );

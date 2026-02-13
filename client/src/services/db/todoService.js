@@ -33,11 +33,15 @@ export async function getTodosByDate(date) {
     WHERE (
       t.date = ?
       OR (t.start_date <= ? AND t.end_date >= ?)
-      OR (t.recurrence IS NOT NULL AND t.start_date <= ?)
+      OR (
+        t.recurrence IS NOT NULL
+        AND t.start_date <= ?
+        AND (t.recurrence_end_date IS NULL OR t.recurrence_end_date >= ?)
+      )
     )
     AND t.deleted_at IS NULL
     ORDER BY t.is_all_day DESC, t.start_time ASC, t.created_at ASC
-  `, [date, date, date, date]);
+  `, [date, date, date, date, date]);
 
   return result.map(deserializeTodo);
 }
@@ -66,11 +70,15 @@ export async function getTodosByMonth(year, month) {
     WHERE (
       (t.date >= ? AND t.date <= ?)
       OR (t.start_date <= ? AND t.end_date >= ?)
-      OR (t.recurrence IS NOT NULL AND t.start_date <= ?)
+      OR (
+        t.recurrence IS NOT NULL
+        AND t.start_date <= ?
+        AND (t.recurrence_end_date IS NULL OR t.recurrence_end_date >= ?)
+      )
     )
     AND t.deleted_at IS NULL
     ORDER BY t.date ASC, t.is_all_day DESC, t.start_time ASC
-  `, [startDate, endDate, endDate, startDate, endDate]);
+  `, [startDate, endDate, endDate, startDate, endDate, startDate]);
 
   return result.map(deserializeTodo);
 }
@@ -160,16 +168,17 @@ export async function upsertTodo(todo) {
   // → INSERT ... ON CONFLICT DO UPDATE 사용 (진정한 UPSERT)
   await db.runAsync(`
     INSERT INTO todos 
-    (_id, title, date, start_date, end_date, recurrence, 
+    (_id, title, date, start_date, end_date, recurrence, recurrence_end_date,
      category_id, is_all_day, start_time, end_time, color, memo,
      created_at, updated_at, deleted_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(_id) DO UPDATE SET
       title = excluded.title,
       date = excluded.date,
       start_date = excluded.start_date,
       end_date = excluded.end_date,
       recurrence = excluded.recurrence,
+      recurrence_end_date = excluded.recurrence_end_date,
       category_id = excluded.category_id,
       is_all_day = excluded.is_all_day,
       start_time = excluded.start_time,
@@ -195,16 +204,17 @@ export async function upsertTodos(todos) {
       // ⚠️ INSERT OR REPLACE 대신 ON CONFLICT DO UPDATE 사용 (CASCADE DELETE 방지)
       await db.runAsync(`
         INSERT INTO todos 
-        (_id, title, date, start_date, end_date, recurrence, 
+        (_id, title, date, start_date, end_date, recurrence, recurrence_end_date,
          category_id, is_all_day, start_time, end_time, color, memo,
          created_at, updated_at, deleted_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(_id) DO UPDATE SET
           title = excluded.title,
           date = excluded.date,
           start_date = excluded.start_date,
           end_date = excluded.end_date,
           recurrence = excluded.recurrence,
+          recurrence_end_date = excluded.recurrence_end_date,
           category_id = excluded.category_id,
           is_all_day = excluded.is_all_day,
           start_time = excluded.start_time,
@@ -278,6 +288,7 @@ function deserializeTodo(row) {
     date: row.date,
     startDate: row.start_date,
     endDate: row.end_date,
+    recurrenceEndDate: row.recurrence_end_date,
     recurrence: row.recurrence ? JSON.parse(row.recurrence) : null,
     categoryId: row.category_id,
     isAllDay: row.is_all_day === 1,
@@ -309,6 +320,7 @@ function serializeTodoForInsert(todo) {
     todo.startDate || null,
     todo.endDate || null,
     todo.recurrence ? JSON.stringify(todo.recurrence) : null,
+    todo.recurrenceEndDate || null,
     // categoryId가 객체일 수 있음 (이전 버그 대응)
     typeof todo.categoryId === 'object' ? todo.categoryId?._id : todo.categoryId,
     todo.isAllDay ? 1 : 0,
@@ -347,9 +359,13 @@ export async function getTodoCountByDate(date) {
     WHERE (
       date = ?
       OR (start_date <= ? AND end_date >= ?)
-      OR (recurrence IS NOT NULL AND start_date <= ?)
+      OR (
+        recurrence IS NOT NULL
+        AND start_date <= ?
+        AND (recurrence_end_date IS NULL OR recurrence_end_date >= ?)
+      )
     )
     AND deleted_at IS NULL
-  `, [date, date, date, date]);
+  `, [date, date, date, date, date]);
   return result?.count || 0;
 }

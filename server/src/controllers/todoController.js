@@ -2,7 +2,108 @@ const Todo = require('../models/Todo');
 const Completion = require('../models/Completion');
 const googleCalendar = require('../services/googleCalendar');
 const User = require('../models/User');
-const { getOccurrences, occursOnDate } = require('../utils/recurrenceUtils');
+const { occursOnDate } = require('../utils/recurrenceUtils');
+
+const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+const TIME_PATTERN = /^(?:[01]\d|2[0-3]):[0-5]\d$/;
+const LEGACY_SCHEDULE_FIELDS = ['date', 'startDateTime', 'endDateTime', 'timeZone'];
+
+function getLegacyScheduleFields(payload = {}) {
+  return LEGACY_SCHEDULE_FIELDS.filter(field => Object.prototype.hasOwnProperty.call(payload, field));
+}
+
+function toNullableString(value) {
+  if (value === undefined) return undefined;
+  if (value === null) return null;
+  if (typeof value !== 'string') return value;
+
+  const trimmed = value.trim();
+  return trimmed === '' ? null : trimmed;
+}
+
+function normalizeRecurrence(value) {
+  if (value === undefined) return undefined;
+  if (value === null) return null;
+
+  if (Array.isArray(value)) {
+    const sanitized = value.filter(item => typeof item === 'string' && item.trim().length > 0);
+    return sanitized.length > 0 ? sanitized : null;
+  }
+
+  if (typeof value === 'string' && value.trim().length > 0) {
+    return [value.trim()];
+  }
+
+  return null;
+}
+
+function getPrimaryRecurrenceRule(recurrence) {
+  if (Array.isArray(recurrence)) return recurrence[0] || null;
+  if (typeof recurrence === 'string') return recurrence;
+  return null;
+}
+
+function buildOccurrenceAnchor(todo) {
+  if (!todo?.startDate || !DATE_PATTERN.test(todo.startDate)) {
+    return null;
+  }
+
+  const rawStartTime = typeof todo.startTime === 'string' ? todo.startTime : null;
+  const startTime = rawStartTime && TIME_PATTERN.test(rawStartTime) ? rawStartTime : '00:00';
+
+  return new Date(`${todo.startDate}T${startTime}:00.000Z`);
+}
+
+function validateDateField(fieldName, value, errors, { required = false } = {}) {
+  if (value === undefined) {
+    if (required) errors.push(`${fieldName} is required`);
+    return;
+  }
+  if (value === null) {
+    if (required) errors.push(`${fieldName} is required`);
+    return;
+  }
+  if (typeof value !== 'string' || !DATE_PATTERN.test(value)) {
+    errors.push(`${fieldName} must match YYYY-MM-DD`);
+  }
+}
+
+function validateTimeField(fieldName, value, errors, { required = false } = {}) {
+  if (value === undefined) {
+    if (required) errors.push(`${fieldName} is required`);
+    return;
+  }
+  if (value === null) {
+    if (required) errors.push(`${fieldName} is required`);
+    return;
+  }
+  if (typeof value !== 'string' || !TIME_PATTERN.test(value)) {
+    errors.push(`${fieldName} must match HH:mm`);
+  }
+}
+
+function validateTodoDateTimePayload({
+  startDate,
+  endDate,
+  startTime,
+  endTime,
+  recurrenceEndDate,
+  isAllDay,
+}, { requireStartDate = false } = {}) {
+  const errors = [];
+
+  validateDateField('startDate', startDate, errors, { required: requireStartDate });
+  validateDateField('endDate', endDate, errors);
+  validateDateField('recurrenceEndDate', recurrenceEndDate, errors);
+  validateTimeField('startTime', startTime, errors);
+  validateTimeField('endTime', endTime, errors);
+
+  if (isAllDay === false && (startTime === null || startTime === undefined)) {
+    errors.push('startTime is required when isAllDay is false');
+  }
+
+  return errors;
+}
 
 // 전체 할일 조회 (관리 화면용)
 exports.getAllTodos = async (req, res) => {
@@ -22,37 +123,29 @@ exports.getTodos = async (req, res) => {
     const userId = req.userId;
 
     const allTodos = await Todo.find({ userId, deletedAt: null });
-    const targetDate = new Date(date + 'T00:00:00');
+    const targetDate = new Date(`${date}T00:00:00.000Z`);
 
-    // 날짜별 필터링 (하루종일 + 시간 지정 할일 모두 처리)
+    // 날짜별 필터링 (문자열 기반 + 반복 RRULE 평가)
     const filteredTodos = allTodos.filter(todo => {
-      // 하루종일 할일인 경우
-      if (todo.isAllDay) {
-        // 반복 할일인 경우
-        if (todo.recurrence) {
-          // RRULE 기반 계산 (startDate를 기준으로 가상의 startDateTime 생성)
-          const virtualStartDateTime = new Date(todo.startDate + 'T00:00:00.000Z');
-          return occursOnDate(
-            todo.recurrence,
-            virtualStartDateTime,
-            targetDate,
-            todo.exdates || []
-          );
-        } else {
-          // 단일 날짜 또는 기간 할일
-          const startDateStr = todo.startDate;
-          const endDateStr = todo.endDate || todo.startDate;
-          return date >= startDateStr && date <= endDateStr;
-        }
-      } else {
-        // 시간 지정 할일인 경우 (기존 로직)
-        return occursOnDate(
-          todo.recurrence,
-          todo.startDateTime,
-          targetDate,
-          todo.exdates || []
-        );
+      const recurrenceRule = getPrimaryRecurrenceRule(todo.recurrence);
+
+      // 비반복 일정은 기간 문자열 비교로 판정
+      if (!recurrenceRule) {
+        const startDateStr = todo.startDate;
+        const endDateStr = todo.endDate || todo.startDate;
+        return date >= startDateStr && date <= endDateStr;
       }
+
+      // 반복 일정은 startDate/startTime을 앵커로 RRULE 평가
+      const anchorDate = buildOccurrenceAnchor(todo);
+      if (!anchorDate) return false;
+
+      return occursOnDate(
+        recurrenceRule,
+        anchorDate,
+        targetDate,
+        todo.exdates || []
+      );
     });
 
     // 해당 날짜의 완료 기록 조회
@@ -75,10 +168,10 @@ exports.getTodos = async (req, res) => {
     const todosWithCompletion = filteredTodos.map(todo => ({
       _id: todo._id,
       title: todo.title,
-      startDateTime: todo.startDateTime,
       startDate: todo.startDate,
-      endDateTime: todo.endDateTime,
+      startTime: todo.startTime ?? null,
       endDate: todo.endDate,
+      endTime: todo.endTime ?? null,
       isAllDay: todo.isAllDay,
       recurrence: todo.recurrence,
       recurrenceEndDate: todo.recurrenceEndDate,
@@ -105,6 +198,14 @@ exports.getTodos = async (req, res) => {
 exports.createTodo = async (req, res) => {
   try {
     console.log('🚀 [createTodo] 할일 생성 요청 받음:', req.body);
+    const legacyScheduleFields = getLegacyScheduleFields(req.body);
+    if (legacyScheduleFields.length > 0) {
+      return res.status(400).json({
+        message: '지원하지 않는 구버전 일정 필드가 포함되어 있습니다',
+        errors: [`legacy fields are not allowed: ${legacyScheduleFields.join(', ')}`],
+      });
+    }
+
     const {
       title,
       memo,
@@ -122,6 +223,13 @@ exports.createTodo = async (req, res) => {
     const userId = req.userId;
     console.log('👤 [createTodo] 사용자 ID:', userId);
 
+    const normalizedStartDate = toNullableString(startDate);
+    const normalizedEndDate = toNullableString(endDate);
+    let normalizedStartTime = toNullableString(startTime);
+    let normalizedEndTime = toNullableString(endTime);
+    const normalizedRecurrenceEndDate = toNullableString(recurrenceEndDate);
+    const normalizedRecurrence = normalizeRecurrence(recurrence);
+
     // 사용자 시간대 정보 업데이트 (클라이언트에서 전송된 경우)
     if (userTimeZone) {
       await User.findByIdAndUpdate(userId, { $set: { 'settings.timeZone': userTimeZone } });
@@ -129,31 +237,39 @@ exports.createTodo = async (req, res) => {
     }
 
     // 하루종일 할일인지 확인
-    const isAllDay = (isAllDayFlag !== undefined) ? isAllDayFlag : (!startTime && !endTime);
-
-    // startDateTime 생성
-    let startDateTime = null;
-    if (!isAllDay && startDate && startTime) {
-      startDateTime = new Date(`${startDate}T${startTime}:00`);
+    const isAllDay = (isAllDayFlag !== undefined) ? isAllDayFlag : (!normalizedStartTime && !normalizedEndTime);
+    if (isAllDay) {
+      normalizedStartTime = null;
+      normalizedEndTime = null;
     }
 
-    // endDateTime 생성
-    let endDateTime = null;
-    if (!isAllDay && endDate && endTime) {
-      endDateTime = new Date(`${endDate}T${endTime}:00`);
+    const validationErrors = validateTodoDateTimePayload({
+      startDate: normalizedStartDate,
+      endDate: normalizedEndDate,
+      startTime: normalizedStartTime,
+      endTime: normalizedEndTime,
+      recurrenceEndDate: normalizedRecurrenceEndDate,
+      isAllDay,
+    }, { requireStartDate: true });
+
+    if (validationErrors.length > 0) {
+      return res.status(400).json({
+        message: '날짜/시간 형식이 올바르지 않습니다',
+        errors: validationErrors,
+      });
     }
 
     const todoData = {
       _id: req.body._id || require('../utils/idGenerator').generateId(),
       userId,
       title,
-      startDateTime,
-      startDate, // yyyy-mm-dd string
-      endDateTime,
-      endDate: endDate || null,
+      startDate: normalizedStartDate, // yyyy-mm-dd string
+      startTime: normalizedStartTime,
+      endDate: normalizedEndDate,
+      endTime: normalizedEndTime,
       isAllDay,
-      recurrence: recurrence || null,
-      recurrenceEndDate: recurrenceEndDate ? new Date(recurrenceEndDate) : null,
+      recurrence: normalizedRecurrence,
+      recurrenceEndDate: normalizedRecurrenceEndDate,
       memo,
       categoryId,
     };
@@ -215,6 +331,13 @@ exports.updateTodo = async (req, res) => {
   try {
     const { id } = req.params;
     const userId = req.userId;
+    const legacyScheduleFields = getLegacyScheduleFields(req.body);
+    if (legacyScheduleFields.length > 0) {
+      return res.status(400).json({
+        message: '지원하지 않는 구버전 일정 필드가 포함되어 있습니다',
+        errors: [`legacy fields are not allowed: ${legacyScheduleFields.join(', ')}`],
+      });
+    }
 
     // 기존 todo 조회
     const existingTodo = await Todo.findOne({ _id: id, userId });
@@ -237,27 +360,40 @@ exports.updateTodo = async (req, res) => {
       }
     });
 
-    // 날짜/시간 변경 시 startDateTime/endDateTime 재구성 필요
-    // 1. 필요한 모든 데이터 확보 (업데이트된 값 우선, 없으면 기존 값 사용)
-    const mergedData = { ...existingTodo.toObject(), ...updateOps };
+    if ('startDate' in updateOps) updateOps.startDate = toNullableString(updateOps.startDate);
+    if ('endDate' in updateOps) updateOps.endDate = toNullableString(updateOps.endDate);
+    if ('startTime' in updateOps) updateOps.startTime = toNullableString(updateOps.startTime);
+    if ('endTime' in updateOps) updateOps.endTime = toNullableString(updateOps.endTime);
+    if ('recurrenceEndDate' in updateOps) updateOps.recurrenceEndDate = toNullableString(updateOps.recurrenceEndDate);
+    if ('recurrence' in updateOps) updateOps.recurrence = normalizeRecurrence(updateOps.recurrence);
 
-    // 2. isAllDay 판단 (업데이트된 값 기준)
+    // 업데이트된 값 우선으로 최종 상태를 구성해 검증
+    const mergedData = { ...existingTodo.toObject(), ...updateOps };
     const isAllDay = (updateOps.isAllDay !== undefined)
       ? updateOps.isAllDay
-      : (!mergedData.startTime && !mergedData.endTime);
+      : mergedData.isAllDay;
 
-    // 3. startDateTime 재구성
-    if (!isAllDay && mergedData.startDate && mergedData.startTime) {
-      updateOps.startDateTime = new Date(`${mergedData.startDate}T${mergedData.startTime}:00`);
-    } else if (isAllDay) {
-      updateOps.startDateTime = null;
+    if (isAllDay) {
+      updateOps.startTime = null;
+      updateOps.endTime = null;
+      mergedData.startTime = null;
+      mergedData.endTime = null;
     }
 
-    // 4. endDateTime 재구성
-    if (!isAllDay && mergedData.endDate && mergedData.endTime) {
-      updateOps.endDateTime = new Date(`${mergedData.endDate}T${mergedData.endTime}:00`);
-    } else if (isAllDay) {
-      updateOps.endDateTime = null;
+    const validationErrors = validateTodoDateTimePayload({
+      startDate: mergedData.startDate,
+      endDate: mergedData.endDate,
+      startTime: mergedData.startTime,
+      endTime: mergedData.endTime,
+      recurrenceEndDate: mergedData.recurrenceEndDate,
+      isAllDay,
+    }, { requireStartDate: true });
+
+    if (validationErrors.length > 0) {
+      return res.status(400).json({
+        message: '날짜/시간 형식이 올바르지 않습니다',
+        errors: validationErrors,
+      });
     }
 
     // Order 필드 별도 처리
@@ -400,7 +536,7 @@ exports.getMonthEvents = async (req, res) => {
           startDate: { $lte: monthEndStr },
           $or: [
             { recurrenceEndDate: null },
-            { recurrenceEndDate: { $gte: monthStart } }
+            { recurrenceEndDate: { $gte: monthStartStr } }
           ]
         },
         // 단일/기간 일정 (recurrence가 없는 경우)
@@ -426,9 +562,9 @@ exports.getMonthEvents = async (req, res) => {
       _id: todo._id,
       title: todo.title,
       startDate: todo.startDate,
+      startTime: todo.startTime ?? null,
       endDate: todo.endDate,
-      startDateTime: todo.startDateTime,
-      endDateTime: todo.endDateTime,
+      endTime: todo.endTime ?? null,
       isAllDay: todo.isAllDay,
       recurrence: todo.recurrence,
       recurrenceEndDate: todo.recurrenceEndDate,
@@ -463,40 +599,27 @@ exports.getCalendarSummary = async (req, res) => {
 
     for (let day = 1; day <= daysInMonth; day++) {
       const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-      const targetDate = new Date(dateStr + 'T00:00:00');
+      const targetDate = new Date(`${dateStr}T00:00:00.000Z`);
 
       // 해당 날짜에 일정이 있는지 확인 (하루종일 + 시간 지정 할일 모두 처리)
       const hasTodos = allTodos.some(todo => {
-        // 하루종일 할일인 경우
-        if (todo.isAllDay) {
-          // 반복 할일인 경우
-          if (todo.recurrence) {
-            // RRULE 기반 계산 (startDate를 기준으로 가상의 startDateTime 생성)
-            const virtualStartDateTime = new Date(todo.startDate + 'T00:00:00.000Z');
-            return occursOnDate(
-              todo.recurrence,
-              virtualStartDateTime,
-              targetDate,
-              todo.exdates || []
-            );
-          } else {
-            // 단일 날짜 또는 기간 할일
-            const startDateStr = todo.startDate;
-            const endDateStr = todo.endDate || todo.startDate;
-            return dateStr >= startDateStr && dateStr <= endDateStr;
-          }
-        } else {
-          // 시간 지정 할일인 경우 (기존 로직)
-          if (todo.startDateTime) {
-            return occursOnDate(
-              todo.recurrence,
-              todo.startDateTime,
-              targetDate,
-              todo.exdates || []
-            );
-          }
-          return false;
+        const recurrenceRule = getPrimaryRecurrenceRule(todo.recurrence);
+
+        if (!recurrenceRule) {
+          const startDateStr = todo.startDate;
+          const endDateStr = todo.endDate || todo.startDate;
+          return dateStr >= startDateStr && dateStr <= endDateStr;
         }
+
+        const anchorDate = buildOccurrenceAnchor(todo);
+        if (!anchorDate) return false;
+
+        return occursOnDate(
+          recurrenceRule,
+          anchorDate,
+          targetDate,
+          todo.exdates || []
+        );
       });
 
       if (hasTodos) {
@@ -548,9 +671,9 @@ exports.getDeltaSync = async (req, res) => {
         memo: todo.memo,
         categoryId: todo.categoryId?._id || todo.categoryId,
         startDate: todo.startDate,
+        startTime: todo.startTime ?? null,
         endDate: todo.endDate,
-        startDateTime: todo.startDateTime,
-        endDateTime: todo.endDateTime,
+        endTime: todo.endTime ?? null,
         isAllDay: todo.isAllDay,
         recurrence: todo.recurrence,
         recurrenceEndDate: todo.recurrenceEndDate,

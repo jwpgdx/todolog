@@ -6,6 +6,7 @@ import { useAuthStore } from '../../store/authStore';
 import { syncCategories } from './categorySync';
 import { syncTodos } from './todoSync';
 import { syncCompletions } from './completionSync';
+import { useTodoCalendarStore } from '../../features/todo-calendar/store/todoCalendarStore';
 
 /**
  * 중앙 집중 동기화 서비스
@@ -60,6 +61,11 @@ export const useSyncService = () => {
       console.log('🔄 [useSyncService] 캐시 무효화 시작');
       queryClient.invalidateQueries({ queryKey: ['todos'] });
       queryClient.invalidateQueries({ queryKey: ['categories'] });
+      
+      // Phase 2: 캘린더 캐시 클리어
+      useTodoCalendarStore.getState().clearAll();
+      console.log('📅 [useSyncService] 캘린더 캐시 클리어 완료');
+      
       console.log('✅ [useSyncService] 캐시 무효화 완료');
       
       console.log('✅ [useSyncService] 전체 동기화 완료');

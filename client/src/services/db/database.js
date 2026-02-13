@@ -16,7 +16,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 let db = null;
 
 // 현재 마이그레이션 버전
-const MIGRATION_VERSION = 3;
+const MIGRATION_VERSION = 4;
 
 // ============================================================
 // 스키마 정의
@@ -45,6 +45,7 @@ CREATE TABLE IF NOT EXISTS todos (
   start_date TEXT,
   end_date TEXT,
   recurrence TEXT,
+  recurrence_end_date TEXT,
   category_id TEXT,
   is_all_day INTEGER DEFAULT 0,
   start_time TEXT,
@@ -59,6 +60,7 @@ CREATE TABLE IF NOT EXISTS todos (
 
 CREATE INDEX IF NOT EXISTS idx_todos_date ON todos(date);
 CREATE INDEX IF NOT EXISTS idx_todos_range ON todos(start_date, end_date);
+CREATE INDEX IF NOT EXISTS idx_todos_recurrence_window ON todos(start_date, recurrence_end_date);
 CREATE INDEX IF NOT EXISTS idx_todos_category ON todos(category_id);
 CREATE INDEX IF NOT EXISTS idx_todos_updated ON todos(updated_at);
 
@@ -157,6 +159,11 @@ export async function initDatabase() {
                 // v3: completions 테이블에 _id 컬럼 추가 (UUID 전환)
                 if (currentVersion < 3) {
                     await migrateV3AddCompletionId();
+                }
+
+                // v4: todos에 recurrence_end_date 컬럼 추가 + 반복 종료일 백필
+                if (currentVersion < 4) {
+                    await migrateV4AddRecurrenceEndDate();
                 }
 
                 await setMetadata('migration_version', String(MIGRATION_VERSION));
@@ -466,6 +473,148 @@ async function migrateV3AddCompletionId() {
         console.log('✅ [Migration v3] Completed successfully');
     } catch (error) {
         console.error('❌ [Migration v3] Failed:', error);
+        throw error;
+    }
+}
+
+function normalizeDateOnlyString(input) {
+    if (typeof input !== 'string') return null;
+    const value = input.trim();
+
+    if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+        return value;
+    }
+
+    const yyyymmdd = value.match(/^(\d{4})(\d{2})(\d{2})$/);
+    if (yyyymmdd) {
+        return `${yyyymmdd[1]}-${yyyymmdd[2]}-${yyyymmdd[3]}`;
+    }
+
+    const yyyymmddTime = value.match(/^(\d{4})(\d{2})(\d{2})T\d{6}Z?$/i);
+    if (yyyymmddTime) {
+        return `${yyyymmddTime[1]}-${yyyymmddTime[2]}-${yyyymmddTime[3]}`;
+    }
+
+    return null;
+}
+
+function extractUntilFromRRule(rruleString) {
+    if (typeof rruleString !== 'string') return null;
+    const match = rruleString.match(/(?:^|;)UNTIL=([^;]+)/i);
+    if (!match) return null;
+    return normalizeDateOnlyString(match[1]);
+}
+
+function extractRecurrenceEndDateFromValue(value) {
+    if (!value) return null;
+
+    if (Array.isArray(value)) {
+        for (const item of value) {
+            const extracted = extractRecurrenceEndDateFromValue(item);
+            if (extracted) return extracted;
+        }
+        return null;
+    }
+
+    if (typeof value === 'string') {
+        return extractUntilFromRRule(value) || normalizeDateOnlyString(value);
+    }
+
+    if (typeof value === 'object') {
+        const directCandidates = [
+            value.until,
+            value.endDate,
+            value.recurrenceEndDate,
+            value.end_date,
+        ];
+
+        for (const candidate of directCandidates) {
+            const extracted = extractRecurrenceEndDateFromValue(candidate);
+            if (extracted) return extracted;
+        }
+
+        if (value.rrule) {
+            const extracted = extractRecurrenceEndDateFromValue(value.rrule);
+            if (extracted) return extracted;
+        }
+
+        if (value.rules) {
+            const extracted = extractRecurrenceEndDateFromValue(value.rules);
+            if (extracted) return extracted;
+        }
+    }
+
+    return null;
+}
+
+function extractRecurrenceEndDateFromSerialized(recurrence) {
+    if (!recurrence || typeof recurrence !== 'string') return null;
+
+    try {
+        const parsed = JSON.parse(recurrence);
+        return extractRecurrenceEndDateFromValue(parsed);
+    } catch {
+        return extractRecurrenceEndDateFromValue(recurrence);
+    }
+}
+
+/**
+ * v4 마이그레이션: todos에 recurrence_end_date 컬럼 추가 + 반복 종료일 백필
+ */
+async function migrateV4AddRecurrenceEndDate() {
+    console.log('🔄 [Migration v4] Adding recurrence_end_date column to todos...');
+
+    try {
+        const tableInfo = await db.getAllAsync("PRAGMA table_info(todos)");
+        const hasRecurrenceEndDate = tableInfo.some(col => col.name === 'recurrence_end_date');
+
+        if (!hasRecurrenceEndDate) {
+            await db.runAsync('ALTER TABLE todos ADD COLUMN recurrence_end_date TEXT');
+            console.log('✅ [Migration v4] Added recurrence_end_date column');
+        } else {
+            console.log('✅ [Migration v4] recurrence_end_date column already exists');
+        }
+
+        await db.runAsync(
+            'CREATE INDEX IF NOT EXISTS idx_todos_recurrence_window ON todos(start_date, recurrence_end_date)'
+        );
+        console.log('✅ [Migration v4] Created idx_todos_recurrence_window index');
+
+        const targets = await db.getAllAsync(`
+            SELECT _id, recurrence
+            FROM todos
+            WHERE recurrence IS NOT NULL
+              AND TRIM(recurrence) != ''
+              AND recurrence_end_date IS NULL
+        `);
+
+        if (!targets.length) {
+            console.log('✅ [Migration v4] No rows to backfill');
+            return;
+        }
+
+        let updated = 0;
+        let skipped = 0;
+
+        await db.withTransactionAsync(async () => {
+            for (const row of targets) {
+                const recurrenceEndDate = extractRecurrenceEndDateFromSerialized(row.recurrence);
+                if (!recurrenceEndDate) {
+                    skipped++;
+                    continue;
+                }
+
+                await db.runAsync(
+                    'UPDATE todos SET recurrence_end_date = ? WHERE _id = ?',
+                    [recurrenceEndDate, row._id]
+                );
+                updated++;
+            }
+        });
+
+        console.log(`✅ [Migration v4] Backfill completed: updated=${updated}, skipped=${skipped}`);
+    } catch (error) {
+        console.error('❌ [Migration v4] Failed:', error);
         throw error;
     }
 }

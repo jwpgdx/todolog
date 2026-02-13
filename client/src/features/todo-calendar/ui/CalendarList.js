@@ -1,7 +1,9 @@
 import React, { useCallback, useRef, useState, useMemo } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { FlashList } from '@shopify/flash-list';
+import { useFocusEffect } from '@react-navigation/native';
 import { useInfiniteCalendar } from '../hooks/useInfiniteCalendar';
+import { useTodoCalendarData } from '../hooks/useTodoCalendarData';
 import { getWeekdayNames, formatMonthTitle } from '../utils/calendarHelpers';
 import { useAuthStore } from '../../../store/authStore';
 import MonthSection from './MonthSection';
@@ -55,6 +57,17 @@ export default function CalendarList() {
     state.user?.settings?.language || 'ko'
   );
 
+  // Phase 2: Todo data batch fetch hook
+  const { onVisibleMonthsChange, refetchInvalidated } = useTodoCalendarData(startDayOfWeek);
+
+  // Phase 2: Refetch invalidated months on screen focus
+  // When user returns from Todo CRUD screen, invalidated months are re-fetched
+  useFocusEffect(
+    useCallback(() => {
+      refetchInvalidated();
+    }, [refetchInvalidated])
+  );
+
   // Generate weekday names based on settings (cached with useMemo)
   const weekdayNames = useMemo(() => {
     return getWeekdayNames(language, startDayOfWeek);
@@ -82,7 +95,8 @@ export default function CalendarList() {
   /**
    * Handle viewable items change to detect top scroll and update current month
    * FlashList does not support onStartReached, so we use onViewableItemsChanged
-   * Validates: Requirements 1.3, 1.4
+   * Phase 2: Also triggers todo data fetch for visible months
+   * Validates: Requirements 1.3, 1.4, 7.1, 7.2, 7.3, 7.4, 7.5
    */
   const onViewableItemsChanged = useCallback(({ viewableItems }) => {
     // Skip if months array is not initialized yet
@@ -101,7 +115,10 @@ export default function CalendarList() {
     if (firstIdx !== undefined && firstIdx <= 3) {
       handleStartReached();
     }
-  }, [months, handleStartReached]);
+
+    // Phase 2: Trigger todo data fetch for visible months
+    onVisibleMonthsChange(viewableItems);
+  }, [months, handleStartReached, onVisibleMonthsChange]);
 
   /**
    * Viewability config for onViewableItemsChanged

@@ -929,6 +929,13 @@ export default function DebugScreen({ navigation }) {
         >
           <Text style={styles.buttonText}>🔬 Guest Migration Test</Text>
         </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.button, styles.testButton]}
+          onPress={() => navigation.navigate('CalendarServiceTest')}
+        >
+          <Text style={styles.buttonText}>📅 Calendar Service Test</Text>
+        </TouchableOpacity>
       </ScrollView>
 
       <View style={styles.logContainer}>

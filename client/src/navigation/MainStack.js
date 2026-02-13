@@ -9,6 +9,7 @@ import TimeZoneSettingsScreen from '../screens/settings/TimeZoneSettingsScreen';
 import TimeZoneSelectionScreen from '../screens/settings/TimeZoneSelectionScreen';
 import GoogleCalendarSettingsScreen from '../screens/settings/GoogleCalendarSettingsScreen';
 import TodoCalendarScreen from '../features/todo-calendar/TodoCalendarScreen';
+import DebugScreen from '../screens/DebugScreen';
 
 const Stack = createStackNavigator();
 
@@ -152,6 +153,24 @@ export default function MainStack() {
         component={require('../test/GuestMigrationTestScreen').default}
         options={{
           title: 'Guest Migration Test',
+          headerBackTitle: '뒤로',
+          headerShown: true,
+        }}
+      />
+      <Stack.Screen
+        name="CalendarServiceTest"
+        component={require('../test/CalendarServiceTestScreen').default}
+        options={{
+          title: 'Calendar Service Test',
+          headerBackTitle: '뒤로',
+          headerShown: true,
+        }}
+      />
+      <Stack.Screen
+        name="Debug"
+        component={DebugScreen}
+        options={{
+          title: '디버그',
           headerBackTitle: '뒤로',
           headerShown: true,
         }}

@@ -954,28 +954,134 @@ exports.migrateGuestData = async (req, res) => {
     
     // 3. Todos 삽입
     const Todo = require('../models/Todo');
-    const todosToInsert = guestData.todos.map(todo => ({
-      _id: todo._id,
-      userId: user._id,
-      title: todo.title,
-      // 클라이언트의 date 필드를 startDate로 매핑
-      startDate: todo.startDate || todo.date,
-      endDate: todo.endDate || null,
-      recurrence: todo.recurrence || [],
-      categoryId: migratedCategoryId,  // 모두 새 카테고리로
-      isAllDay: todo.isAllDay !== undefined ? todo.isAllDay : true,
-      // 시간 필드는 서버 모델에 맞게 변환 (문자열 → Date 또는 null)
-      startDateTime: todo.startDateTime || null,
-      endDateTime: todo.endDateTime || null,
-      timeZone: todo.timeZone || 'Asia/Seoul',
-      memo: todo.memo || null,
-      createdAt: todo.createdAt || new Date(),
-      updatedAt: todo.updatedAt || new Date(),
-      syncStatus: 'synced',
-      deletedAt: null,
-      // order 필드 추가
-      order: todo.order || {},
-    }));
+    const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+    const TIME_PATTERN = /^(?:[01]\d|2[0-3]):[0-5]\d$/;
+    const LEGACY_GUEST_TODO_FIELDS = ['date', 'startDateTime', 'endDateTime', 'timeZone'];
+
+    const normalizeDate = (value) => {
+      if (typeof value !== 'string') return null;
+      const trimmed = value.trim();
+      return DATE_PATTERN.test(trimmed) ? trimmed : null;
+    };
+
+    const normalizeTime = (value) => {
+      if (typeof value !== 'string') return null;
+      const trimmed = value.trim();
+      return TIME_PATTERN.test(trimmed) ? trimmed : null;
+    };
+
+    const normalizeRecurrence = (value) => {
+      if (!value) return null;
+      if (Array.isArray(value)) {
+        const sanitized = value.filter(item => typeof item === 'string' && item.trim().length > 0);
+        return sanitized.length > 0 ? sanitized : null;
+      }
+      if (typeof value === 'string' && value.trim().length > 0) {
+        return [value.trim()];
+      }
+      return null;
+    };
+
+    if (!guestData || !Array.isArray(guestData.todos) || !Array.isArray(guestData.completions)) {
+      await session.abortTransaction();
+      return res.status(400).json({
+        success: false,
+        message: 'guestData 형식이 올바르지 않습니다',
+      });
+    }
+
+    const todoValidationErrors = [];
+    const todosToInsert = [];
+
+    for (const [index, todo] of guestData.todos.entries()) {
+      const rowErrors = [];
+      const legacyFields = LEGACY_GUEST_TODO_FIELDS.filter(
+        field => Object.prototype.hasOwnProperty.call(todo, field)
+      );
+
+      if (legacyFields.length > 0) {
+        rowErrors.push(`legacy fields are not allowed: ${legacyFields.join(', ')}`);
+      }
+
+      if (typeof todo._id !== 'string' || !todo._id.trim()) {
+        rowErrors.push('_id is required');
+      }
+      if (typeof todo.title !== 'string' || !todo.title.trim()) {
+        rowErrors.push('title is required');
+      }
+
+      const startDate = normalizeDate(todo.startDate);
+      const endDate = normalizeDate(todo.endDate);
+      const startTime = normalizeTime(todo.startTime);
+      const endTime = normalizeTime(todo.endTime);
+      const recurrenceEndDate = normalizeDate(todo.recurrenceEndDate);
+      const recurrence = normalizeRecurrence(todo.recurrence);
+      const isAllDay = todo.isAllDay !== undefined ? !!todo.isAllDay : (!startTime && !endTime);
+
+      if (!startDate) {
+        rowErrors.push('startDate must match YYYY-MM-DD');
+      }
+      if (todo.endDate !== undefined && todo.endDate !== null && !endDate) {
+        rowErrors.push('endDate must match YYYY-MM-DD');
+      }
+      if (todo.startTime !== undefined && todo.startTime !== null && !startTime) {
+        rowErrors.push('startTime must match HH:mm');
+      }
+      if (todo.endTime !== undefined && todo.endTime !== null && !endTime) {
+        rowErrors.push('endTime must match HH:mm');
+      }
+      if (todo.recurrenceEndDate !== undefined && todo.recurrenceEndDate !== null && !recurrenceEndDate) {
+        rowErrors.push('recurrenceEndDate must match YYYY-MM-DD');
+      }
+      if (!isAllDay && !startTime) {
+        rowErrors.push('startTime is required when isAllDay is false');
+      }
+      if (startDate && endDate && endDate < startDate) {
+        rowErrors.push('endDate must be greater than or equal to startDate');
+      }
+      if (startDate && recurrenceEndDate && recurrenceEndDate < startDate) {
+        rowErrors.push('recurrenceEndDate must be greater than or equal to startDate');
+      }
+
+      if (rowErrors.length > 0) {
+        todoValidationErrors.push({
+          index,
+          _id: todo?._id ?? null,
+          errors: rowErrors,
+        });
+        continue;
+      }
+
+      todosToInsert.push({
+        _id: todo._id,
+        userId: user._id,
+        title: todo.title.trim(),
+        categoryId: migratedCategoryId,  // 모두 새 카테고리로
+        memo: typeof todo.memo === 'string' ? todo.memo : null,
+        startDate,
+        endDate: endDate || null,
+        startTime: isAllDay ? null : startTime,
+        endTime: isAllDay ? null : endTime,
+        isAllDay,
+        recurrence,
+        recurrenceEndDate: recurrenceEndDate || null,
+        createdAt: todo.createdAt || new Date(),
+        updatedAt: todo.updatedAt || new Date(),
+        syncStatus: 'synced',
+        deletedAt: null,
+        // order 필드 추가
+        order: todo.order || {},
+      });
+    }
+
+    if (todoValidationErrors.length > 0) {
+      await session.abortTransaction();
+      return res.status(400).json({
+        success: false,
+        message: 'guestData.todos 형식 검증 실패',
+        errors: todoValidationErrors.slice(0, 20),
+      });
+    }
     
     if (todosToInsert.length > 0) {
       await Todo.insertMany(todosToInsert, { session });

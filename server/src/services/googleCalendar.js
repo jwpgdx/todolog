@@ -1,5 +1,4 @@
 const { google } = require('googleapis');
-const { toGoogleCalendarRRule } = require('../utils/recurrenceUtils');
 
 /**
  * 구글 캘린더 서비스
@@ -49,7 +48,7 @@ class GoogleCalendarService {
       const calendarData = {
         summary: 'TODOLOG',
         description: 'TODOLOG 앱에서 자동으로 생성된 할일 캘린더',
-        timeZone: user.timeZone || 'Asia/Seoul',
+        timeZone: user?.settings?.timeZone || 'Asia/Seoul',
       };
       console.log('📋 [ensureTodoLogCalendar] 캘린더 데이터:', calendarData);
 
@@ -104,13 +103,65 @@ class GoogleCalendarService {
    * @returns {string} - YYYY-MM-DD 형식
    */
   addDays(dateStr, days) {
-    const date = new Date(dateStr);
-    date.setDate(date.getDate() + days);
+    const normalized = this.normalizeDateString(dateStr);
+    if (!normalized) return null;
+    const date = new Date(`${normalized}T00:00:00.000Z`);
+    if (Number.isNaN(date.getTime())) return null;
+    date.setUTCDate(date.getUTCDate() + days);
     return date.toISOString().split('T')[0];
   }
 
   /**
-   * Todo를 구글 캘린더 이벤트로 변환 (RRULE 기반)
+   * YYYY-MM-DD 문자열 정규화
+   */
+  normalizeDateString(value) {
+    if (typeof value !== 'string') return null;
+    const trimmed = value.trim();
+    return /^\d{4}-\d{2}-\d{2}$/.test(trimmed) ? trimmed : null;
+  }
+
+  /**
+   * HH:mm 문자열 정규화
+   */
+  normalizeTimeString(value) {
+    if (typeof value !== 'string') return null;
+    const trimmed = value.trim();
+    return /^(?:[01]\d|2[0-3]):[0-5]\d$/.test(trimmed) ? trimmed : null;
+  }
+
+  /**
+   * HH:mm 값에 시간을 더함 (일 경계는 무시)
+   */
+  addHoursToTime(timeStr, hours) {
+    const normalized = this.normalizeTimeString(timeStr);
+    if (!normalized) return null;
+
+    const [hour, minute] = normalized.split(':').map(Number);
+    const totalMinutes = (hour * 60 + minute + (hours * 60)) % (24 * 60);
+    const safeMinutes = totalMinutes < 0 ? totalMinutes + (24 * 60) : totalMinutes;
+    const nextHour = String(Math.floor(safeMinutes / 60)).padStart(2, '0');
+    const nextMinute = String(safeMinutes % 60).padStart(2, '0');
+    return `${nextHour}:${nextMinute}`;
+  }
+
+  buildDateTimeString(dateStr, timeStr) {
+    const normalizedDate = this.normalizeDateString(dateStr);
+    const normalizedTime = this.normalizeTimeString(timeStr);
+    if (!normalizedDate || !normalizedTime) return null;
+    return `${normalizedDate}T${normalizedTime}:00`;
+  }
+
+  /**
+   * date-only 문자열을 RRULE UNTIL 형식(YYYYMMDDT235959Z)으로 변환
+   */
+  formatDateForRRule(value) {
+    const normalizedDate = this.normalizeDateString(value);
+    if (!normalizedDate) return null;
+    return `${normalizedDate.replace(/-/g, '')}T235959Z`;
+  }
+
+  /**
+   * Todo를 구글 캘린더 이벤트로 변환 (문자열 호환 어댑터)
    */
   todoToCalendarEvent(todo, user) {
     const event = {
@@ -118,77 +169,69 @@ class GoogleCalendarService {
       description: todo.memo || '',
     };
 
-    // 시간대 설정
-    const timeZone = user?.settings?.timeZone || user.timeZone || 'Asia/Seoul';
+    const timeZone = user?.settings?.timeZone || 'Asia/Seoul';
+    const startDate = this.normalizeDateString(todo.startDate);
+    const endDate = this.normalizeDateString(todo.endDate) || startDate;
+    const startTime = this.normalizeTimeString(todo.startTime);
+    const endTime = this.normalizeTimeString(todo.endTime);
+    const isAllDay = todo.isAllDay !== undefined ? !!todo.isAllDay : !startTime;
 
-    // 하루종일 이벤트 여부 확인 (isAllDay 필드 또는 startDateTime 없음)
-    const isAllDay = todo.isAllDay || !todo.startDateTime;
+    if (!startDate) {
+      throw new Error(`Invalid startDate for Google payload: ${todo._id}`);
+    }
 
     if (isAllDay) {
-      // 종일 이벤트 - startDate 사용 (YYYY-MM-DD 문자열)
-      const startDate = todo.startDate || this.formatDateFromDateTime(todo.startDateTime);
-      const endDate = todo.endDate || startDate;
-
-      // Google Calendar는 종일 이벤트의 end를 exclusive로 처리하므로 +1일 필요
-      const endDatePlusOne = this.addDays(endDate, 1);
-
+      const endDatePlusOne = this.addDays(endDate || startDate, 1);
       event.start = { date: startDate };
-      event.end = { date: endDatePlusOne };
+      event.end = { date: endDatePlusOne || startDate };
     } else {
-      // 시간 지정 이벤트
-      const startDateTime = new Date(todo.startDateTime);
-      const endDateTime = todo.endDateTime
-        ? new Date(todo.endDateTime)
-        : new Date(startDateTime.getTime() + 60 * 60 * 1000); // 1시간 후
+      if (!startTime) {
+        throw new Error(`Invalid startTime for Google payload: ${todo._id}`);
+      }
+
+      const eventEndDate = endDate || startDate;
+      const eventEndTime = endTime || this.addHoursToTime(startTime, 1) || startTime;
+      const eventStartDateTime = this.buildDateTimeString(startDate, startTime);
+      const eventEndDateTime = this.buildDateTimeString(eventEndDate, eventEndTime);
+
+      if (!eventStartDateTime || !eventEndDateTime) {
+        throw new Error(`Invalid date/time fields for Google payload: ${todo._id}`);
+      }
 
       event.start = {
-        dateTime: startDateTime.toISOString(),
-        timeZone
+        dateTime: eventStartDateTime,
+        timeZone,
       };
       event.end = {
-        dateTime: endDateTime.toISOString(),
-        timeZone
+        dateTime: eventEndDateTime,
+        timeZone,
       };
     }
 
-    // 반복 규칙 추가
-    if (todo.recurrence) {
-      // recurrence가 이미 배열이면 그대로 사용, 아니면 배열로 감싸기
-      event.recurrence = Array.isArray(todo.recurrence) ? [...todo.recurrence] : [todo.recurrence];
+    const recurrence = Array.isArray(todo.recurrence)
+      ? todo.recurrence.filter(rule => typeof rule === 'string' && rule.trim().length > 0)
+      : (typeof todo.recurrence === 'string' && todo.recurrence.trim().length > 0 ? [todo.recurrence] : []);
 
-      // 반복 종료일 처리 (RRULE에 UNTIL이 없는 경우)
-      if (todo.recurrenceEndDate) {
+    if (recurrence.length > 0) {
+      event.recurrence = [...recurrence];
+
+      if (todo.recurrenceEndDate !== undefined && todo.recurrenceEndDate !== null && todo.recurrenceEndDate !== '') {
+        const recurrenceEndDate = this.normalizeDateString(todo.recurrenceEndDate);
+        if (!recurrenceEndDate) {
+          throw new Error(`Invalid recurrenceEndDate for Google payload: ${todo._id}`);
+        }
+
         const rruleString = event.recurrence[0] || '';
-        if (!rruleString.includes('UNTIL')) {
-          const untilDate = this.formatDateForRRule(todo.recurrenceEndDate);
-          event.recurrence[0] = rruleString + `;UNTIL=${untilDate}`;
+        if (rruleString && !rruleString.includes('UNTIL')) {
+          const untilDate = this.formatDateForRRule(recurrenceEndDate);
+          if (untilDate) {
+            event.recurrence[0] = `${rruleString};UNTIL=${untilDate}`;
+          }
         }
       }
     }
 
     return event;
-  }
-
-  /**
-   * 종일 이벤트 여부 확인
-   */
-  isAllDayEvent(dateTime) {
-    const date = new Date(dateTime);
-    return date.getHours() === 0 && date.getMinutes() === 0 && date.getSeconds() === 0;
-  }
-
-  /**
-   * Date 객체를 YYYY-MM-DD 형식으로 변환
-   */
-  formatDate(date) {
-    return date.toISOString().split('T')[0];
-  }
-
-  /**
-   * Date 객체를 RRULE UNTIL 형식(YYYYMMDD)으로 변환
-   */
-  formatDateForRRule(date) {
-    return date.toISOString().split('T')[0].replace(/-/g, '');
   }
 
   /**

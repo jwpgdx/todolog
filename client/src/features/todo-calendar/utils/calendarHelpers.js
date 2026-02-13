@@ -50,6 +50,50 @@ export function formatMonthTitle(year, month, language = 'ko') {
 }
 
 /**
+ * 특정 월의 캘린더 그리드 날짜 범위 계산 (6주 고정)
+ * @param {number} year - 연도 (예: 2025)
+ * @param {number} month - 월 (1~12)
+ * @param {number} startDayOfWeek - 0 (Sunday) or 1 (Monday)
+ * @returns {{startDate: string, endDate: string}} - {startDate: "2025-01-26", endDate: "2025-03-08"}
+ * 
+ * @note generateWeeks와 동일한 gridStart 계산 로직 사용
+ * @note 6주(42일) 범위 반환
+ */
+export function getCalendarDateRange(year, month, startDayOfWeek = 0) {
+  try {
+    const firstDay = dayjs(`${year}-${String(month).padStart(2, '0')}-01`);
+    
+    if (!firstDay.isValid()) {
+      console.error(`Invalid date: ${year}-${month}`);
+      return { startDate: '', endDate: '' };
+    }
+    
+    // Calculate first day of the week based on startDayOfWeek setting
+    let gridStart;
+    if (startDayOfWeek === 1) {
+      // Monday first: find previous Monday (or current day if it's Monday)
+      const dayOfWeek = firstDay.day(); // 0 (Sun) ~ 6 (Sat)
+      const daysToSubtract = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+      gridStart = firstDay.subtract(daysToSubtract, 'day');
+    } else {
+      // Sunday first (default)
+      gridStart = firstDay.day(0);  // Previous Sunday
+    }
+    
+    // 6주(42일) 범위 계산
+    const gridEnd = gridStart.add(41, 'day'); // 0-indexed: 0~41 = 42일
+    
+    return {
+      startDate: gridStart.format('YYYY-MM-DD'),
+      endDate: gridEnd.format('YYYY-MM-DD'),
+    };
+  } catch (error) {
+    console.error('getCalendarDateRange error:', error);
+    return { startDate: '', endDate: '' };
+  }
+}
+
+/**
  * 특정 월의 6주 고정 weeks 배열 생성
  * @param {number} year - 연도 (예: 2025)
  * @param {number} month - 월 (1~12)
@@ -65,31 +109,19 @@ export function formatMonthTitle(year, month, language = 'ko') {
  */
 export function generateWeeks(year, month, startDayOfWeek = 0) {
   try {
-    const firstDay = dayjs(`${year}-${String(month).padStart(2, '0')}-01`);
+    // ✅ [필수 리팩토링] getCalendarDateRange를 사용하여 날짜 계산 로직 통일
+    const { startDate, endDate } = getCalendarDateRange(year, month, startDayOfWeek);
     
-    if (!firstDay.isValid()) {
-      console.error(`Invalid date: ${year}-${month}`);
+    if (!startDate || !endDate) {
+      console.error(`Invalid date range: ${year}-${month}`);
       return generateEmptyWeeks();
     }
     
-    // Calculate first day of the week based on startDayOfWeek setting
-    // startDayOfWeek: 0 (Sunday) or 1 (Monday)
-    let startDay;
-    if (startDayOfWeek === 1) {
-      // Monday first: find previous Monday (or current day if it's Monday)
-      const dayOfWeek = firstDay.day(); // 0 (Sun) ~ 6 (Sat)
-      const daysToSubtract = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
-      startDay = firstDay.subtract(daysToSubtract, 'day');
-    } else {
-      // Sunday first (default)
-      startDay = firstDay.day(0);  // Previous Sunday
-    }
-    
     const weeks = [];
-    let currentDay = startDay;
+    let currentDay = dayjs(startDate);
     const today = dayjs();
     
-    // 6주 고정 생성
+    // 6주 고정 생성 (42일)
     for (let week = 0; week < 6; week++) {
       const weekDays = [];
       for (let day = 0; day < 7; day++) {

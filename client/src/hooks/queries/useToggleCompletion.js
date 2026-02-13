@@ -9,6 +9,7 @@ import {
 import { addPendingChange } from '../../services/db/pendingService';
 import { ensureDatabase } from '../../services/db/database';
 import { generateId } from '../../utils/idGenerator';
+import { useTodoCalendarStore } from '../../features/todo-calendar/store/todoCalendarStore';
 
 /**
  * Completion 토글 훅 (SQLite 기반 + Server Sync)
@@ -26,6 +27,7 @@ import { generateId } from '../../utils/idGenerator';
  */
 export const useToggleCompletion = () => {
   const queryClient = useQueryClient();
+  const invalidateAdjacentMonths = useTodoCalendarStore(state => state.invalidateAdjacentMonths);
 
   return useMutation({
     mutationFn: async ({ todoId, date, currentCompleted, todo }) => {
@@ -94,11 +96,19 @@ export const useToggleCompletion = () => {
         return { completed: optimisticState, offline: true, isRecurring };
       }
     },
-    onSuccess: (data) => {
+    onSuccess: (data, variables) => {
       const successStartTime = performance.now();
       
       // 모든 todos 캐시 무효화 (단순화)
       queryClient.invalidateQueries({ queryKey: ['todos'] });
+      
+      // Phase 2: 캘린더 캐시 무효화
+      if (variables?.date || variables?.todo?.date || variables?.todo?.startDate) {
+        const dateStr = variables.date || variables.todo?.date || variables.todo?.startDate;
+        const [year, month] = dateStr.split('-').map(Number);
+        invalidateAdjacentMonths(year, month);
+        console.log(`📅 [useToggleCompletion] Calendar cache invalidated for ${year}-${month}`);
+      }
 
       const successEndTime = performance.now();
       console.log(`⚡ [useToggleCompletion] onSuccess 완료: ${(successEndTime - successStartTime).toFixed(2)}ms`);

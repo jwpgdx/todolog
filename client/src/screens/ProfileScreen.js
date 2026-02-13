@@ -117,6 +117,10 @@ export default function ProfileScreen({ navigation }) {
           <MenuLink
             title="앱 설정"
             onPress={() => navigation.navigate('Settings')}
+          />
+          <MenuLink
+            title="디버그 (DB 초기화)"
+            onPress={() => navigation.navigate('Debug')}
             isLast
           />
         </View>
