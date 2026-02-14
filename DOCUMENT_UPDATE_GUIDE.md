@@ -1,6 +1,6 @@
 # 문서 업데이트 가이드 (빠른 체크용)
 
-마지막 업데이트: 2026-02-13
+마지막 업데이트: 2026-02-14
 
 ## 1) 기본 원칙
 
@@ -31,14 +31,20 @@
 - 필수: `.kiro/specs/<feature>/tasks.md`
 - 필요 시: `PROJECT_CONTEXT.md`, `README.md`, `ROADMAP.md`
 
-5. Codex/Kiro 공통 AI 규칙이 바뀜:
+5. 날짜 선택/오늘 표시/타임존 반응 로직이 바뀜:
+- 필수: `PROJECT_CONTEXT.md`
+- 필수: 해당 feature spec (`.kiro/specs/<feature>/requirements.md`)
+- 필요 시: `README.md`, `ROADMAP.md`
+- 메모: `currentDate`(selected)와 `todayDate`(derived)를 분리해 문서에 명시
+
+6. Codex/Kiro 공통 AI 규칙이 바뀜:
 - 필수: `AI_COMMON_RULES.md`
 - 보통 불필요: `AGENTS.md`, `.kiro/steering/requirements.md`
 
-6. Codex 시작 규칙만 바뀜:
+7. Codex 시작 규칙만 바뀜:
 - 필수: `AGENTS.md`
 
-7. Kiro 시작 규칙만 바뀜:
+8. Kiro 시작 규칙만 바뀜:
 - 필수: `.kiro/steering/requirements.md`
 
 ## 3) 빠른 의사결정 순서
@@ -68,4 +74,4 @@
 - [ ] 마일스톤/계획이 바뀌면 `ROADMAP.md`를 갱신했는가?
 - [ ] 기능 변경이면 해당 spec 3종 문서를 갱신했는가?
 - [ ] 공통 AI 규칙 변경 시 `AI_COMMON_RULES.md`를 기준으로 반영했는가?
-
+- [ ] 날짜 로직 변경 시 `currentDate`(selected) / `todayDate`(derived) 분리가 문서에 명시되었는가?

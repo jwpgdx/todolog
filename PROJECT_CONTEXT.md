@@ -98,6 +98,14 @@ Validation and rejection logic:
   - auto realign only if user is currently on "today" of previous timezone
   - do not auto jump while todo form is open (`mode !== 'CLOSED'`)
 
+### 4.5 Today marker rule (derived state)
+
+- `todayDate` is a derived value, not persisted store state.
+- `todayDate` is computed from `user.settings.timeZone` via shared hook `useTodayDate`.
+- `currentDate` (selected) and `todayDate` (actual today) are independent:
+  - user can select any date while today marker stays on real "today"
+  - if selected date equals `todayDate`, both states point to the same cell
+
 ## 5. Storage Layer Status
 
 ### 5.1 Client SQLite
@@ -179,6 +187,13 @@ Behavior:
 3. `TodoScreen` and todo form use this shared `currentDate`.
 4. On timezone update, app compares old/new timezone "today" and conditionally realigns `currentDate`.
 
+### 6.4 Today marker flow
+
+1. `useTodayDate` reads `user.settings.timeZone`.
+2. `todayDate` is computed using `getCurrentDateInTimeZone`.
+3. Screens/components compare `currentDate` vs `todayDate` for UI state.
+4. On AppState `active`, `todayDate` is re-evaluated (midnight rollover safety).
+
 ## 7. Key Files by Responsibility
 
 ### 7.1 Client
@@ -218,8 +233,16 @@ Date state and timezone helpers:
 
 - `client/src/store/dateStore.js`
 - `client/src/utils/timeZoneDate.js`
+- `client/src/hooks/useTodayDate.js`
 - `client/App.js`
 - `client/src/screens/TodoScreen.js`
+
+Calendar today-marker path:
+
+- `client/src/features/todo-calendar/ui/CalendarList.js`
+- `client/src/features/todo-calendar/ui/MonthSection.js`
+- `client/src/features/todo-calendar/ui/DayCell.js`
+- `client/src/features/todo-calendar/utils/calendarHelpers.js`
 
 ### 7.2 Server
 

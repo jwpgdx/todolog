@@ -33,7 +33,9 @@ function DayCell({ day, todos = [], completions }) {
 
   return (
     <View style={styles.cell}>
-      <Text style={styles.dateText}>{day.date}</Text>
+      <View style={[styles.dateBadge, day.isToday && styles.todayBadge]}>
+        <Text style={[styles.dateText, day.isToday && styles.todayText]}>{day.date}</Text>
+      </View>
       {hasTodos && (
         <View style={[styles.todoDot, { backgroundColor: dotColor }]} />
       )}
@@ -51,9 +53,25 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
+  dateBadge: {
+    minWidth: 26,
+    minHeight: 26,
+    borderRadius: 13,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  todayBadge: {
+    backgroundColor: '#e8f2ff',
+    borderWidth: 1,
+    borderColor: '#2f80ed',
+  },
   dateText: {
     fontSize: 16,
     color: '#333',
+  },
+  todayText: {
+    color: '#1f5fbf',
+    fontWeight: '700',
   },
   todoDot: {
     width: 4,

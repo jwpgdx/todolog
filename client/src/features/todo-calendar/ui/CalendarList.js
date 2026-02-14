@@ -6,6 +6,7 @@ import { useInfiniteCalendar } from '../hooks/useInfiniteCalendar';
 import { useTodoCalendarData } from '../hooks/useTodoCalendarData';
 import { getWeekdayNames, formatMonthTitle } from '../utils/calendarHelpers';
 import { useAuthStore } from '../../../store/authStore';
+import { useTodayDate } from '../../../hooks/useTodayDate';
 import MonthSection from './MonthSection';
 
 /**
@@ -56,6 +57,7 @@ export default function CalendarList() {
   const language = useAuthStore(state => 
     state.user?.settings?.language || 'ko'
   );
+  const { todayDate } = useTodayDate();
 
   // Phase 2: Todo data batch fetch hook
   const { onVisibleMonthsChange, refetchInvalidated } = useTodoCalendarData(startDayOfWeek);
@@ -89,8 +91,9 @@ export default function CalendarList() {
       monthMetadata={item} 
       startDayOfWeek={startDayOfWeek}
       language={language}
+      todayDate={todayDate}
     />
-  ), [startDayOfWeek, language]);
+  ), [startDayOfWeek, language, todayDate]);
 
   /**
    * Handle viewable items change to detect top scroll and update current month

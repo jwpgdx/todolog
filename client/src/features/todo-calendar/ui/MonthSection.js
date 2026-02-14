@@ -18,10 +18,11 @@ import dayjs from 'dayjs';
  * @param {string} props.monthMetadata.id - 고유 ID (예: "2025-01")
  * @param {number} props.startDayOfWeek - 0 (Sunday) or 1 (Monday)
  * @param {string} props.language - 'ko' | 'en' | 'ja' | 'system'
+ * @param {string} props.todayDate - 사용자 시간대 기준 오늘 날짜 (YYYY-MM-DD)
  * 
  * Requirements: 2.4, 3.1, 4.5, 9.2
  */
-function MonthSection({ monthMetadata, startDayOfWeek = 0, language = 'ko' }) {
+function MonthSection({ monthMetadata, startDayOfWeek = 0, language = 'ko', todayDate }) {
   // Selector: 이 월의 데이터만 구독 (다른 월 변경 시 리렌더 안 함)
   const todos = useTodoCalendarStore(
     state => state.todosByMonth[monthMetadata.id]
@@ -33,8 +34,8 @@ function MonthSection({ monthMetadata, startDayOfWeek = 0, language = 'ko' }) {
   // useMemo로 weeks 배열 생성 (6주 × 7일 = 42개 날짜)
   // startDayOfWeek 설정에 따라 첫 주 시작일이 달라짐
   const weeks = useMemo(() => {
-    return generateWeeks(monthMetadata.year, monthMetadata.month, startDayOfWeek);
-  }, [monthMetadata.year, monthMetadata.month, startDayOfWeek]);
+    return generateWeeks(monthMetadata.year, monthMetadata.month, startDayOfWeek, todayDate);
+  }, [monthMetadata.year, monthMetadata.month, startDayOfWeek, todayDate]);
 
   // useMemo로 monthTitle 생성 (언어 설정 반영)
   const monthTitle = useMemo(() => {

@@ -23,6 +23,8 @@ Strip Calendar는 `TodoScreen` 메인 화면에서 날짜 선택을 담당하는
 - **Month_Boundary_Label**: 월이 바뀌는 날짜 셀(예: 2월 1일)에 표시되는 작은 월 라벨
 - **Category_Dot_Set**: 해당 날짜 일정의 카테고리 집합(중복 제거)
 - **Day_Selection**: 날짜 탭 시 `currentDate`를 해당 날짜로 변경하는 동작
+- **Today_Date**: 사용자 설정 타임존 기준 실제 오늘 날짜(`YYYY-MM-DD`)
+- **Today_Marker**: Day cell에서 오늘을 표시하는 시각적 상태
 - **Data_Adapter**: 캘린더 UI가 일정 dot 데이터를 가져오는 추상 인터페이스
 - **Unified_Recurrence_Path**: Phase 3에서 확정할 반복 포함 단일 조회/판정 경로
 
@@ -217,6 +219,19 @@ Strip Calendar는 `TodoScreen` 메인 화면에서 날짜 선택을 담당하는
 4. THE monthly list SHALL set `decelerationRate="fast"` to reduce over-glide after finger release
 5. WHEN the user stops scrolling, THEN the visible content SHALL settle on week-row boundaries without partial-row resting states
 6. THE week-snap behavior SHALL preserve smooth transition intent for `Monthly_Mode -> Weekly_Mode` anchoring
+
+### Requirement 18: Today Marker with Timezone-Aware Derived Date
+
+**User Story:** 사용자로서, 달력에서 실제 오늘 날짜가 선택 날짜와 별개로 정확히 표시되길 원합니다.
+
+#### Acceptance Criteria
+
+1. THE calendar SHALL compute `Today_Date` from user local settings timezone (`user.settings.timeZone`) using a shared derived-date path
+2. THE implementation SHALL use a shared hook-based approach (e.g., `useTodayDate`) backed by timezone utility logic, not duplicated per screen
+3. THE `Today_Marker` SHALL be independent from selected date (`currentDate`)
+4. WHEN selected date equals `Today_Date`, THEN the day cell SHALL support composed visual state (selected + today)
+5. THE `Today_Marker` SHALL work in both `Weekly_Mode` and `Monthly_Mode`
+6. WHEN user timezone setting changes, THEN the `Today_Marker` SHALL update without requiring app restart
 
 ## Scope for This Draft
 

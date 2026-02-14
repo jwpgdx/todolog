@@ -98,6 +98,7 @@ export function getCalendarDateRange(year, month, startDayOfWeek = 0) {
  * @param {number} year - 연도 (예: 2025)
  * @param {number} month - 월 (1~12)
  * @param {number} startDayOfWeek - 0 (Sunday) or 1 (Monday)
+ * @param {string} todayDate - 사용자 시간대 기준 오늘 날짜 (YYYY-MM-DD)
  * @returns {Array<Array<DayObject>>} - 6주 × 7일 배열
  * 
  * DayObject: {
@@ -107,7 +108,7 @@ export function getCalendarDateRange(year, month, startDayOfWeek = 0) {
  *   isToday: boolean
  * }
  */
-export function generateWeeks(year, month, startDayOfWeek = 0) {
+export function generateWeeks(year, month, startDayOfWeek = 0, todayDate = null) {
   try {
     // ✅ [필수 리팩토링] getCalendarDateRange를 사용하여 날짜 계산 로직 통일
     const { startDate, endDate } = getCalendarDateRange(year, month, startDayOfWeek);
@@ -119,7 +120,7 @@ export function generateWeeks(year, month, startDayOfWeek = 0) {
     
     const weeks = [];
     let currentDay = dayjs(startDate);
-    const today = dayjs();
+    const resolvedTodayDate = todayDate || dayjs().format('YYYY-MM-DD');
     
     // 6주 고정 생성 (42일)
     for (let week = 0; week < 6; week++) {
@@ -129,7 +130,7 @@ export function generateWeeks(year, month, startDayOfWeek = 0) {
           date: currentDay.date(),
           dateString: currentDay.format('YYYY-MM-DD'),  // ✅ unique key
           isCurrentMonth: currentDay.month() === month - 1,  // dayjs month is 0-indexed
-          isToday: currentDay.isSame(today, 'day'),
+          isToday: currentDay.format('YYYY-MM-DD') === resolvedTodayDate,
         });
         currentDay = currentDay.add(1, 'day');
       }
