@@ -1,6 +1,6 @@
 # Todolog Roadmap
 
-Last Updated: 2026-02-13
+Last Updated: 2026-02-14
 Owner: Product + Engineering
 
 ## 1. Purpose
@@ -87,6 +87,22 @@ Evidence:
 
 - `.kiro/specs/calendar-data-integration/log.md`
 - `.kiro/specs/calendar-data-integration/tasks.md`
+
+### 2026-02-14
+
+- `currentDate` timezone alignment completed for runtime UX consistency
+  - App startup now derives `currentDate` from `user.settings.timeZone`
+  - Runtime timezone change now conditionally realigns only when user is on previous "today"
+  - Auto-jump is blocked while todo form is open to protect in-progress input
+  - Todo form default time and quick labels now use user timezone
+
+Evidence:
+
+- `client/src/store/dateStore.js`
+- `client/src/utils/timeZoneDate.js`
+- `client/App.js`
+- `client/src/screens/TodoScreen.js`
+- `client/src/features/todo/form/useTodoFormLogic.js`
 
 ## 4. Next Milestones (Planned)
 

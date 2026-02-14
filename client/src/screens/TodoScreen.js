@@ -7,6 +7,8 @@ import { useDeleteTodo } from '../hooks/queries/useDeleteTodo';
 import { useTodoFormStore } from '../store/todoFormStore';
 import dayjs from 'dayjs';
 import { useTranslation } from 'react-i18next';
+import { useSettings } from '../hooks/queries/useSettings';
+import { getCurrentDateInTimeZone } from '../utils/timeZoneDate';
 
 import DailyTodoList from '../features/todo/list/DailyTodoList';
 
@@ -22,6 +24,9 @@ export default function TodoScreen({ navigation }) {
   const { mutate: deleteTodo } = useDeleteTodo();
   const { openDetail } = useTodoFormStore();
   const { t, i18n } = useTranslation();
+  const { data: settings = {} } = useSettings();
+  const userTimeZone = settings.timeZone || 'Asia/Seoul';
+  const todayInUserTimeZone = getCurrentDateInTimeZone(userTimeZone);
 
   // 🔧 Stale closure 방지: currentDate를 ref로 관리
   const currentDateRef = useRef(currentDate);
@@ -29,7 +34,7 @@ export default function TodoScreen({ navigation }) {
 
   // 날짜 포맷
   const dateObj = dayjs(currentDate);
-  const isToday = dateObj.isSame(dayjs(), 'day');
+  const isToday = currentDate === todayInUserTimeZone;
   const dateTitle = dateObj.locale(i18n.language).format(t('date.header_fmt'));
   const dayOfWeek = dateObj.locale(i18n.language).format('ddd'); // 요일 (월, 화, 수...)
 
@@ -91,10 +96,10 @@ export default function TodoScreen({ navigation }) {
   }, [dateObj, currentDate, setCurrentDate]);
 
   const handleToday = useCallback(() => {
-    const today = dayjs().format('YYYY-MM-DD');
+    const today = getCurrentDateInTimeZone(userTimeZone);
     console.log('📆 [TodoScreen] 오늘로 이동:', currentDate, '→', today);
     setCurrentDate(today);
-  }, [currentDate, setCurrentDate]);
+  }, [currentDate, setCurrentDate, userTimeZone]);
 
   return (
     <SafeAreaView style={styles.container}>

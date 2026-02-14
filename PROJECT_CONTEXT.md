@@ -1,6 +1,6 @@
 # Todolog Project Context
 
-Last Updated: 2026-02-13
+Last Updated: 2026-02-14
 Status: Phase 2.5 complete, Phase 3 not started
 
 ## 1. Purpose
@@ -90,6 +90,14 @@ Validation and rejection logic:
 - Do not store todo-level timezone metadata.
 - Google adapter must use user settings timezone only.
 
+### 4.4 Selected date state rule
+
+- `currentDate` is a UI state string (`YYYY-MM-DD`) in `dateStore`.
+- App bootstrap computes `currentDate` using `user.settings.timeZone`.
+- When timezone changes during runtime:
+  - auto realign only if user is currently on "today" of previous timezone
+  - do not auto jump while todo form is open (`mode !== 'CLOSED'`)
+
 ## 5. Storage Layer Status
 
 ### 5.1 Client SQLite
@@ -164,6 +172,13 @@ Behavior:
 4. `todoCalendarStore` caches by month.
 5. UI components subscribe by month/date selectors.
 
+### 6.3 Selected date flow
+
+1. `App` loads auth/settings and resolves user timezone.
+2. `App` sets `dateStore.currentDate` from timezone-aware "today" string.
+3. `TodoScreen` and todo form use this shared `currentDate`.
+4. On timezone update, app compares old/new timezone "today" and conditionally realigns `currentDate`.
+
 ## 7. Key Files by Responsibility
 
 ### 7.1 Client
@@ -198,6 +213,13 @@ Calendar module:
 Todo form:
 
 - `client/src/features/todo/form/useTodoFormLogic.js`
+
+Date state and timezone helpers:
+
+- `client/src/store/dateStore.js`
+- `client/src/utils/timeZoneDate.js`
+- `client/App.js`
+- `client/src/screens/TodoScreen.js`
 
 ### 7.2 Server
 

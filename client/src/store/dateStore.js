@@ -1,20 +1,19 @@
 import { create } from 'zustand';
+import { getCurrentDateInTimeZone } from '../utils/timeZoneDate';
 
-// 로컬 시간대 기준으로 YYYY-MM-DD 형식 반환
-const getLocalDateString = () => {
-  const now = new Date();
-  const year = now.getFullYear();
-  const month = String(now.getMonth() + 1).padStart(2, '0');
-  const day = String(now.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
-};
+// 사용자(또는 시스템) 시간대 기준으로 YYYY-MM-DD 형식 반환
+const getDateString = (timeZone) => getCurrentDateInTimeZone(timeZone);
 
 export const useDateStore = create((set) => ({
-  currentDate: getLocalDateString(),
+  currentDate: getDateString(),
   
   setCurrentDate: (date) => set({ currentDate: date }),
+
+  setCurrentDateByTimeZone: (timeZone) => set({
+    currentDate: getDateString(timeZone),
+  }),
   
-  resetToToday: () => set({ 
-    currentDate: getLocalDateString()
+  resetToToday: (timeZone) => set({
+    currentDate: getDateString(timeZone),
   }),
 }));

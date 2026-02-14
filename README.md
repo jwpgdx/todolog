@@ -11,10 +11,11 @@ Todolog is designed to work fully offline, then sync safely to server and Google
 - UUID v4 IDs generated client-side
 - Calendar module with month-batch fetch and cache
 - Google Calendar integration with strict schedule type handling
+- Timezone-aware selected-date state (`currentDate`) based on `user.settings.timeZone`
 
 ## Current Status
 
-As of 2026-02-13:
+As of 2026-02-14:
 
 - Phase 1-2 calendar integration: complete
 - Phase 2.5 data normalization (floating date/time string contract): complete
@@ -105,6 +106,7 @@ Legacy fields rejected by API:
 Timezone source of truth:
 
 - `user.settings.timeZone`
+- UI selected date (`currentDate`) is stored as `YYYY-MM-DD` and derived from user timezone
 
 ## Quick Start
 

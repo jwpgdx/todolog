@@ -5,7 +5,7 @@ import './src/services/db/database'; // ⚡ DB 조기 초기화 (모듈 로드 �
 import './src/utils/i18n';
 import i18n from './src/utils/i18n';
 import * as Localization from 'expo-localization';
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { Platform, View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { NavigationContainer } from '@react-navigation/native';
@@ -19,6 +19,7 @@ import { KeyboardProvider } from 'react-native-keyboard-controller';
 import { useColorScheme } from 'nativewind';
 
 import { useAuthStore, setQueryClient } from './src/store/authStore';
+import { useDateStore } from './src/store/dateStore';
 import { useTodoFormStore } from './src/store/todoFormStore';
 import { toastConfig } from './src/config/toastConfig';
 import MainStack from './src/navigation/MainStack';
@@ -26,6 +27,7 @@ import AuthStack from './src/navigation/AuthStack';
 import GlobalFormOverlay from './src/features/todo/form/GlobalFormOverlay';
 import { SyncProvider } from './src/providers/SyncProvider';
 import { ensureDatabase } from './src/services/db/database';
+import { getCurrentDateInTimeZone } from './src/utils/timeZoneDate';
 
 const queryClient = new QueryClient();
 
@@ -33,8 +35,11 @@ setQueryClient(queryClient);
 
 export default function App() {
   const { user, isLoading, loadAuth } = useAuthStore();
+  const { currentDate, setCurrentDate } = useDateStore();
   const { mode } = useTodoFormStore();
   const { setColorScheme } = useColorScheme();
+  const hasInitializedCurrentDateRef = useRef(false);
+  const previousTimeZoneRef = useRef(null);
 
   // ⚡ SQLite 초기화 및 워밍업 완료 대기
   useEffect(() => {
@@ -57,6 +62,47 @@ export default function App() {
   useEffect(() => {
     loadAuth();
   }, []);
+
+  useEffect(() => {
+    if (isLoading || hasInitializedCurrentDateRef.current) {
+      return;
+    }
+
+    const userTimeZone = user?.settings?.timeZone;
+    const todayInCurrentTimeZone = getCurrentDateInTimeZone(userTimeZone);
+    setCurrentDate(todayInCurrentTimeZone);
+    previousTimeZoneRef.current = userTimeZone || null;
+    hasInitializedCurrentDateRef.current = true;
+  }, [isLoading, user?.settings?.timeZone, setCurrentDate]);
+
+  useEffect(() => {
+    if (isLoading || !hasInitializedCurrentDateRef.current) {
+      return;
+    }
+
+    const nextTimeZone = user?.settings?.timeZone || null;
+    const previousTimeZone = previousTimeZoneRef.current;
+
+    // timeZone 변경이 없으면 무시
+    if (nextTimeZone === previousTimeZone) {
+      return;
+    }
+
+    // 폼 편집 중에는 날짜 점프를 보류
+    if (mode !== 'CLOSED') {
+      return;
+    }
+
+    const oldToday = getCurrentDateInTimeZone(previousTimeZone || undefined);
+    const newToday = getCurrentDateInTimeZone(nextTimeZone || undefined);
+
+    // 사용자가 "오늘"을 보고 있을 때만 자동 정렬
+    if (currentDate === oldToday) {
+      setCurrentDate(newToday);
+    }
+
+    previousTimeZoneRef.current = nextTimeZone;
+  }, [isLoading, user?.settings?.timeZone, currentDate, mode, setCurrentDate]);
 
   useEffect(() => {
     const theme = user?.settings?.theme || 'system';

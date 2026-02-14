@@ -10,6 +10,11 @@ import Toast from 'react-native-toast-message';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { DEFAULT_COLOR } from '../../../constants/categoryColors';
 import dayjs from 'dayjs';
+import {
+    addDaysToYmd,
+    getCurrentDateInTimeZone,
+    getCurrentTimeInTimeZone,
+} from '../../../utils/timeZoneDate';
 
 /**
  * useTodoFormLogic
@@ -79,12 +84,12 @@ export const useTodoFormLogic = (initialTodo, onClose, visible) => {
 
     // 현재 시간 기준 기본값 계산
     const getDefaultTimes = useCallback(() => {
-        const now = dayjs();
-        const startHour = now.format('HH');
+        const [hour] = getCurrentTimeInTimeZone(userTimeZone).split(':');
+        const startHour = hour;
         const startTime = `${startHour}:00`;
-        const endTime = `${String(parseInt(startHour) + 1).padStart(2, '0')}:00`;
+        const endTime = `${String((parseInt(startHour, 10) + 1) % 24).padStart(2, '0')}:00`;
         return { startTime, endTime };
-    }, []);
+    }, [userTimeZone]);
 
     // 전체 폼 상태
     const [formState, setFormState] = useState(() => {
@@ -193,7 +198,7 @@ export const useTodoFormLogic = (initialTodo, onClose, visible) => {
             endDate: currentDate,
             startTime,
             endTime,
-            timeZone: 'Asia/Seoul',
+            timeZone: userTimeZone,
             frequency: 'none',
             weekdays: [],
             dayOfMonth: [1],
@@ -201,7 +206,7 @@ export const useTodoFormLogic = (initialTodo, onClose, visible) => {
             recurrenceEndDate: null,
         });
         setViewMode('default');
-    }, [currentDate, getDefaultTimes, user?.settings?.defaultIsAllDay]);
+    }, [currentDate, getDefaultTimes, user?.settings?.defaultIsAllDay, userTimeZone]);
 
     // 상태 변경 핸들러 (시간 자동 조정 로직 포함)
     const handleChange = useCallback((key, value) => {
@@ -395,8 +400,8 @@ export const useTodoFormLogic = (initialTodo, onClose, visible) => {
         };
 
         // 날짜 라벨
-        const today = dayjs().format('YYYY-MM-DD');
-        const tomorrow = dayjs().add(1, 'day').format('YYYY-MM-DD');
+        const today = getCurrentDateInTimeZone(userTimeZone);
+        const tomorrow = addDaysToYmd(today, 1);
         let dateLabel = '오늘';
         if (formState.startDate === tomorrow) {
             dateLabel = '내일';
@@ -409,7 +414,7 @@ export const useTodoFormLogic = (initialTodo, onClose, visible) => {
             dateLabel,
             repeatLabel: frequencyLabels[formState.frequency] || '안 함',
         };
-    }, [categories, formState.categoryId, formState.startDate, formState.frequency]);
+    }, [categories, formState.categoryId, formState.startDate, formState.frequency, userTimeZone]);
 
     return {
         formState,
