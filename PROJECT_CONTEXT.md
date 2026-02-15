@@ -1,7 +1,7 @@
 # Todolog Project Context
 
-Last Updated: 2026-02-14
-Status: Phase 2.5 complete, Phase 3 not started
+Last Updated: 2026-02-15
+Status: Phase 2.5 complete, strip-calendar stabilization in progress, Phase 3 not started
 
 ## 1. Purpose
 
@@ -34,6 +34,7 @@ Server:
 
 - Phase 1-2 calendar integration: complete
 - Phase 2.5 data normalization: complete
+- Strip-calendar foundation (weekly/monthly shell + anchor sync + debug instrumentation): in progress
 - Phase 3 recurrence engine: planned, not implemented
 
 ## 3. Non-Negotiable Architecture Commitments
@@ -194,6 +195,26 @@ Behavior:
 3. Screens/components compare `currentDate` vs `todayDate` for UI state.
 4. On AppState `active`, `todayDate` is re-evaluated (midnight rollover safety).
 
+### 6.5 Strip-calendar flow (current implementation)
+
+1. `StripCalendarShell` bootstraps weekly mode using `todayWeekStart` as initial anchor.
+2. Weekly and monthly lists are separated components (`WeeklyStripList`, `MonthlyStripList`) and only one is mounted by mode.
+3. Weekly list:
+   - horizontal FlashList
+   - viewport width from `onLayout`
+   - explicit `scrollToOffset(index * viewportWidth)` sync
+   - week settle quantization via `onMomentumScrollEnd` and web fallback settle after programmatic scroll
+4. Monthly list:
+   - vertical FlashList
+   - `snapToInterval={WEEK_ROW_HEIGHT}` + `disableIntervalMomentum` + `decelerationRate="fast"`
+   - settle path uses `onMomentumScrollEnd`, plus web idle settle fallback (`onScroll` timer) with guards/cooldowns/re-arm thresholds
+5. Data summary path is intentionally disabled at runtime:
+   - `ENABLE_STRIP_CALENDAR_SUMMARY = false`
+   - dot rendering currently uses empty summary payloads only
+6. Current integration surface:
+   - active in `StripCalendarTestScreen`
+   - main `TodoScreen` still uses the existing todo list path without strip-calendar mount
+
 ## 7. Key Files by Responsibility
 
 ### 7.1 Client
@@ -224,6 +245,20 @@ Calendar module:
 - `client/src/features/todo-calendar/services/calendarTodoService.js`
 - `client/src/features/todo-calendar/store/todoCalendarStore.js`
 - `client/src/features/todo-calendar/ui/*`
+
+Strip calendar module:
+
+- `client/src/features/strip-calendar/ui/StripCalendarShell.js`
+- `client/src/features/strip-calendar/ui/WeeklyStripList.js`
+- `client/src/features/strip-calendar/ui/MonthlyStripList.js`
+- `client/src/features/strip-calendar/hooks/useStripCalendarController.js`
+- `client/src/features/strip-calendar/hooks/useStripCalendarDataRange.js`
+- `client/src/features/strip-calendar/services/stripCalendarDataAdapter.js`
+- `client/src/features/strip-calendar/services/stripCalendarSummaryService.js`
+- `client/src/features/strip-calendar/store/stripCalendarStore.js`
+- `client/src/features/strip-calendar/utils/stripCalendarConstants.js`
+- `client/src/features/strip-calendar/utils/stripCalendarDebug.js`
+- `client/src/screens/StripCalendarTestScreen.js`
 
 Todo form:
 
@@ -344,6 +379,7 @@ If requests fail locally, check `EXPO_PUBLIC_API_URL` first.
 3. Breaking sync order (Category -> Todo -> Completion).
 4. Missing calendar month-cache invalidation on todo/completion updates.
 5. Leaving verbose debug logs in production flows.
+6. Monthly strip web settle path currently mixes list snap physics and JS idle-settle correction logic; this area is still under tuning.
 
 ## 12. Document Source of Truth
 
@@ -364,3 +400,6 @@ Calendar integration focus docs:
 - `.kiro/specs/calendar-data-integration/design.md`
 - `.kiro/specs/calendar-data-integration/tasks.md`
 - `.kiro/specs/calendar-data-integration/log.md`
+- `.kiro/specs/strip-calendar/requirements.md`
+- `.kiro/specs/strip-calendar/design.md`
+- `.kiro/specs/strip-calendar/tasks.md`

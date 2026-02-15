@@ -12,6 +12,7 @@ Strip Calendar는 `TodoScreen` 메인 화면에서 날짜 선택을 담당하는
 1. 메인 화면용이므로 가볍게 동작해야 한다.
 2. 드래그 기반 높이 조절은 제외하고, 스와이프 감지 기반 모드 전환만 지원한다.
 3. 카테고리 dot은 일정 개수가 아니라 카테고리 unique 기준으로 표시한다.
+4. UI 리스트는 주/월을 분리하고, 데이터 경로는 단일 어댑터로 공유한다.
 
 ## Glossary
 
@@ -25,8 +26,10 @@ Strip Calendar는 `TodoScreen` 메인 화면에서 날짜 선택을 담당하는
 - **Day_Selection**: 날짜 탭 시 `currentDate`를 해당 날짜로 변경하는 동작
 - **Today_Date**: 사용자 설정 타임존 기준 실제 오늘 날짜(`YYYY-MM-DD`)
 - **Today_Marker**: Day cell에서 오늘을 표시하는 시각적 상태
+- **Today_Jump_Button**: 현재 화면에 오늘 날짜가 보이지 않을 때 헤더에 표시되는 빠른 이동 버튼
 - **Data_Adapter**: 캘린더 UI가 일정 dot 데이터를 가져오는 추상 인터페이스
 - **Unified_Recurrence_Path**: Phase 3에서 확정할 반복 포함 단일 조회/판정 경로
+- **Anchor_Week_Start**: 주/월 전환 시 기준이 되는 현재 주 시작일(`YYYY-MM-DD`)
 
 ## Requirements
 
@@ -91,8 +94,8 @@ Strip Calendar는 `TodoScreen` 메인 화면에서 날짜 선택을 담당하는
 
 #### Acceptance Criteria
 
-1. THE `Monthly_Mode` container SHALL cap visible height to six week rows
-2. WHEN content exceeds six rows, THEN content SHALL be vertically scrollable
+1. THE `Monthly_Mode` container SHALL cap visible height to five week rows
+2. WHEN content exceeds five rows, THEN content SHALL be vertically scrollable
 3. THE `Weekly_Mode` SHALL remain one-row height
 
 ### Requirement 7: Bottom Toggle Bar (Swipe-only)
@@ -182,6 +185,7 @@ Strip Calendar는 `TodoScreen` 메인 화면에서 날짜 선택을 담당하는
 2. THE `Strip_Calendar` SHALL define a `Data_Adapter` interface for day-level category dots
 3. THE adapter SHALL be swappable so that Phase 3 `Unified_Recurrence_Path` can be plugged in later
 4. THE current phase MAY use placeholder/mock/empty adapter output for dot rendering pipeline validation
+5. THE adapter interface for this phase SHALL use a two-step contract: `ensureRangeLoaded({startDate,endDate,reason})` and `selectDaySummaries({startDate,endDate})`
 
 ### Requirement 15: Phase 3 Integration Guardrail
 
@@ -233,6 +237,87 @@ Strip Calendar는 `TodoScreen` 메인 화면에서 날짜 선택을 담당하는
 5. THE `Today_Marker` SHALL work in both `Weekly_Mode` and `Monthly_Mode`
 6. WHEN user timezone setting changes, THEN the `Today_Marker` SHALL update without requiring app restart
 
+### Requirement 19: Weekly/Monthly List Separation Architecture
+
+**User Story:** 개발자로서, 주/월 모드의 서로 다른 스크롤 물리를 안정적으로 유지하고 싶습니다.
+
+#### Acceptance Criteria
+
+1. THE calendar SHALL implement `Weekly_Mode` and `Monthly_Mode` as separate `FlashList`-based UI components
+2. THE `Weekly_Mode` list SHALL be dedicated to horizontal week navigation
+3. THE `Monthly_Mode` list SHALL be dedicated to vertical free-scroll + week-snap navigation
+4. THE implementation SHALL NOT switch a single list instance between horizontal and vertical mode at runtime
+
+### Requirement 20: Shared Data Path with Range-Based Batch Loading
+
+**User Story:** 개발자로서, 주/월이 다른 범위를 보더라도 DB 조회 경로는 단일화하고 싶습니다.
+
+#### Acceptance Criteria
+
+1. THE strip-calendar data read path SHALL go through a single `Data_Adapter` boundary
+2. THE adapter request contract SHALL support date-range batch query (`startDate`, `endDate`)
+3. THE data layer SHALL merge overlapping range requests and deduplicate cache hits before SQLite fetch
+4. THE day-cell payload SHALL remain summary-only (`date`, `hasTodo`, `uniqueCategoryColors`, `dotCount`)
+5. THE UI layer SHALL NOT read raw todo arrays directly for dot calculation
+6. THE adapter contract SHALL separate load and read paths (`ensureRangeLoaded` for fetch/caching, `selectDaySummaries` for cached selection)
+
+### Requirement 21: Query Trigger Guardrail (No Per-Frame Fetch)
+
+**User Story:** 개발자로서, 스크롤 중 과도한 조회로 프레임 드랍이 발생하지 않게 하고 싶습니다.
+
+#### Acceptance Criteria
+
+1. THE implementation SHALL trigger range fetch on navigation-settle events (e.g., week page settled, monthly momentum settled)
+2. THE implementation SHALL perform scroll-driven anchor updates and range fetch only from `onMomentumScrollEnd` (or equivalent momentum-settle callback) in both weekly and monthly lists
+3. THE implementation MAY prefetch neighboring ranges for smoothness, but SHALL avoid redundant repeated fetches for already cached ranges
+4. THE implementation SHALL NOT trigger SQLite/data-adapter fetch on every `onScroll` frame
+5. WHEN switching mode, THEN the target visible range SHALL be requested once (or skipped on cache hit) after settle
+
+### Requirement 22: Mode Transition Anchor and Performance Guardrail
+
+**User Story:** 사용자로서, 주/월 전환 시 현재 보던 주가 유지되고 전환이 버벅이지 않길 원합니다.
+
+#### Acceptance Criteria
+
+1. THE mode transition contract SHALL use `Anchor_Week_Start` as shared navigation anchor
+2. WHEN switching `Weekly_Mode -> Monthly_Mode`, THEN the week containing `Anchor_Week_Start` SHALL be aligned to the top visible row
+3. WHEN switching `Monthly_Mode -> Weekly_Mode`, THEN weekly view SHALL restore the week from current monthly top visible anchor
+4. IF transition animation is enabled, THEN it SHALL avoid per-frame height interpolation and SHALL use lightweight visual transition primitives (e.g., transform/opacity) on Reanimated UI thread
+5. THE final layout height SHALL be committed once at transition end (not continuously every frame)
+6. THE transition path SHALL preserve UX continuity even when animation is reduced or disabled
+7. THE implementation SHALL validate via React Native Perf Monitor that mode transition does not cause unnecessary lower-content reflow/layout thrashing
+8. THE first render SHALL align `Weekly_Mode` viewport to the week containing `Today_Date`
+9. `Weekly_Mode <-> Monthly_Mode` mode-switch positioning SHALL use non-animated alignment to avoid intermediate glide from incorrect initial index
+10. explicit week navigation actions (`<`, `>`) MAY use animated programmatic scroll
+
+### Requirement 23: Day Cell Visual Semantics (Today vs CurrentDate)
+
+**User Story:** 사용자로서, 오늘 날짜와 선택 날짜 상태를 혼동 없이 보고 싶습니다.
+
+#### Acceptance Criteria
+
+1. THE `Today_Marker` visual SHALL be text-bold emphasis only
+2. THE selected date (`currentDate`) visual SHALL be a circular date indicator
+3. THE `Today_Marker` visual SHALL NOT introduce a second circle style
+4. WHEN `todayDate === currentDate`, THEN the cell SHALL preserve selected-circle semantics and SHALL also preserve today-text emphasis (composed state)
+5. WHEN a day cell is clicked/tapped, THEN `currentDate` SHALL update to that day (`YYYY-MM-DD`)
+
+### Requirement 24: Header Today Jump Button Behavior
+
+**User Story:** 사용자로서, 오늘 날짜가 화면에 없을 때 한 번에 오늘 주차로 돌아가고 싶습니다.
+
+#### Acceptance Criteria
+
+1. In `Weekly_Mode`, IF `Today_Date` is outside the currently visible week row, THEN THE header SHALL show `Today_Jump_Button`
+2. In `Weekly_Mode`, IF `Today_Date` is within the currently visible week row, THEN THE header SHALL hide `Today_Jump_Button`
+3. In `Monthly_Mode`, IF `Today_Date` is outside the current visible monthly viewport (5-row window), THEN THE header SHALL show `Today_Jump_Button`
+4. In `Monthly_Mode`, IF `Today_Date` is within the current visible monthly viewport, THEN THE header SHALL hide `Today_Jump_Button`
+5. WHEN `Today_Jump_Button` is clicked in `Weekly_Mode`, THEN THE calendar SHALL navigate to the week containing `Today_Date` AND set `currentDate = Today_Date`
+6. WHEN `Today_Jump_Button` is clicked in `Monthly_Mode`, THEN THE calendar SHALL align the week containing `Today_Date` to the top row AND set `currentDate = Today_Date`
+7. THE visibility evaluation and show/hide update of `Today_Jump_Button` SHALL run on settled navigation callbacks (`onMomentumScrollEnd` or equivalent), not per-frame `onScroll`
+8. `Today_Date` used by this behavior SHALL follow shared timezone-aware derived path (`useTodayDate`)
+9. THE initial visibility state of `Today_Jump_Button` SHALL be evaluated on first render using the initial viewport snapshot (before first momentum event)
+
 ## Scope for This Draft
 
 포함:
@@ -242,6 +327,7 @@ Strip Calendar는 `TodoScreen` 메인 화면에서 날짜 선택을 담당하는
 - 날짜 선택 및 메인 화면 연결 계약
 - 카테고리 중복 제거 dot 표시 규칙
 - 데이터 어댑터 인터페이스 정의(연결 지점만)
+- 로컬 범위 요약 서비스(캐시/중복제거 포함) 구현
 
 제외:
 
@@ -249,8 +335,13 @@ Strip Calendar는 `TodoScreen` 메인 화면에서 날짜 선택을 담당하는
 - 최종 단일 조회 경로 구현
 - 서버/API 변경
 
-## Open Questions (to resolve in Design Phase)
+## Decision Log and Open Questions
 
-1. Weekly horizontal navigation 구현체: `Pager` vs `gesture + virtual 3-page` 중 선택 기준
-2. Mode 전환 애니메이션 수준(즉시 전환 vs 짧은 transition)
-3. Phase 3 통합 시 strip-calendar adapter의 정확한 함수 시그니처
+### Resolved
+
+1. Weekly horizontal navigation implementation is resolved as `FlashList (horizontal + paging)` to keep architecture consistency with monthly FlashList and to avoid Pager/manual-virtualization divergence.
+2. Adapter contract for this phase is resolved as `ensureRangeLoaded + selectDaySummaries` with range-based batch caching.
+
+### Remaining Open Questions
+
+1. Phase 3 통합 시 recurrence 포함 최종 데이터 소스(어댑터 내부 구현체) 전환 시점과 마이그레이션 절차

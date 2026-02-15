@@ -29,6 +29,9 @@
         "month": "월",
         "header_fmt": "YYYY년 M월"
     },
+    "calendar": {
+        "today": "오늘"
+    },
     "category": {
         "migrated": "이전된 일정"
     }

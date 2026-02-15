@@ -1,6 +1,6 @@
 # Todolog Roadmap
 
-Last Updated: 2026-02-14
+Last Updated: 2026-02-15
 Owner: Product + Engineering
 
 ## 1. Purpose
@@ -19,11 +19,13 @@ For execution rules, see `.kiro/steering/requirements.md`.
 Current state:
 
 - Phase 2.5 data normalization is complete
+- Strip-calendar module is in stabilization/debugging phase
 - Phase 3 recurrence engine is the next major deliverable
 
 Immediate objective:
 
-- start Phase 3 on top of the normalized schedule contract
+- stabilize strip-calendar weekly/monthly settle behavior and mode-anchor consistency
+- keep Phase 3 recurrence engine as next major deliverable after strip-calendar stabilization
 
 ## 3. Dated Milestones (Completed)
 
@@ -103,6 +105,24 @@ Evidence:
 - `client/App.js`
 - `client/src/screens/TodoScreen.js`
 - `client/src/features/todo/form/useTodoFormLogic.js`
+
+### 2026-02-15
+
+- Strip-calendar implementation line established and instrumented for stabilization
+  - Separate weekly/monthly FlashList path with anchor-based mode transitions
+  - Weekly viewport-width based offset sync and quantized settle handling
+  - Monthly week-snap path with web idle-settle fallback guards/cooldowns
+  - Centralized strip-calendar tuning constants and structured debug log format (`seq/at/dt`)
+  - Dedicated test route (`Strip` tab) kept for iterative UX tuning
+
+Evidence:
+
+- `client/src/features/strip-calendar/ui/WeeklyStripList.js`
+- `client/src/features/strip-calendar/ui/MonthlyStripList.js`
+- `client/src/features/strip-calendar/ui/StripCalendarShell.js`
+- `client/src/features/strip-calendar/utils/stripCalendarConstants.js`
+- `client/src/features/strip-calendar/utils/stripCalendarDebug.js`
+- `client/src/screens/StripCalendarTestScreen.js`
 
 ## 4. Next Milestones (Planned)
 

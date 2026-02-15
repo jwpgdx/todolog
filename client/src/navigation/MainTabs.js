@@ -6,6 +6,7 @@ import NotificationScreen from '../screens/NotificationScreen';
 import ProfileScreen from '../screens/ProfileScreen';
 import TodoCalendarScreen from '../screens/TodoCalendarScreen';
 import DebugScreen from '../screens/DebugScreen';
+import StripCalendarTestScreen from '../screens/StripCalendarTestScreen';
 import CalendarServiceTestScreen from '../test/CalendarServiceTestScreen';
 import { useTodoFormStore } from '../store/todoFormStore';
 
@@ -38,6 +39,16 @@ export default function MainTabs() {
           tabBarLabel: '캘린더',
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="calendar-outline" size={size} color={color} />
+          ),
+        }}
+      />
+      <Tab.Screen
+        name="Strip"
+        component={StripCalendarTestScreen}
+        options={{
+          tabBarLabel: '스트립',
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="calendar-number-outline" size={size} color={color} />
           ),
         }}
       />
@@ -122,4 +133,3 @@ export default function MainTabs() {
     </Tab.Navigator>
   );
 }
-

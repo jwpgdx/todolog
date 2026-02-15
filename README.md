@@ -10,15 +10,17 @@ Todolog is designed to work fully offline, then sync safely to server and Google
 - SQLite as local source of truth for core entities
 - UUID v4 IDs generated client-side
 - Calendar module with month-batch fetch and cache
+- Strip-calendar module with separate weekly/monthly list architecture (stabilization in progress)
 - Google Calendar integration with strict schedule type handling
 - Timezone-aware selected-date state (`currentDate`) based on `user.settings.timeZone`
 
 ## Current Status
 
-As of 2026-02-14:
+As of 2026-02-15:
 
 - Phase 1-2 calendar integration: complete
 - Phase 2.5 data normalization (floating date/time string contract): complete
+- Strip-calendar stabilization/debugging: in progress
 - Phase 3 recurrence engine: planned
 
 See `ROADMAP.md` for dated milestones and next steps.
@@ -67,7 +69,8 @@ Server:
 │  │  ├─ api/
 │  │  ├─ features/
 │  │  │  ├─ todo/
-│  │  │  └─ todo-calendar/
+│  │  │  ├─ todo-calendar/
+│  │  │  └─ strip-calendar/
 │  │  ├─ services/
 │  │  │  ├─ db/
 │  │  │  └─ sync/
@@ -181,6 +184,8 @@ Client:
 - Todo persistence: `client/src/services/db/todoService.js`
 - Sync orchestration: `client/src/services/sync/index.js`
 - Calendar data hook: `client/src/features/todo-calendar/hooks/useTodoCalendarData.js`
+- Strip-calendar shell: `client/src/features/strip-calendar/ui/StripCalendarShell.js`
+- Strip-calendar weekly/monthly lists: `client/src/features/strip-calendar/ui/WeeklyStripList.js`, `client/src/features/strip-calendar/ui/MonthlyStripList.js`
 - Todo form logic: `client/src/features/todo/form/useTodoFormLogic.js`
 
 Server:

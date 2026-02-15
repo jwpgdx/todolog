@@ -10,6 +10,7 @@ import { addPendingChange } from '../../services/db/pendingService';
 import { ensureDatabase } from '../../services/db/database';
 import { generateId } from '../../utils/idGenerator';
 import { useTodoCalendarStore } from '../../features/todo-calendar/store/todoCalendarStore';
+import { invalidateDateSummary } from '../../features/strip-calendar/services/stripCalendarDataAdapter';
 
 /**
  * Completion 토글 훅 (SQLite 기반 + Server Sync)
@@ -108,6 +109,7 @@ export const useToggleCompletion = () => {
         const [year, month] = dateStr.split('-').map(Number);
         invalidateAdjacentMonths(year, month);
         console.log(`📅 [useToggleCompletion] Calendar cache invalidated for ${year}-${month}`);
+        invalidateDateSummary(dateStr);
       }
 
       const successEndTime = performance.now();

@@ -5,6 +5,7 @@ import { upsertTodo, getTodoById } from '../../services/db/todoService';
 import { addPendingChange } from '../../services/db/pendingService';
 import { ensureDatabase } from '../../services/db/database';
 import { useTodoCalendarStore } from '../../features/todo-calendar/store/todoCalendarStore';
+import { invalidateTodoSummary } from '../../features/strip-calendar/services/stripCalendarDataAdapter';
 
 export const useUpdateTodo = () => {
   const queryClient = useQueryClient();
@@ -171,7 +172,7 @@ export const useUpdateTodo = () => {
         return result;
       }
     },
-    onSuccess: (data, { id, data: updateData }, context) => {
+    onSuccess: (data, { data: updateData }, context) => {
       const successStartTime = performance.now();
       
       // 모든 todos 캐시 무효화 (단순화)
@@ -198,6 +199,9 @@ export const useUpdateTodo = () => {
           console.log(`📅 [useUpdateTodo] Calendar cache invalidated for old date ${oldYear}-${oldMonth}`);
         }
       }
+
+      invalidateTodoSummary(oldTodo);
+      invalidateTodoSummary(data || { ...oldTodo, ...updateData });
 
       const successEndTime = performance.now();
       console.log(`⚡ [useUpdateTodo] onSuccess 완료: ${(successEndTime - successStartTime).toFixed(2)}ms`);
@@ -237,4 +241,3 @@ export const useUpdateTodo = () => {
     },
   });
 };
-

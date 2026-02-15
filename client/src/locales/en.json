@@ -29,6 +29,9 @@
         "month": "",
         "header_fmt": "MMMM YYYY"
     },
+    "calendar": {
+        "today": "Today"
+    },
     "category": {
         "migrated": "Migrated Events"
     }

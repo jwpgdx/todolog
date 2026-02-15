@@ -2,12 +2,12 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import NetInfo from '@react-native-community/netinfo';
 import { todoAPI } from '../../api/todos';
-import { invalidateAffectedMonths } from '../../utils/cacheUtils';
 import { upsertTodo } from '../../services/db/todoService';
 import { addPendingChange } from '../../services/db/pendingService';
 import { ensureDatabase } from '../../services/db/database';
 import { generateId } from '../../utils/idGenerator';
 import { useTodoCalendarStore } from '../../features/todo-calendar/store/todoCalendarStore';
+import { invalidateTodoSummary } from '../../features/strip-calendar/services/stripCalendarDataAdapter';
 
 export const useCreateTodo = () => {
   const queryClient = useQueryClient();
@@ -123,6 +123,8 @@ export const useCreateTodo = () => {
         invalidateAdjacentMonths(year, month);
         console.log(`📅 [useCreateTodo] Calendar cache invalidated for ${year}-${month}`);
       }
+
+      invalidateTodoSummary(data || variables);
       
       // 사용자 편의를 위한 마지막 사용 정보 저장
       try {

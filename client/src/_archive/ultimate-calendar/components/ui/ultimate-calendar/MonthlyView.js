@@ -98,6 +98,7 @@ const MonthlyView = forwardRef(({
 
                 // Optimization
                 onScroll={onScroll}
+                scrollEventThrottle={16}
                 onViewableItemsChanged={onViewableItemsChanged}
                 viewabilityConfig={viewabilityConfig}
                 removeClippedSubviews={false} // Android: sometimes rendering issues with true inside complex views
