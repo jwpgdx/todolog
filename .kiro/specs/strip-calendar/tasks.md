@@ -200,17 +200,29 @@ This plan implements Strip Calendar using the approved requirements (R1-R25) and
 - [x] 29. Convert weekly navigation to swipe-intent-only interaction
   - Disable direct free horizontal list scrolling in weekly mode
   - Add horizontal swipe-intent threshold detection and route to existing prev/next week actions
-  - Add web horizontal wheel/trackpad intent mapping (`deltaX`) with one-shot cooldown guard
+  - Remove web horizontal wheel/trackpad intent mapping from weekly navigation path (PanResponder-only)
   - Keep weekly positioning/sync path index-based through existing programmatic `scrollToOffset`
   - _Requirements: R3, R12_
+
+- [x] 30. Normalize bottom mode-toggle interaction to swipe-only policy
+  - Remove bottom bar click/tap mode toggle action
+  - Apply mode-specific swipe direction rule:
+    - `Weekly_Mode` + swipe-down => `Monthly_Mode`
+    - `Monthly_Mode` + swipe-up => `Weekly_Mode`
+  - Keep header toggle button as explicit click-based mode switch path
+  - _Requirements: R7, R8_
 
 - [ ] 20. Checkpoint: Interaction and contract validation
   - Verify weekly horizontal navigation
   - Verify weekly free horizontal drag scrolling is blocked
   - Verify weekly swipe-intent detection triggers one week move per gesture
-  - Verify weekly web trackpad/wheel horizontal intent triggers one-shot week move
+  - Verify weekly web trackpad/wheel horizontal movement does not trigger week navigation
   - Verify monthly free scroll + week snap settle
   - Verify weekly <-> monthly anchor preservation
+  - Verify bottom toggle bar is swipe-only (click/tap does not toggle)
+  - Verify bottom swipe direction policy:
+    - `Weekly_Mode` + swipe-down => `Monthly_Mode`
+    - `Monthly_Mode` + swipe-up => `Weekly_Mode`
   - Verify first render starts at week containing `todayDate`
   - Verify mode switch does not show index-0 flash or glide from wrong week
   - Verify `<`/`>` week navigation remains animated

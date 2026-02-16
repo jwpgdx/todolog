@@ -1,7 +1,7 @@
 import React, { useMemo } from 'react';
-import { PanResponder, Pressable, StyleSheet, Text, View } from 'react-native';
+import { PanResponder, StyleSheet, Text, View } from 'react-native';
 
-export default function ModeToggleBar({ mode, onSwipeUp, onSwipeDown, onToggleMode }) {
+export default function ModeToggleBar({ mode, onSwipeUp, onSwipeDown }) {
   const panResponder = useMemo(
     () =>
       PanResponder.create({
@@ -22,10 +22,10 @@ export default function ModeToggleBar({ mode, onSwipeUp, onSwipeDown, onToggleMo
 
   return (
     <View style={styles.container} {...panResponder.panHandlers}>
-      <Pressable onPress={onToggleMode} style={styles.touchArea}>
+      <View style={styles.touchArea}>
         <View style={styles.bar} />
         <Text style={styles.chevron}>{mode === 'weekly' ? '˅' : '˄'}</Text>
-      </Pressable>
+      </View>
     </View>
   );
 }

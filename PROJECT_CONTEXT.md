@@ -202,8 +202,8 @@ Behavior:
 3. Weekly list:
    - horizontal FlashList (layout only), with direct user free horizontal scroll disabled
    - weekly movement is driven by one-shot intent detection:
-     - touch swipe threshold (`dx`) -> prev/next week action
-     - web horizontal wheel/trackpad intent (`deltaX`) -> same prev/next week action with cooldown guard
+     - touch/mouse drag swipe threshold (`dx`) -> prev/next week action
+     - web wheel/trackpad horizontal movement is not mapped to weekly navigation
    - viewport width from `onLayout`
    - explicit `scrollToOffset(index * viewportWidth)` sync for deterministic positioning
    - week settle quantization via `onMomentumScrollEnd` and web fallback settle after programmatic scroll
@@ -223,6 +223,10 @@ Behavior:
 7. Current integration surface:
    - active in `StripCalendarTestScreen`
    - main `TodoScreen` still uses the existing todo list path without strip-calendar mount
+8. Bottom mode-toggle interaction policy:
+   - bottom bar is swipe-only (click/tap toggle removed)
+   - `Weekly_Mode` + swipe-down => `Monthly_Mode`
+   - `Monthly_Mode` + swipe-up => `Weekly_Mode`
 
 ## 7. Key Files by Responsibility
 

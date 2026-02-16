@@ -280,13 +280,13 @@ export default function StripCalendarShell() {
   };
 
   const onSwipeUp = () => {
-    if (mode === 'weekly') {
+    if (mode === 'monthly') {
       onToggleMode();
     }
   };
 
   const onSwipeDown = () => {
-    if (mode === 'monthly') {
+    if (mode === 'weekly') {
       onToggleMode();
     }
   };
@@ -363,7 +363,6 @@ export default function StripCalendarShell() {
         mode={mode}
         onSwipeUp={onSwipeUp}
         onSwipeDown={onSwipeDown}
-        onToggleMode={onToggleMode}
       />
     </View>
   );

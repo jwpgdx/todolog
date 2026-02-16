@@ -123,8 +123,9 @@ Responsibilities:
 
 Responsibilities:
 
-- Swipe-up => monthly
-- Swipe-down => weekly
+- In `Weekly_Mode`, swipe-down => monthly
+- In `Monthly_Mode`, swipe-up => weekly
+- No click/tap toggle action on bottom bar (swipe-only)
 - No drag-to-resize interpolation
 
 ### 4. `WeeklyStripList` (FlashList, horizontal)
@@ -139,7 +140,7 @@ Responsibilities:
 - Use non-animated one-shot `scrollToOffset(index * viewportWidth)` for initial alignment after width is ready
 - Report settled visible week to controller via quantized settle path (`onMomentumScrollEnd` + web programmatic fallback)
 - Detect horizontal swipe intent by threshold and route to the same navigation actions as header arrows
-- On web, map horizontal wheel/trackpad intent (`deltaX`) to one-shot prev/next week actions with cooldown
+- Use PanResponder-based swipe intent only (no web wheel/trackpad mapping)
 
 ### 5. `MonthlyStripList` (FlashList, vertical)
 
@@ -378,7 +379,7 @@ The adapter summary path should remain compatible with existing date-string cont
 - **P21 Monthly Active-Phase Guard**: Idle/web settle is blocked while phase is `dragging`, `momentum`, or `programmatic`
 - **P22 Monthly Redundant-Settle Skip**: Near-snapped and same-week offsets do not schedule redundant idle settle
 - **P23 Weekly No-Free-Scroll UX**: Weekly mode does not expose free inertial horizontal scrolling behavior to users
-- **P24 Weekly Swipe-Intent Mapping**: Each threshold-crossing horizontal intent triggers at most one prev/next navigation action
+- **P24 Weekly Swipe-Intent Mapping**: PanResponder threshold-crossing horizontal intent triggers at most one prev/next navigation action, and web wheel/trackpad is not used for weekly navigation
 
 ## Testing Strategy
 
@@ -392,23 +393,27 @@ Because this project currently has no mandatory automated runner, testing is spl
 1. Weekly swipe and header arrows update week correctly
 2. Weekly mode does not allow free inertial horizontal drag scrolling
 3. Weekly swipe intent triggers exactly one week move per gesture
-4. Weekly web trackpad/wheel horizontal intent triggers one-shot week move with cooldown
+4. Weekly web trackpad/wheel horizontal movement does not trigger week navigation
 5. Monthly free scroll snaps to week boundaries without partial resting
 6. Weekly <-> Monthly preserves anchor week
-7. Monthly -> Weekly target rule:
+7. Bottom toggle bar mode switch direction is fixed:
+   - `Weekly_Mode` + swipe-down => `Monthly_Mode`
+   - `Monthly_Mode` + swipe-up => `Weekly_Mode`
+   - bottom toggle click/tap does not toggle mode
+8. Monthly -> Weekly target rule:
    - if current week is visible in monthly viewport, weekly shows current week
    - else weekly shows monthly top week
    - stale weekly target does not override resolved target
-8. Dot rules:
+9. Dot rules:
    - Same category many todos => one dot
    - 4+ unique categories => 3 dots + `+`
-9. Language/startDayOfWeek/timezone changes reflect immediately
-10. Today marker updates on timezone changes and app foreground return
-11. Offline mode still shows cached summaries and remains interactive
-12. Perf Monitor check: mode transition does not trigger repeated lower todo-list reflow/layout thrash
-13. Weekly mode: if today week is off-screen, header today button appears; click returns to today week and selects today
-14. Monthly mode: if today is outside visible 5-row window, header today button appears; click aligns today week to top and selects today
-15. Monthly settle guard behavior:
+10. Language/startDayOfWeek/timezone changes reflect immediately
+11. Today marker updates on timezone changes and app foreground return
+12. Offline mode still shows cached summaries and remains interactive
+13. Perf Monitor check: mode transition does not trigger repeated lower todo-list reflow/layout thrash
+14. Weekly mode: if today week is off-screen, header today button appears; click returns to today week and selects today
+15. Monthly mode: if today is outside visible 5-row window, header today button appears; click aligns today week to top and selects today
+16. Monthly settle guard behavior:
    - while dragging/momentum/programmatic, idle settle does not fire
    - near-snapped + same-week state does not trigger redundant settle
 

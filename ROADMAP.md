@@ -136,11 +136,15 @@ Evidence:
 - Strip-calendar weekly interaction policy revised to swipe-intent-only navigation
   - Disabled direct free horizontal inertial scrolling in weekly mode
   - Added one-shot horizontal swipe intent mapping to existing prev/next week actions
-  - Added web horizontal wheel/trackpad `deltaX` intent mapping with cooldown guard
+  - Removed web horizontal wheel/trackpad `deltaX` mapping from weekly navigation path (PanResponder-only)
+- Strip-calendar bottom mode-toggle policy finalized as swipe-only
+  - Removed bottom bar click/tap toggle action
+  - Direction policy: `Weekly_Mode` swipe-down => `Monthly_Mode`, `Monthly_Mode` swipe-up => `Weekly_Mode`
 
 Evidence:
 
 - `client/src/features/strip-calendar/ui/StripCalendarShell.js`
+- `client/src/features/strip-calendar/ui/ModeToggleBar.js`
 - `client/src/features/strip-calendar/hooks/useStripCalendarController.js`
 - `client/src/features/strip-calendar/utils/stripCalendarDateUtils.js`
 - `client/src/features/strip-calendar/ui/WeeklyStripList.js`

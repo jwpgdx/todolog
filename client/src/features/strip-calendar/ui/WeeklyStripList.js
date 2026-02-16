@@ -17,8 +17,6 @@ import { logStripCalendar } from '../utils/stripCalendarDebug';
 const SCREEN_WIDTH = Dimensions.get('window').width;
 const WEEKLY_SWIPE_ACTIVATION_DX = 12;
 const WEEKLY_SWIPE_TRIGGER_DX = 24;
-const WEEKLY_WEB_WHEEL_TRIGGER_DX = 40;
-const WEEKLY_WEB_WHEEL_COOLDOWN_MS = 220;
 
 export default function WeeklyStripList({
   weekStarts,
@@ -43,9 +41,6 @@ export default function WeeklyStripList({
   const pageLayoutLoggedRef = useRef(new Set());
   const scrollSampleCountRef = useRef(0);
   const viewabilityConfigRef = useRef({ itemVisiblePercentThreshold: WEEKLY_VIEWABILITY_PERCENT_THRESHOLD });
-  const wheelAccumDxRef = useRef(0);
-  const wheelCooldownRef = useRef(false);
-  const wheelCooldownTimerRef = useRef(null);
 
   const keyExtractor = useCallback((item) => item, []);
 
@@ -260,53 +255,6 @@ export default function WeeklyStripList({
     [onSwipeNextWeek, onSwipePrevWeek]
   );
 
-  const onWheel = useCallback(
-    (event) => {
-      if (Platform.OS !== 'web') return;
-      if (wheelCooldownRef.current) return;
-
-      const native = event?.nativeEvent || event;
-      const deltaX = native?.deltaX ?? 0;
-      const deltaY = native?.deltaY ?? 0;
-
-      if (Math.abs(deltaX) <= Math.abs(deltaY)) return;
-
-      wheelAccumDxRef.current += deltaX;
-      if (Math.abs(wheelAccumDxRef.current) < WEEKLY_WEB_WHEEL_TRIGGER_DX) return;
-
-      const direction = wheelAccumDxRef.current > 0 ? 'left' : 'right';
-      logStripCalendar('WeeklyStripList', 'swipe:detected:wheel', {
-        direction,
-        accumulatedDx: wheelAccumDxRef.current,
-      });
-
-      if (direction === 'left') {
-        onSwipeNextWeek?.();
-      } else {
-        onSwipePrevWeek?.();
-      }
-
-      wheelAccumDxRef.current = 0;
-      wheelCooldownRef.current = true;
-      if (wheelCooldownTimerRef.current) {
-        clearTimeout(wheelCooldownTimerRef.current);
-      }
-      wheelCooldownTimerRef.current = setTimeout(() => {
-        wheelCooldownRef.current = false;
-        wheelCooldownTimerRef.current = null;
-      }, WEEKLY_WEB_WHEEL_COOLDOWN_MS);
-    },
-    [onSwipeNextWeek, onSwipePrevWeek]
-  );
-
-  useEffect(() => {
-    return () => {
-      if (wheelCooldownTimerRef.current) {
-        clearTimeout(wheelCooldownTimerRef.current);
-      }
-    };
-  }, []);
-
   useEffect(() => {
     if (!targetWeekStart) return;
     const index = targetIndex;
@@ -384,7 +332,6 @@ export default function WeeklyStripList({
     <View
       style={[styles.listContainer, !isInitialAligned && styles.hiddenBeforeAlign]}
       {...panResponder.panHandlers}
-      onWheel={Platform.OS === 'web' ? onWheel : undefined}
       onLayout={(event) => {
         const width = Math.round(event.nativeEvent.layout.width || 0);
         if (width > 0 && width !== viewportWidth) {

@@ -66,7 +66,7 @@ Strip Calendar는 `TodoScreen` 메인 화면에서 날짜 선택을 담당하는
 4. THE navigation SHALL allow continuous week traversal (no hard boundary)
 5. THE `Weekly_Mode` SHALL NOT allow free horizontal inertial scrolling as user-facing behavior
 6. THE weekly horizontal interaction SHALL use swipe-intent detection (threshold-crossing) and trigger one navigation action per detected gesture
-7. On web input devices, horizontal trackpad/wheel intent MAY be mapped to the same one-shot weekly navigation rule
+7. On web input devices, horizontal trackpad/wheel movement SHALL NOT be used as weekly navigation trigger
 
 ### Requirement 4: Gesture Model Decision (Performance)
 
@@ -108,9 +108,10 @@ Strip Calendar는 `TodoScreen` 메인 화면에서 날짜 선택을 담당하는
 #### Acceptance Criteria
 
 1. THE calendar SHALL render a bottom `Mode_Toggle_Bar` with chevron-like indicator (`v`)
-2. WHEN user swipes up on toggle area, THEN mode SHALL switch to `Monthly_Mode`
-3. WHEN user swipes down on toggle area, THEN mode SHALL switch to `Weekly_Mode`
+2. WHEN user swipes down on toggle area in `Weekly_Mode`, THEN mode SHALL switch to `Monthly_Mode`
+3. WHEN user swipes up on toggle area in `Monthly_Mode`, THEN mode SHALL switch to `Weekly_Mode`
 4. THE toggle SHALL NOT support free-form drag height adjustment
+5. THE bottom toggle area SHALL be swipe-only and SHALL NOT provide click/tap mode toggle action
 
 ### Requirement 8: Header Controls
 
@@ -357,7 +358,7 @@ Strip Calendar는 `TodoScreen` 메인 화면에서 날짜 선택을 담당하는
 
 ### Resolved
 
-1. Weekly horizontal navigation implementation is resolved as `FlashList (horizontal + paging)` to keep architecture consistency with monthly FlashList and to avoid Pager/manual-virtualization divergence.
+1. Weekly horizontal navigation implementation is resolved as `FlashList (horizontal + programmatic positioning + swipe-intent-only)` to keep architecture consistency with monthly FlashList while avoiding free inertial scroll behavior.
 2. Adapter contract for this phase is resolved as `ensureRangeLoaded + selectDaySummaries` with range-based batch caching.
 
 ### Remaining Open Questions
