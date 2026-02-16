@@ -274,6 +274,8 @@ export default function StripCalendarShell() {
       return;
     }
 
+    // Prevent stale weekly target from overriding monthly->weekly transition result.
+    setWeeklyTargetWeekStart(null);
     handleToggleMode();
   };
 
@@ -302,6 +304,7 @@ export default function StripCalendarShell() {
       topWeekStart: weekStart,
     });
     setMonthlyTargetWeekStart(null);
+    setWeeklyTargetWeekStart(null);
     handleMonthlySettled(weekStart);
   };
 

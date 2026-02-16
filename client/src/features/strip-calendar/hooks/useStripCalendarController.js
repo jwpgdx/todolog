@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo } from 'react';
 import { useStripCalendarStore } from '../store/stripCalendarStore';
-import { isTodayVisibleInMonthlyViewport, toWeekStart } from '../utils/stripCalendarDateUtils';
+import { isDateVisibleInMonthlyViewport, isTodayVisibleInMonthlyViewport, toWeekStart } from '../utils/stripCalendarDateUtils';
 import { logStripCalendar } from '../utils/stripCalendarDebug';
 
 export function useStripCalendarController({ currentDate, setCurrentDate, todayDate, startDayOfWeek }) {
@@ -128,8 +128,20 @@ export function useStripCalendarController({ currentDate, setCurrentDate, todayD
       return;
     }
 
-    const nextWeek = monthlyTopWeekStart || currentWeekStart;
+    const baseTopWeekStart = monthlyTopWeekStart || currentWeekStart;
+    const isCurrentDateVisibleFromTop =
+      monthlyTopWeekStart && currentDate
+        ? isDateVisibleInMonthlyViewport(monthlyTopWeekStart, currentDate)
+        : true;
+    const nextWeek = isCurrentDateVisibleFromTop
+      ? (currentWeekStart || baseTopWeekStart)
+      : baseTopWeekStart;
+
     logStripCalendar('useStripCalendarController', 'action:handleToggleMode:toWeekly', {
+      baseTopWeekStart,
+      currentDate,
+      currentWeekStart,
+      isCurrentDateVisibleFromTop,
       nextWeek,
     });
     setWeeklyVisibleWeekStart(nextWeek);
@@ -138,6 +150,7 @@ export function useStripCalendarController({ currentDate, setCurrentDate, todayD
     evaluateTodayVisibility('weekly', nextWeek, monthlyTopWeekStart || nextWeek);
   }, [
     anchorWeekStart,
+    currentDate,
     currentWeekStart,
     evaluateTodayVisibility,
     mode,

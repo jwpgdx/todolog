@@ -1,6 +1,6 @@
 # Todolog Roadmap
 
-Last Updated: 2026-02-15
+Last Updated: 2026-02-16
 Owner: Product + Engineering
 
 ## 1. Purpose
@@ -123,6 +123,24 @@ Evidence:
 - `client/src/features/strip-calendar/utils/stripCalendarConstants.js`
 - `client/src/features/strip-calendar/utils/stripCalendarDebug.js`
 - `client/src/screens/StripCalendarTestScreen.js`
+
+### 2026-02-16
+
+- Strip-calendar monthly -> weekly target-resolution policy hardened
+  - Cleared stale `weeklyTargetWeekStart` on monthly settle and before monthly->weekly toggle
+  - Added one-shot mode-switch target policy:
+    - if `currentDate` week is visible in monthly 5-row viewport, prefer `currentWeekStart`
+    - otherwise use `monthlyTopWeekStart`
+  - Added generic monthly viewport date-visibility utility for consistent date-rule evaluation
+  - Updated strip-calendar specs (`requirements/tasks/design/log`) and final decision document
+
+Evidence:
+
+- `client/src/features/strip-calendar/ui/StripCalendarShell.js`
+- `client/src/features/strip-calendar/hooks/useStripCalendarController.js`
+- `client/src/features/strip-calendar/utils/stripCalendarDateUtils.js`
+- `.kiro/specs/strip-calendar/monthly-weekly-final-decision.md`
+- `.kiro/specs/strip-calendar/log.md`
 
 ## 4. Next Milestones (Planned)
 

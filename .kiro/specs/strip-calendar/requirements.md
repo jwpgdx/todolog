@@ -281,7 +281,7 @@ Strip Calendar는 `TodoScreen` 메인 화면에서 날짜 선택을 담당하는
 
 1. THE mode transition contract SHALL use `Anchor_Week_Start` as shared navigation anchor
 2. WHEN switching `Weekly_Mode -> Monthly_Mode`, THEN the week containing `Anchor_Week_Start` SHALL be aligned to the top visible row
-3. WHEN switching `Monthly_Mode -> Weekly_Mode`, THEN weekly view SHALL restore the week from current monthly top visible anchor
+3. WHEN switching `Monthly_Mode -> Weekly_Mode`, THEN weekly view SHALL resolve target week via the transition policy defined in Requirement 25
 4. IF transition animation is enabled, THEN it SHALL avoid per-frame height interpolation and SHALL use lightweight visual transition primitives (e.g., transform/opacity) on Reanimated UI thread
 5. THE final layout height SHALL be committed once at transition end (not continuously every frame)
 6. THE transition path SHALL preserve UX continuity even when animation is reduced or disabled
@@ -317,6 +317,19 @@ Strip Calendar는 `TodoScreen` 메인 화면에서 날짜 선택을 담당하는
 7. THE visibility evaluation and show/hide update of `Today_Jump_Button` SHALL run on settled navigation callbacks (`onMomentumScrollEnd` or equivalent), not per-frame `onScroll`
 8. `Today_Date` used by this behavior SHALL follow shared timezone-aware derived path (`useTodayDate`)
 9. THE initial visibility state of `Today_Jump_Button` SHALL be evaluated on first render using the initial viewport snapshot (before first momentum event)
+
+### Requirement 25: Monthly->Weekly Target Resolution Policy
+
+**User Story:** 사용자로서, 월간에서 주간으로 돌아갈 때 내가 보고 있던 문맥이 일관되게 반영되길 원합니다.
+
+#### Acceptance Criteria
+
+1. WHEN switching `Monthly_Mode -> Weekly_Mode`, THEN THE system SHALL clear stale weekly transition target state before resolving next weekly target
+2. THE transition target SHALL use `monthlyTopWeekStart` as base anchor
+3. IF `currentDate` week is inside the current monthly visible viewport window (5 rows from `monthlyTopWeekStart`), THEN THE weekly target SHALL be `currentWeekStart`
+4. IF `currentDate` week is outside the current monthly visible viewport window, THEN THE weekly target SHALL be `monthlyTopWeekStart`
+5. THE target resolution in this requirement SHALL run once at mode-switch event time and SHALL NOT run on per-frame `onScroll`
+6. AFTER mode-switch target resolution, stale weekly target state SHALL NOT override the resolved weekly target during weekly mount
 
 ## Scope for This Draft
 

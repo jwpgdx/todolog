@@ -30,9 +30,13 @@ export function isDateInInclusiveRange(dateYmd, startYmd, endYmd) {
   return dateYmd >= startYmd && dateYmd <= endYmd;
 }
 
-export function isTodayVisibleInMonthlyViewport(topWeekStart, todayDate) {
+export function isDateVisibleInMonthlyViewport(topWeekStart, dateYmd) {
   const endDate = addDays(topWeekStart, MONTHLY_VISIBLE_WEEK_COUNT * WEEKDAY_COUNT - 1);
-  return isDateInInclusiveRange(todayDate, topWeekStart, endDate);
+  return isDateInInclusiveRange(dateYmd, topWeekStart, endDate);
+}
+
+export function isTodayVisibleInMonthlyViewport(topWeekStart, todayDate) {
+  return isDateVisibleInMonthlyViewport(topWeekStart, todayDate);
 }
 
 export function createWeekWindow(todayWeekStart) {

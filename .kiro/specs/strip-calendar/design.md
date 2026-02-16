@@ -12,7 +12,7 @@ This feature must keep main-screen performance stable while supporting:
 - Today/currentDate differentiated visuals (today=bold, currentDate=circle)
 - Header today-jump behavior when today is outside viewport
 
-This design follows `requirements.md` (R1-R24) and keeps data integration aligned with the Phase 3 recurrence single-path strategy.
+This design follows `requirements.md` (R1-R25) and keeps data integration aligned with the Phase 3 recurrence single-path strategy.
 
 ## Decision Summary
 
@@ -259,14 +259,20 @@ Result:
 
 ### Monthly -> Weekly
 
-1. Read current monthly top settled week as anchor
-2. Switch mode to weekly
-3. Mount weekly list aligned to anchor week
-4. Ensure weekly range (anchor week + prefetch buffer) is loaded
+1. Resolve base anchor:
+   - `baseTopWeekStart = monthlyTopWeekStart || currentWeekStart`
+2. Clear stale weekly transition target in shell before switching mode
+3. Resolve weekly target once at mode-switch time:
+   - if `currentDate` week is inside monthly 5-row viewport from `baseTopWeekStart`, use `currentWeekStart`
+   - otherwise use `baseTopWeekStart`
+4. Switch mode to weekly
+5. Mount weekly list aligned to resolved target week
+6. Ensure weekly range (target week + prefetch buffer) is loaded
 
 Result:
 
-- Previously viewed week stays visible in weekly mode
+- Monthly top context is preserved unless current week is already visible in monthly viewport
+- Stale weekly target must not override mode-switch decision
 
 ### Positioning Timing Policy
 
@@ -359,6 +365,8 @@ The adapter summary path should remain compatible with existing date-string cont
 - **P16 Selected Visual Rule**: Selected-only cell renders circle indicator
 - **P17 Today Jump Visibility**: Today button is visible iff today is outside current mode viewport
 - **P18 Today Jump Action**: Today button sets `currentDate=todayDate` and navigates to today week according to mode rule
+- **P19 M->W Stale Target Reset**: Stale weekly target state is cleared before monthly->weekly rendering path
+- **P20 M->W Single-Pass Resolution**: Monthly->weekly target is resolved once per toggle and never on per-frame `onScroll`
 
 ## Testing Strategy
 
@@ -372,15 +380,19 @@ Because this project currently has no mandatory automated runner, testing is spl
 1. Weekly swipe and header arrows update week correctly
 2. Monthly free scroll snaps to week boundaries without partial resting
 3. Weekly <-> Monthly preserves anchor week
-4. Dot rules:
+4. Monthly -> Weekly target rule:
+   - if current week is visible in monthly viewport, weekly shows current week
+   - else weekly shows monthly top week
+   - stale weekly target does not override resolved target
+5. Dot rules:
    - Same category many todos => one dot
    - 4+ unique categories => 3 dots + `+`
-5. Language/startDayOfWeek/timezone changes reflect immediately
-6. Today marker updates on timezone changes and app foreground return
-7. Offline mode still shows cached summaries and remains interactive
-8. Perf Monitor check: mode transition does not trigger repeated lower todo-list reflow/layout thrash
-9. Weekly mode: if today week is off-screen, header today button appears; click returns to today week and selects today
-10. Monthly mode: if today is outside visible 5-row window, header today button appears; click aligns today week to top and selects today
+6. Language/startDayOfWeek/timezone changes reflect immediately
+7. Today marker updates on timezone changes and app foreground return
+8. Offline mode still shows cached summaries and remains interactive
+9. Perf Monitor check: mode transition does not trigger repeated lower todo-list reflow/layout thrash
+10. Weekly mode: if today week is off-screen, header today button appears; click returns to today week and selects today
+11. Monthly mode: if today is outside visible 5-row window, header today button appears; click aligns today week to top and selects today
 
 ### Optional Automated Tests
 
@@ -393,7 +405,7 @@ Unit tests:
 
 Property tests:
 
-- P1-P18 repeated randomized validation
+- P1-P20 repeated randomized validation
 - Tag format: `Feature: strip-calendar, Property Px`
 
 ## Debug Observability (Anchor Drift / Glide)

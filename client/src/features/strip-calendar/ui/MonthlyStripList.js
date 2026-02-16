@@ -32,6 +32,7 @@ function createInitialScrollState() {
     lastSyncedTarget: null,
     isProgrammatic: false,
     settleTimer: null,
+    programmaticGuardTimer: null,
   };
 }
 
@@ -75,6 +76,32 @@ export default function MonthlyStripList({
   );
 
   // --- Core settle logic ---
+  const armProgrammaticGuard = useCallback(
+    (reason) => {
+      const state = scrollStateRef.current;
+      state.phase = 'programmatic';
+      state.isProgrammatic = true;
+
+      if (state.programmaticGuardTimer) {
+        clearTimeout(state.programmaticGuardTimer);
+        state.programmaticGuardTimer = null;
+      }
+
+      state.programmaticGuardTimer = setTimeout(() => {
+        const latest = scrollStateRef.current;
+        if (latest.phase === 'programmatic') {
+          latest.phase = 'idle';
+        }
+        latest.isProgrammatic = false;
+        latest.programmaticGuardTimer = null;
+        logStripCalendar('MonthlyStripList', 'guard:programmaticReleased', {
+          reason,
+          guardMs: MONTHLY_PROGRAMMATIC_GUARD_MS,
+        });
+      }, MONTHLY_PROGRAMMATIC_GUARD_MS);
+    },
+    []
+  );
 
   const executeSettle = useCallback(
     (offsetY, source) => {
@@ -108,6 +135,7 @@ export default function MonthlyStripList({
           snappedOffset,
           drift,
         });
+        armProgrammaticGuard('quantizeCorrection');
         listRef.current?.scrollToOffset({ offset: snappedOffset, animated: false });
       }
 
@@ -129,11 +157,10 @@ export default function MonthlyStripList({
       requestAnimationFrame(() => {
         if (scrollStateRef.current.phase === 'settling') {
           scrollStateRef.current.phase = 'idle';
-          scrollStateRef.current.isProgrammatic = false;
         }
       });
     },
-    [onTopWeekSettled, weekStarts]
+    [armProgrammaticGuard, onTopWeekSettled, weekStarts]
   );
 
   const requestSettle = useCallback(
@@ -149,8 +176,9 @@ export default function MonthlyStripList({
         return;
       }
 
-      // Programmatic guard: ignore user-origin settle during programmatic scroll
-      if (state.isProgrammatic && source !== 'fallbackProgrammatic') {
+      // Programmatic guard: block only idle/web-origin settle while programmatic scroll is active.
+      // momentumEnd/fallbackProgrammatic are valid settle points.
+      if (state.isProgrammatic && source === 'scrollIdleWeb') {
         logStripCalendar('MonthlyStripList', 'settle:rejected:programmatic', {
           source,
         });
@@ -170,7 +198,19 @@ export default function MonthlyStripList({
         // Web idle: debounce
         state.settleTimer = setTimeout(() => {
           state.settleTimer = null;
-          if (state.phase === 'settling') return; // re-check after delay
+          const latest = scrollStateRef.current;
+          if (
+            latest.phase === 'settling' ||
+            latest.phase === 'dragging' ||
+            latest.phase === 'momentum' ||
+            latest.phase === 'programmatic'
+          ) {
+            logStripCalendar('MonthlyStripList', 'settle:debounceSkippedByPhase', {
+              source,
+              phase: latest.phase,
+            });
+            return;
+          }
           executeSettle(scrollStateRef.current.lastOffset, source);
         }, MONTHLY_IDLE_SETTLE_DELAY_MS);
       }
@@ -213,6 +253,7 @@ export default function MonthlyStripList({
 
       // On web, momentum events may not fire. If velocity is near zero, settle now.
       if (Platform.OS === 'web' && Math.abs(velocityY) < 0.1) {
+        state.phase = 'idle';
         requestSettle(state.lastOffset, 'scrollIdleWeb');
       }
     },
@@ -237,10 +278,27 @@ export default function MonthlyStripList({
         state.phase !== 'programmatic' &&
         state.phase !== 'settling'
       ) {
+        const maxIndex = weekStarts.length - 1;
+        const rawIndex = offsetY / WEEK_ROW_HEIGHT;
+        const snappedIndex = Math.max(0, Math.min(maxIndex, Math.round(rawIndex)));
+        const snappedOffset = snappedIndex * WEEK_ROW_HEIGHT;
+        const drift = offsetY - snappedOffset;
+        const nearSnapped = Math.abs(drift) <= MONTHLY_DRIFT_CORRECTION_THRESHOLD_PX;
+        const snappedWeekStart = weekStarts[snappedIndex];
+        const sameAsLastSettled = state.lastEmittedWeekStart === snappedWeekStart;
+
+        if (nearSnapped && sameAsLastSettled) {
+          if (state.settleTimer) {
+            clearTimeout(state.settleTimer);
+            state.settleTimer = null;
+          }
+          return;
+        }
+
         requestSettle(offsetY, 'scrollIdleWeb');
       }
     },
-    [requestSettle]
+    [requestSettle, weekStarts]
   );
 
   // --- Sync / programmatic scroll ---
@@ -278,6 +336,9 @@ export default function MonthlyStripList({
       if (state.settleTimer) {
         clearTimeout(state.settleTimer);
       }
+      if (state.programmaticGuardTimer) {
+        clearTimeout(state.programmaticGuardTimer);
+      }
       logStripCalendar('MonthlyStripList', 'unmount', {
         targetTopWeekStart,
       });
@@ -313,8 +374,7 @@ export default function MonthlyStripList({
 
     // Mark as programmatic to prevent idle settle from firing during scroll
     state.lastSyncedTarget = targetTopWeekStart;
-    state.phase = 'programmatic';
-    state.isProgrammatic = true;
+    armProgrammaticGuard('targetSync');
 
     // Clear any pending settle timer
     if (state.settleTimer) {
@@ -325,15 +385,15 @@ export default function MonthlyStripList({
     if (isInitialSync) {
       const timeoutId = setTimeout(() => {
         setIsInitialAligned(true);
-        state.phase = 'idle';
-        state.isProgrammatic = false;
         logStripCalendar('MonthlyStripList', 'sync:initialAlignmentDone', {
           targetTopWeekStart,
           index,
         });
       }, 0);
 
-      return () => clearTimeout(timeoutId);
+      return () => {
+        clearTimeout(timeoutId);
+      };
     }
 
     requestAnimationFrame(() => {
@@ -355,7 +415,7 @@ export default function MonthlyStripList({
     }
 
     return undefined;
-  }, [scrollAnimated, requestSettle, targetIndex, targetTopWeekStart]);
+  }, [armProgrammaticGuard, scrollAnimated, requestSettle, targetIndex, targetTopWeekStart]);
 
   return (
     <View style={[styles.viewport, !isInitialAligned && styles.hiddenBeforeAlign]}>

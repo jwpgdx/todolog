@@ -2,7 +2,7 @@
 
 ## Overview
 
-This plan implements Strip Calendar using the approved requirements (R1-R24) and design decisions:
+This plan implements Strip Calendar using the approved requirements (R1-R25) and design decisions:
 
 - Separate weekly/monthly FlashList components
 - Shared range-based data adapter path
@@ -180,6 +180,16 @@ This plan implements Strip Calendar using the approved requirements (R1-R24) and
   - `scrollToIndex` fail fallback to offset
   - _Requirements: R12, R21, R22_
 
+- [x] 27. Fix Monthly->Weekly target resolution policy and stale-target override
+  - Add monthly viewport date-visibility utility (`isDateVisibleInMonthlyViewport`)
+  - Clear stale `weeklyTargetWeekStart` on `Monthly_Mode -> Weekly_Mode` toggle path
+  - Clear stale `weeklyTargetWeekStart` when monthly settle is committed
+  - Resolve `nextWeek` once at mode-switch:
+    - use `currentWeekStart` if `currentDate` is visible in monthly 5-row viewport
+    - otherwise use `monthlyTopWeekStart` fallback
+  - Extend transition debug payload for weekly target decision (`baseTopWeekStart`, `isCurrentDateVisibleFromTop`)
+  - _Requirements: R22, R25_
+
 - [ ] 20. Checkpoint: Interaction and contract validation
   - Verify weekly horizontal navigation
   - Verify monthly free scroll + week snap settle
@@ -233,7 +243,7 @@ This plan implements Strip Calendar using the approved requirements (R1-R24) and
   - Verify requirements coverage and no unresolved blockers
   - Update docs if implementation decisions changed
   - Prepare merge with summary of risks and follow-ups
-  - _Requirements: R1-R24_
+  - _Requirements: R1-R25_
 
 ## Requirements Traceability Matrix
 
@@ -258,9 +268,10 @@ This plan implements Strip Calendar using the approved requirements (R1-R24) and
 - R19: Tasks 1, 11, 12, 14
 - R20: Tasks 4, 5, 6, 8, 18, 23
 - R21: Tasks 6, 8, 11, 12, 19, 23
-- R22: Tasks 2, 6, 7, 11, 12, 14, 19, 20, 24, 25
+- R22: Tasks 2, 6, 7, 11, 12, 14, 19, 20, 24, 25, 27
 - R23: Tasks 9, 21
 - R24: Tasks 7, 8, 13, 20
+- R25: Tasks 20, 27
 
 ## Notes
 

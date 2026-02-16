@@ -1,6 +1,6 @@
 # Todolog Project Context
 
-Last Updated: 2026-02-15
+Last Updated: 2026-02-16
 Status: Phase 2.5 complete, strip-calendar stabilization in progress, Phase 3 not started
 
 ## 1. Purpose
@@ -211,7 +211,13 @@ Behavior:
 5. Data summary path is intentionally disabled at runtime:
    - `ENABLE_STRIP_CALENDAR_SUMMARY = false`
    - dot rendering currently uses empty summary payloads only
-6. Current integration surface:
+6. Monthly -> Weekly target resolution policy:
+   - stale weekly transition target is cleared in shell on monthly settle and before monthly->weekly toggle
+   - transition target is resolved once at mode-switch time (no per-frame `onScroll` evaluation)
+   - base target is `monthlyTopWeekStart` (fallback: `currentWeekStart`)
+   - if `currentDate` week is inside current monthly 5-row viewport, weekly target prefers `currentWeekStart`
+   - if outside viewport, weekly target uses `monthlyTopWeekStart`
+7. Current integration surface:
    - active in `StripCalendarTestScreen`
    - main `TodoScreen` still uses the existing todo list path without strip-calendar mount
 
