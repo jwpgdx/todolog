@@ -339,6 +339,8 @@ export default function StripCalendarShell() {
             getSummaryByDate={getSummaryByDate}
             onDayPress={handleDayPress}
             onWeekSettled={onWeeklySettled}
+            onSwipePrevWeek={onPrevWeek}
+            onSwipeNextWeek={onNextWeek}
             scrollAnimated={scrollAnimated}
           />
         ) : null}

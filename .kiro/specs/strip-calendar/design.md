@@ -133,10 +133,13 @@ Responsibilities:
 
 - Display exactly one week row in viewport
 - Handle left/right week navigation
+- Keep list horizontal layout for deterministic index-based positioning, but disable direct free user horizontal scrolling
 - Use `snapToInterval={viewportWidth}` + `snapToAlignment="start"` (no `pagingEnabled`)
 - Derive `viewportWidth` from list container `onLayout`
 - Use non-animated one-shot `scrollToOffset(index * viewportWidth)` for initial alignment after width is ready
 - Report settled visible week to controller via quantized settle path (`onMomentumScrollEnd` + web programmatic fallback)
+- Detect horizontal swipe intent by threshold and route to the same navigation actions as header arrows
+- On web, map horizontal wheel/trackpad intent (`deltaX`) to one-shot prev/next week actions with cooldown
 
 ### 5. `MonthlyStripList` (FlashList, vertical)
 
@@ -149,9 +152,14 @@ Responsibilities:
   - `decelerationRate="fast"`
 - Use `initialScrollIndex` based on top target week for first mount alignment
 - Keep 5-row visible window and infinite semantics
+- Settle flow must be controlled by phase state machine to avoid re-entrant corrections
+  - phases: `idle`, `dragging`, `momentum`, `settling`, `programmatic`
 - Report top visible settled week through shared settle quantization path
   - primary: `onMomentumScrollEnd`
   - web fallback: idle timer settle on `onScroll` with guard/cooldown/re-arm controls
+  - idle/web settle must be skipped while phase is active (`dragging`, `momentum`, `programmatic`)
+  - quantize correction must arm a short programmatic guard before correction scroll
+  - near-snapped + same-week case should skip redundant idle settle scheduling
 
 ### 6. `WeekRow`
 
@@ -367,6 +375,10 @@ The adapter summary path should remain compatible with existing date-string cont
 - **P18 Today Jump Action**: Today button sets `currentDate=todayDate` and navigates to today week according to mode rule
 - **P19 M->W Stale Target Reset**: Stale weekly target state is cleared before monthly->weekly rendering path
 - **P20 M->W Single-Pass Resolution**: Monthly->weekly target is resolved once per toggle and never on per-frame `onScroll`
+- **P21 Monthly Active-Phase Guard**: Idle/web settle is blocked while phase is `dragging`, `momentum`, or `programmatic`
+- **P22 Monthly Redundant-Settle Skip**: Near-snapped and same-week offsets do not schedule redundant idle settle
+- **P23 Weekly No-Free-Scroll UX**: Weekly mode does not expose free inertial horizontal scrolling behavior to users
+- **P24 Weekly Swipe-Intent Mapping**: Each threshold-crossing horizontal intent triggers at most one prev/next navigation action
 
 ## Testing Strategy
 
@@ -378,21 +390,27 @@ Because this project currently has no mandatory automated runner, testing is spl
 ### Manual Test Matrix
 
 1. Weekly swipe and header arrows update week correctly
-2. Monthly free scroll snaps to week boundaries without partial resting
-3. Weekly <-> Monthly preserves anchor week
-4. Monthly -> Weekly target rule:
+2. Weekly mode does not allow free inertial horizontal drag scrolling
+3. Weekly swipe intent triggers exactly one week move per gesture
+4. Weekly web trackpad/wheel horizontal intent triggers one-shot week move with cooldown
+5. Monthly free scroll snaps to week boundaries without partial resting
+6. Weekly <-> Monthly preserves anchor week
+7. Monthly -> Weekly target rule:
    - if current week is visible in monthly viewport, weekly shows current week
    - else weekly shows monthly top week
    - stale weekly target does not override resolved target
-5. Dot rules:
+8. Dot rules:
    - Same category many todos => one dot
    - 4+ unique categories => 3 dots + `+`
-6. Language/startDayOfWeek/timezone changes reflect immediately
-7. Today marker updates on timezone changes and app foreground return
-8. Offline mode still shows cached summaries and remains interactive
-9. Perf Monitor check: mode transition does not trigger repeated lower todo-list reflow/layout thrash
-10. Weekly mode: if today week is off-screen, header today button appears; click returns to today week and selects today
-11. Monthly mode: if today is outside visible 5-row window, header today button appears; click aligns today week to top and selects today
+9. Language/startDayOfWeek/timezone changes reflect immediately
+10. Today marker updates on timezone changes and app foreground return
+11. Offline mode still shows cached summaries and remains interactive
+12. Perf Monitor check: mode transition does not trigger repeated lower todo-list reflow/layout thrash
+13. Weekly mode: if today week is off-screen, header today button appears; click returns to today week and selects today
+14. Monthly mode: if today is outside visible 5-row window, header today button appears; click aligns today week to top and selects today
+15. Monthly settle guard behavior:
+   - while dragging/momentum/programmatic, idle settle does not fire
+   - near-snapped + same-week state does not trigger redundant settle
 
 ### Optional Automated Tests
 
@@ -405,7 +423,7 @@ Unit tests:
 
 Property tests:
 
-- P1-P20 repeated randomized validation
+- P1-P24 repeated randomized validation
 - Tag format: `Feature: strip-calendar, Property Px`
 
 ## Debug Observability (Anchor Drift / Glide)

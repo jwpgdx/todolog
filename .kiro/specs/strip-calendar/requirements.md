@@ -64,6 +64,9 @@ Strip Calendar는 `TodoScreen` 메인 화면에서 날짜 선택을 담당하는
 2. WHEN swiping left, THEN THE calendar SHALL move to next week
 3. WHEN swiping right, THEN THE calendar SHALL move to previous week
 4. THE navigation SHALL allow continuous week traversal (no hard boundary)
+5. THE `Weekly_Mode` SHALL NOT allow free horizontal inertial scrolling as user-facing behavior
+6. THE weekly horizontal interaction SHALL use swipe-intent detection (threshold-crossing) and trigger one navigation action per detected gesture
+7. On web input devices, horizontal trackpad/wheel intent MAY be mapped to the same one-shot weekly navigation rule
 
 ### Requirement 4: Gesture Model Decision (Performance)
 
@@ -223,6 +226,8 @@ Strip Calendar는 `TodoScreen` 메인 화면에서 날짜 선택을 담당하는
 4. THE monthly list SHALL set `decelerationRate="fast"` to reduce over-glide after finger release
 5. WHEN the user stops scrolling, THEN the visible content SHALL settle on week-row boundaries without partial-row resting states
 6. THE week-snap behavior SHALL preserve smooth transition intent for `Monthly_Mode -> Weekly_Mode` anchoring
+7. THE monthly settle path SHALL NOT execute idle-settle correction while scroll phase is active (`dragging`, `momentum`, or `programmatic`)
+8. IF monthly offset is already within drift threshold of snapped week and resolved week is unchanged, THEN THE system SHALL skip redundant settle scheduling
 
 ### Requirement 18: Today Marker with Timezone-Aware Derived Date
 

@@ -132,15 +132,21 @@ Evidence:
     - if `currentDate` week is visible in monthly 5-row viewport, prefer `currentWeekStart`
     - otherwise use `monthlyTopWeekStart`
   - Added generic monthly viewport date-visibility utility for consistent date-rule evaluation
-  - Updated strip-calendar specs (`requirements/tasks/design/log`) and final decision document
+  - Updated strip-calendar specs (`requirements/tasks/design`) to lock transition rule
+- Strip-calendar weekly interaction policy revised to swipe-intent-only navigation
+  - Disabled direct free horizontal inertial scrolling in weekly mode
+  - Added one-shot horizontal swipe intent mapping to existing prev/next week actions
+  - Added web horizontal wheel/trackpad `deltaX` intent mapping with cooldown guard
 
 Evidence:
 
 - `client/src/features/strip-calendar/ui/StripCalendarShell.js`
 - `client/src/features/strip-calendar/hooks/useStripCalendarController.js`
 - `client/src/features/strip-calendar/utils/stripCalendarDateUtils.js`
-- `.kiro/specs/strip-calendar/monthly-weekly-final-decision.md`
-- `.kiro/specs/strip-calendar/log.md`
+- `client/src/features/strip-calendar/ui/WeeklyStripList.js`
+- `.kiro/specs/strip-calendar/requirements.md`
+- `.kiro/specs/strip-calendar/design.md`
+- `.kiro/specs/strip-calendar/tasks.md`
 
 ## 4. Next Milestones (Planned)
 

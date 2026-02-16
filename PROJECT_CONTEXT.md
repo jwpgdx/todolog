@@ -200,9 +200,12 @@ Behavior:
 1. `StripCalendarShell` bootstraps weekly mode using `todayWeekStart` as initial anchor.
 2. Weekly and monthly lists are separated components (`WeeklyStripList`, `MonthlyStripList`) and only one is mounted by mode.
 3. Weekly list:
-   - horizontal FlashList
+   - horizontal FlashList (layout only), with direct user free horizontal scroll disabled
+   - weekly movement is driven by one-shot intent detection:
+     - touch swipe threshold (`dx`) -> prev/next week action
+     - web horizontal wheel/trackpad intent (`deltaX`) -> same prev/next week action with cooldown guard
    - viewport width from `onLayout`
-   - explicit `scrollToOffset(index * viewportWidth)` sync
+   - explicit `scrollToOffset(index * viewportWidth)` sync for deterministic positioning
    - week settle quantization via `onMomentumScrollEnd` and web fallback settle after programmatic scroll
 4. Monthly list:
    - vertical FlashList

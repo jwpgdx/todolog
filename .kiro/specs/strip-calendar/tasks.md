@@ -190,8 +190,25 @@ This plan implements Strip Calendar using the approved requirements (R1-R25) and
   - Extend transition debug payload for weekly target decision (`baseTopWeekStart`, `isCurrentDateVisibleFromTop`)
   - _Requirements: R22, R25_
 
+- [x] 28. Stabilize monthly settle re-entry and redundant correction behavior
+  - Add phase-aware guard so web idle settle does not execute during active scroll phases (`dragging`, `momentum`, `programmatic`)
+  - Arm/reuse programmatic guard around correction scroll and target sync to avoid correction -> onScroll -> settle loops
+  - Skip idle settle scheduling when offset is already near snapped position and settled week is unchanged
+  - Tune monthly drift correction threshold for reduced micro-correction churn in web scrolling
+  - _Requirements: R17, R21_
+
+- [x] 29. Convert weekly navigation to swipe-intent-only interaction
+  - Disable direct free horizontal list scrolling in weekly mode
+  - Add horizontal swipe-intent threshold detection and route to existing prev/next week actions
+  - Add web horizontal wheel/trackpad intent mapping (`deltaX`) with one-shot cooldown guard
+  - Keep weekly positioning/sync path index-based through existing programmatic `scrollToOffset`
+  - _Requirements: R3, R12_
+
 - [ ] 20. Checkpoint: Interaction and contract validation
   - Verify weekly horizontal navigation
+  - Verify weekly free horizontal drag scrolling is blocked
+  - Verify weekly swipe-intent detection triggers one week move per gesture
+  - Verify weekly web trackpad/wheel horizontal intent triggers one-shot week move
   - Verify monthly free scroll + week snap settle
   - Verify weekly <-> monthly anchor preservation
   - Verify first render starts at week containing `todayDate`
@@ -224,6 +241,8 @@ This plan implements Strip Calendar using the approved requirements (R1-R25) and
   - Confirm anchor/data updates are triggered only from `onMomentumScrollEnd`
   - Confirm batch range loading and cache dedupe behavior
   - Confirm monthly fast scroll has no blank-area regression
+  - Confirm monthly settle does not fire during active drag/momentum/programmatic phases
+  - Confirm near-snapped + same-week state does not repeatedly schedule idle settle
   - Confirm via React Native Perf Monitor that mode transition does not cause unnecessary lower-list reflow/layout thrash
   - Confirm debug logs show no unintended extra `scrollToIndex` on mode switch
   - _Requirements: R12, R13, R20, R21_
@@ -233,10 +252,10 @@ This plan implements Strip Calendar using the approved requirements (R1-R25) and
   - Test anchor conversion and transition mapping
   - _Requirements: R2, R9, R22_
 
-- [ ]* 25. Optional property-based tests (P1-P18)
+- [ ]* 25. Optional property-based tests (P1-P24)
   - Use `fast-check` when test runner is enabled
   - Validate design properties:
-    - P1..P18 from `design.md`
+    - P1..P24 from `design.md`
   - _Requirements: R2, R5, R10, R16, R18, R20, R21, R22, R23, R24_
 
 - [ ] 26. Final checkpoint and rollout readiness
@@ -249,7 +268,7 @@ This plan implements Strip Calendar using the approved requirements (R1-R25) and
 
 - R1: Tasks 1, 16, 17, 20
 - R2: Tasks 2, 10, 11, 22, 24
-- R3: Tasks 7, 11, 20
+- R3: Tasks 7, 11, 20, 29
 - R4: Tasks 14
 - R5: Tasks 2, 10, 12, 20, 22
 - R6: Tasks 12, 14
@@ -258,16 +277,16 @@ This plan implements Strip Calendar using the approved requirements (R1-R25) and
 - R9: Tasks 2, 10, 24
 - R10: Tasks 5, 9, 21, 25
 - R11: Tasks 6, 16, 17, 20
-- R12: Tasks 1, 6, 14, 19, 23
+- R12: Tasks 1, 6, 14, 19, 23, 29
 - R13: Tasks 12, 23
 - R14: Tasks 4, 5
 - R15: Tasks 4, 5
 - R16: Tasks 3, 15, 22
-- R17: Tasks 12, 20
+- R17: Tasks 12, 20, 28
 - R18: Tasks 9, 15, 21
 - R19: Tasks 1, 11, 12, 14
 - R20: Tasks 4, 5, 6, 8, 18, 23
-- R21: Tasks 6, 8, 11, 12, 19, 23
+- R21: Tasks 6, 8, 11, 12, 19, 23, 28
 - R22: Tasks 2, 6, 7, 11, 12, 14, 19, 20, 24, 25, 27
 - R23: Tasks 9, 21
 - R24: Tasks 7, 8, 13, 20
