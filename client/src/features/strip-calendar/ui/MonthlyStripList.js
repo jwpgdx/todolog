@@ -6,19 +6,34 @@ import { getWeekDates } from '../utils/stripCalendarDateUtils';
 import {
   DEBUG_STRIP_CALENDAR,
   MONTHLY_DRIFT_CORRECTION_THRESHOLD_PX,
-  MONTHLY_SCROLL_SAMPLE_LIMIT,
+  MONTHLY_IDLE_SETTLE_DELAY_MS,
+  MONTHLY_PROGRAMMATIC_GUARD_MS,
+  MONTHLY_PROGRAMMATIC_SETTLE_DELAY_MS,
   MONTHLY_VISIBLE_WEEK_COUNT,
-  MONTHLY_WEB_CORRECTION_COOLDOWN_MS,
-  MONTHLY_WEB_IDLE_REARM_THRESHOLD_PX,
-  MONTHLY_WEB_IDLE_SETTLE_DELAY_MS,
-  MONTHLY_WEB_INITIAL_IDLE_GUARD_MS,
-  MONTHLY_MIN_SCROLL_DELTA_PX,
-  MONTHLY_WEB_PROGRAMMATIC_SCROLL_GUARD_MS,
-  MONTHLY_WEB_PROGRAMMATIC_SETTLE_DELAY_MS,
-  MONTHLY_WEB_SETTLE_HARD_COOLDOWN_MS,
   WEEK_ROW_HEIGHT,
 } from '../utils/stripCalendarConstants';
 import { logStripCalendar } from '../utils/stripCalendarDebug';
+
+/**
+ * Scroll phase state machine:
+ *   idle → dragging → momentum → settling → idle       (native)
+ *   idle → dragging → settling → idle                   (web, momentum absent)
+ *   idle → programmatic → settling → idle               (programmatic scroll)
+ *
+ * Phase 'settling' provides mutual exclusion:
+ * all settle entry points are routed through requestSettle(),
+ * which rejects concurrent requests while phase === 'settling'.
+ */
+function createInitialScrollState() {
+  return {
+    phase: 'idle',             // 'idle' | 'dragging' | 'momentum' | 'settling' | 'programmatic'
+    lastOffset: 0,
+    lastEmittedWeekStart: null,
+    lastSyncedTarget: null,
+    isProgrammatic: false,
+    settleTimer: null,
+  };
+}
 
 export default function MonthlyStripList({
   weekStarts,
@@ -32,22 +47,8 @@ export default function MonthlyStripList({
   scrollAnimated = false,
 }) {
   const listRef = useRef(null);
-  const lastSyncedTargetRef = useRef(null);
-  const lastEmittedSettledRef = useRef(null);
+  const scrollStateRef = useRef(createInitialScrollState());
   const hasInitializedSyncRef = useRef(false);
-  const scrollSampleCountRef = useRef(0);
-  const lastCorrectionAtRef = useRef(0);
-  const webIdleSnapTimerRef = useRef(null);
-  const lastScrollOffsetRef = useRef(0);
-  const correctionCooldownUntilRef = useRef(0);
-  const initialIdleGuardUntilRef = useRef(Date.now() + MONTHLY_WEB_INITIAL_IDLE_GUARD_MS);
-  const programmaticScrollGuardUntilRef = useRef(0);
-  const hasUserInteractionRef = useRef(false);
-  const idleSettleArmedRef = useRef(false);
-  const idleSettleLockRef = useRef(false);
-  const lastSettledOffsetRef = useRef(null);
-  const settleHardCooldownUntilRef = useRef(0);
-  const isDraggingRef = useRef(false);
   const [isInitialAligned, setIsInitialAligned] = useState(false);
 
   const weekIndexMap = useMemo(() => {
@@ -73,209 +74,176 @@ export default function MonthlyStripList({
     [currentDate, getSummaryByDate, language, onDayPress, todayDate]
   );
 
-  const settleByOffset = useCallback(
-    (offsetY, source = 'momentumEnd', options = {}) => {
+  // --- Core settle logic ---
+
+  const executeSettle = useCallback(
+    (offsetY, source) => {
       if (!weekStarts.length) return;
 
-      const allowCorrection = options.allowCorrection ?? true;
-      const correctionAnimated = options.correctionAnimated ?? false;
+      const state = scrollStateRef.current;
+      state.phase = 'settling';
+
       const maxIndex = weekStarts.length - 1;
       const rawIndex = offsetY / WEEK_ROW_HEIGHT;
       const snappedIndex = Math.max(0, Math.min(maxIndex, Math.round(rawIndex)));
       const snappedOffset = snappedIndex * WEEK_ROW_HEIGHT;
       const drift = offsetY - snappedOffset;
       const weekStart = weekStarts[snappedIndex];
-      lastSettledOffsetRef.current = snappedOffset;
-      settleHardCooldownUntilRef.current = Date.now() + MONTHLY_WEB_SETTLE_HARD_COOLDOWN_MS;
 
-      logStripCalendar('MonthlyStripList', 'momentum:settleByOffset', {
+      logStripCalendar('MonthlyStripList', 'settle:execute', {
         source,
         offsetY,
         rawIndex,
         snappedIndex,
         snappedOffset,
         drift,
-        allowCorrection,
-        correctionAnimated,
         weekStart,
-        settleHardCooldownMs: MONTHLY_WEB_SETTLE_HARD_COOLDOWN_MS,
       });
 
-      if (allowCorrection && Math.abs(drift) > MONTHLY_DRIFT_CORRECTION_THRESHOLD_PX) {
-        const now = Date.now();
-        const sinceLastCorrectionMs = lastCorrectionAtRef.current
-          ? now - lastCorrectionAtRef.current
-          : null;
-        lastCorrectionAtRef.current = now;
-        correctionCooldownUntilRef.current = now + MONTHLY_WEB_CORRECTION_COOLDOWN_MS;
-        if (Platform.OS === 'web') {
-          programmaticScrollGuardUntilRef.current = now + MONTHLY_WEB_PROGRAMMATIC_SCROLL_GUARD_MS;
-        }
-
+      // Quantize correction - phase='settling' prevents correction → onScroll → re-settle loop
+      if (Math.abs(drift) > MONTHLY_DRIFT_CORRECTION_THRESHOLD_PX) {
         logStripCalendar('MonthlyStripList', 'settle:quantizeCorrection', {
           source,
           snappedIndex,
           snappedOffset,
           drift,
-          sinceLastCorrectionMs,
-          correctionAnimated,
         });
-        listRef.current?.scrollToOffset({ offset: snappedOffset, animated: correctionAnimated });
+        listRef.current?.scrollToOffset({ offset: snappedOffset, animated: false });
       }
 
+      // Emit settled event (deduplicate same weekStart)
       if (weekStart) {
-        if (lastEmittedSettledRef.current === weekStart) {
+        if (state.lastEmittedWeekStart === weekStart) {
           logStripCalendar('MonthlyStripList', 'settle:skipDuplicate', {
             source,
             weekStart,
           });
-          return;
+        } else {
+          state.lastEmittedWeekStart = weekStart;
+          state.lastSyncedTarget = weekStart;
+          onTopWeekSettled(weekStart);
         }
-
-        lastSyncedTargetRef.current = weekStart;
-        lastEmittedSettledRef.current = weekStart;
-        onTopWeekSettled(weekStart);
       }
+
+      // Transition: settling → idle (next tick to let correction scroll complete)
+      requestAnimationFrame(() => {
+        if (scrollStateRef.current.phase === 'settling') {
+          scrollStateRef.current.phase = 'idle';
+          scrollStateRef.current.isProgrammatic = false;
+        }
+      });
     },
     [onTopWeekSettled, weekStarts]
   );
 
+  const requestSettle = useCallback(
+    (offsetY, source) => {
+      const state = scrollStateRef.current;
+
+      // Mutual exclusion: reject if already settling
+      if (state.phase === 'settling') {
+        logStripCalendar('MonthlyStripList', 'settle:rejected:alreadySettling', {
+          source,
+          phase: state.phase,
+        });
+        return;
+      }
+
+      // Programmatic guard: ignore user-origin settle during programmatic scroll
+      if (state.isProgrammatic && source !== 'fallbackProgrammatic') {
+        logStripCalendar('MonthlyStripList', 'settle:rejected:programmatic', {
+          source,
+        });
+        return;
+      }
+
+      // Clear any pending settle timer
+      if (state.settleTimer) {
+        clearTimeout(state.settleTimer);
+        state.settleTimer = null;
+      }
+
+      // Immediate settle for native events, debounced for web idle
+      if (source === 'momentumEnd' || source === 'fallbackProgrammatic') {
+        executeSettle(offsetY, source);
+      } else {
+        // Web idle: debounce
+        state.settleTimer = setTimeout(() => {
+          state.settleTimer = null;
+          if (state.phase === 'settling') return; // re-check after delay
+          executeSettle(scrollStateRef.current.lastOffset, source);
+        }, MONTHLY_IDLE_SETTLE_DELAY_MS);
+      }
+    },
+    [executeSettle]
+  );
+
+  // --- Scroll event handlers ---
+
   const onMomentumScrollEnd = useCallback(
     (event) => {
-      idleSettleArmedRef.current = false;
-      hasUserInteractionRef.current = false;
-      idleSettleLockRef.current = true;
-      settleByOffset(event.nativeEvent.contentOffset.y, 'momentumEnd', { allowCorrection: true });
+      requestSettle(event.nativeEvent.contentOffset.y, 'momentumEnd');
     },
-    [settleByOffset]
+    [requestSettle]
   );
+
+  const onScrollBeginDrag = useCallback(() => {
+    const state = scrollStateRef.current;
+    if (state.settleTimer) {
+      clearTimeout(state.settleTimer);
+      state.settleTimer = null;
+    }
+    state.phase = 'dragging';
+    state.isProgrammatic = false;
+
+    logStripCalendar('MonthlyStripList', 'phase:dragging', {});
+  }, []);
 
   const onScrollEndDrag = useCallback(
     (event) => {
-      const offsetY = event.nativeEvent.contentOffset.y;
-      const velocityY = event.nativeEvent.velocity?.y ?? null;
-      isDraggingRef.current = false;
+      const state = scrollStateRef.current;
+      const velocityY = event.nativeEvent.velocity?.y ?? 0;
+      state.lastOffset = event.nativeEvent.contentOffset.y;
+
       logStripCalendar('MonthlyStripList', 'drag:end', {
         platform: Platform.OS,
-        offsetY,
+        offsetY: state.lastOffset,
         velocityY,
       });
+
+      // On web, momentum events may not fire. If velocity is near zero, settle now.
+      if (Platform.OS === 'web' && Math.abs(velocityY) < 0.1) {
+        requestSettle(state.lastOffset, 'scrollIdleWeb');
+      }
     },
-    []
+    [requestSettle]
   );
 
-  const onScrollBeginDrag = useCallback((event) => {
-    hasUserInteractionRef.current = true;
-    idleSettleArmedRef.current = true;
-    if (idleSettleLockRef.current) {
-      logStripCalendar('MonthlyStripList', 'idle:unlockByDrag', {
-        offsetY: event.nativeEvent.contentOffset.y,
-      });
-    }
-    idleSettleLockRef.current = false;
-    isDraggingRef.current = true;
-    logStripCalendar('MonthlyStripList', 'drag:begin', {
-      offsetY: event.nativeEvent.contentOffset.y,
-    });
+  const onMomentumScrollBegin = useCallback(() => {
+    const state = scrollStateRef.current;
+    state.phase = 'momentum';
+    logStripCalendar('MonthlyStripList', 'phase:momentum', {});
   }, []);
 
-  const onMomentumScrollBegin = useCallback((event) => {
-    hasUserInteractionRef.current = true;
-    idleSettleArmedRef.current = true;
-    if (idleSettleLockRef.current) {
-      logStripCalendar('MonthlyStripList', 'idle:unlockByMomentum', {
-        offsetY: event.nativeEvent.contentOffset.y,
-      });
-    }
-    idleSettleLockRef.current = false;
-    logStripCalendar('MonthlyStripList', 'momentum:begin', {
-      offsetY: event.nativeEvent.contentOffset.y,
-    });
-  }, []);
+  const onScroll = useCallback(
+    (event) => {
+      const offsetY = event.nativeEvent.contentOffset.y;
+      const state = scrollStateRef.current;
+      state.lastOffset = offsetY;
 
-  const onScroll = useCallback((event) => {
-    const now = Date.now();
-    const offsetY = event.nativeEvent.contentOffset.y;
-    const previousOffsetY = lastScrollOffsetRef.current;
-    lastScrollOffsetRef.current = offsetY;
-
-    if (Platform.OS === 'web') {
-      const settledBaseOffset = lastSettledOffsetRef.current ?? offsetY;
-      const distanceFromSettled = Math.abs(offsetY - settledBaseOffset);
-      if (idleSettleLockRef.current && distanceFromSettled >= MONTHLY_WEB_IDLE_REARM_THRESHOLD_PX) {
-        logStripCalendar('MonthlyStripList', 'idle:unlockByDistance', {
-          distanceFromSettled,
-          rearmThresholdPx: MONTHLY_WEB_IDLE_REARM_THRESHOLD_PX,
-          offsetY,
-          settledBaseOffset,
-        });
-        idleSettleLockRef.current = false;
+      // Web idle detection: if not programmatic and not settling, request debounced settle
+      if (
+        Platform.OS === 'web' &&
+        state.phase !== 'programmatic' &&
+        state.phase !== 'settling'
+      ) {
+        requestSettle(offsetY, 'scrollIdleWeb');
       }
+    },
+    [requestSettle]
+  );
 
-      const canTreatAsUserScroll =
-        now >= initialIdleGuardUntilRef.current &&
-        now >= programmaticScrollGuardUntilRef.current &&
-        now >= settleHardCooldownUntilRef.current &&
-        Math.abs(offsetY - previousOffsetY) > MONTHLY_MIN_SCROLL_DELTA_PX &&
-        !idleSettleLockRef.current &&
-        distanceFromSettled >= MONTHLY_WEB_IDLE_REARM_THRESHOLD_PX;
-
-      if (!hasUserInteractionRef.current && canTreatAsUserScroll) {
-        logStripCalendar('MonthlyStripList', 'idle:armByScroll', {
-          offsetY,
-          previousOffsetY,
-          distanceFromSettled,
-          rearmThresholdPx: MONTHLY_WEB_IDLE_REARM_THRESHOLD_PX,
-        });
-        hasUserInteractionRef.current = true;
-        idleSettleArmedRef.current = true;
-      }
-
-      if (now < initialIdleGuardUntilRef.current) {
-        if (webIdleSnapTimerRef.current) {
-          clearTimeout(webIdleSnapTimerRef.current);
-        }
-      } else if (now < correctionCooldownUntilRef.current) {
-        if (!DEBUG_STRIP_CALENDAR) return;
-      } else if (now < settleHardCooldownUntilRef.current) {
-        if (webIdleSnapTimerRef.current) {
-          clearTimeout(webIdleSnapTimerRef.current);
-        }
-        if (!DEBUG_STRIP_CALENDAR) return;
-      } else {
-        if (!hasUserInteractionRef.current || !idleSettleArmedRef.current) {
-          if (!DEBUG_STRIP_CALENDAR) return;
-        } else {
-          if (webIdleSnapTimerRef.current) {
-            clearTimeout(webIdleSnapTimerRef.current);
-          }
-
-          webIdleSnapTimerRef.current = setTimeout(() => {
-            if (isDraggingRef.current) return;
-            idleSettleArmedRef.current = false;
-            hasUserInteractionRef.current = false;
-            idleSettleLockRef.current = true;
-            settleByOffset(lastScrollOffsetRef.current, 'scrollIdleWeb', {
-              allowCorrection: true,
-              correctionAnimated: false,
-            });
-          }, MONTHLY_WEB_IDLE_SETTLE_DELAY_MS);
-        }
-      }
-    }
-
-    if (!DEBUG_STRIP_CALENDAR) return;
-
-    // Reduce debug logging pressure while preserving visibility.
-    if (scrollSampleCountRef.current >= MONTHLY_SCROLL_SAMPLE_LIMIT) return;
-    scrollSampleCountRef.current += 1;
-    if (scrollSampleCountRef.current % 2 !== 0) return;
-
-    logStripCalendar('MonthlyStripList', 'scroll:sample', {
-      y: offsetY,
-      sample: scrollSampleCountRef.current,
-    });
-  }, [settleByOffset]);
+  // --- Sync / programmatic scroll ---
 
   const keyExtractor = useCallback((item) => item, []);
   const targetIndex = targetTopWeekStart ? weekIndexMap.get(targetTopWeekStart) : null;
@@ -306,8 +274,9 @@ export default function MonthlyStripList({
     });
 
     return () => {
-      if (webIdleSnapTimerRef.current) {
-        clearTimeout(webIdleSnapTimerRef.current);
+      const state = scrollStateRef.current;
+      if (state.settleTimer) {
+        clearTimeout(state.settleTimer);
       }
       logStripCalendar('MonthlyStripList', 'unmount', {
         targetTopWeekStart,
@@ -320,10 +289,11 @@ export default function MonthlyStripList({
     const index = targetIndex;
     if (index == null) return;
 
+    const state = scrollStateRef.current;
     const isInitialSync = !hasInitializedSyncRef.current;
     hasInitializedSyncRef.current = true;
 
-    if (!isInitialSync && lastSyncedTargetRef.current === targetTopWeekStart) {
+    if (!isInitialSync && state.lastSyncedTarget === targetTopWeekStart) {
       logStripCalendar('MonthlyStripList', 'sync:skipAlreadySynced', {
         targetTopWeekStart,
         index,
@@ -338,23 +308,25 @@ export default function MonthlyStripList({
       index,
       scrollAnimated: animated,
       isInitialSync,
-      lastSyncedTarget: lastSyncedTargetRef.current,
+      lastSyncedTarget: state.lastSyncedTarget,
     });
 
-    lastSyncedTargetRef.current = targetTopWeekStart;
-    if (Platform.OS === 'web') {
-      const now = Date.now();
-      initialIdleGuardUntilRef.current = now + MONTHLY_WEB_INITIAL_IDLE_GUARD_MS;
-      programmaticScrollGuardUntilRef.current = now + MONTHLY_WEB_PROGRAMMATIC_SCROLL_GUARD_MS;
-      hasUserInteractionRef.current = false;
-      idleSettleArmedRef.current = false;
-      idleSettleLockRef.current = true;
-      lastSettledOffsetRef.current = index * WEEK_ROW_HEIGHT;
+    // Mark as programmatic to prevent idle settle from firing during scroll
+    state.lastSyncedTarget = targetTopWeekStart;
+    state.phase = 'programmatic';
+    state.isProgrammatic = true;
+
+    // Clear any pending settle timer
+    if (state.settleTimer) {
+      clearTimeout(state.settleTimer);
+      state.settleTimer = null;
     }
 
     if (isInitialSync) {
       const timeoutId = setTimeout(() => {
         setIsInitialAligned(true);
+        state.phase = 'idle';
+        state.isProgrammatic = false;
         logStripCalendar('MonthlyStripList', 'sync:initialAlignmentDone', {
           targetTopWeekStart,
           index,
@@ -368,20 +340,22 @@ export default function MonthlyStripList({
       listRef.current?.scrollToIndex({ index, animated });
     });
 
-    if (!isInitialSync && Platform.OS === 'web') {
+    // Fallback settle for web (momentum events may not fire after programmatic scroll)
+    if (Platform.OS === 'web') {
+      const delay = animated ? MONTHLY_PROGRAMMATIC_SETTLE_DELAY_MS : MONTHLY_PROGRAMMATIC_GUARD_MS;
       const timeoutId = setTimeout(() => {
-        logStripCalendar('MonthlyStripList', 'settle:fallbackWebProgrammatic', {
+        logStripCalendar('MonthlyStripList', 'settle:fallbackProgrammatic', {
           targetTopWeekStart,
           index,
         });
-        settleByOffset(index * WEEK_ROW_HEIGHT, 'fallbackWebProgrammatic', { allowCorrection: false });
-      }, animated ? MONTHLY_WEB_PROGRAMMATIC_SETTLE_DELAY_MS : 0);
+        requestSettle(index * WEEK_ROW_HEIGHT, 'fallbackProgrammatic');
+      }, delay);
 
       return () => clearTimeout(timeoutId);
     }
 
     return undefined;
-  }, [scrollAnimated, settleByOffset, targetIndex, targetTopWeekStart]);
+  }, [scrollAnimated, requestSettle, targetIndex, targetTopWeekStart]);
 
   return (
     <View style={[styles.viewport, !isInitialAligned && styles.hiddenBeforeAlign]}>

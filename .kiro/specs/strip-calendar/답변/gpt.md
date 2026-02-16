@@ -1,440 +1,593 @@
-좋다. 지금 로그(목표 208000인데 실제 207800 = **정확히 width/2 차이**)는 “대충 오차”가 아니라 **구조적으로 반 페이지가 끼어든** 전형적인 패턴임. 웹만 이러는 것도 그 패턴이랑 딱 맞고.
+ㅇㅇ “해결책” 얘기하면 딱 두 군데가 **진짜 범인** 냄새가 진하게 남.
 
-아래는 내가 제일 그럴싸한 원인 가설 1개로 딱 찍고, **플랫폼 분기 없이 단일 코드패스**로 “무조건 주간 딱딱 맞추기” 전략/패치/검증까지 한 번에 정리한 거다.
+1. **웹 idle 타이머가 momentumEnd/settle 시점에 안 지워져서**
+   같은 스크롤 흐름에서 `momentumEnd settle` 하고도 **100ms 뒤 `scrollIdleWeb settle`이 또 발동**할 수 있음.
+   → “정착 경로 3개 경쟁”이 **현실로 터지는 지점**이 여기임.
 
----
+2. **weekStarts window가 recenter로 갈아끼워졌는데도**
+   MonthlyStripList가 “targetTopWeekStart 같네? 이미 sync 했음 ㅅㄱ” 하고 **scrollToIndex를 스킵**함.
+   근데 recenter되면 **같은 weekStart라도 index가 바뀜**.
+   → 리스트는 기존 픽셀 오프셋에 남아있고, 새 배열 기준으로 `settleByOffset`이 다른 weekStart를 찍어버림
+   → **anchor가 연속 변경** (니가 말한 실로그 패턴) 나올 수 있음.
 
-## 1) Root cause hypothesis: 왜 하필 “반 페이지(width/2)”로 드리프트하냐
-
-핵심 가설은 이거임:
-
-### ✅ 스크롤 콘텐츠 시작점에 **leading inset(=가로 여백/헤더 스페이서)** 가 있고, 그 값이 **weekWidth/2(=200)** 정도인데,
-
-너는 offset을 `index * weekWidth`로 계산해서 **그 inset을 빼먹고** 스크롤을 걸고 있음.
-
-그러면 웹(react-native-web / DOM 스크롤)은 보통 이런 조건에서:
-
-* `pagingEnabled`, `snapToInterval`, 또는 RNW 내부의 **scroll-snap류 동작**
-* 혹은 콘텐츠가 “페이지 단위로 스냅되는” 상황
-
-에서 **가장 가까운 스냅 포인트로 최종 위치를 강제로 맞춤**.
-
-### 숫자로 너 로그 그대로 대입해보면
-
-* `weekWidth = 400`
-* 실제 landing `x = 207800`
-* 목표 `x = 208000`
-* 차이 `-200 = -weekWidth/2`
-
-이 값은 “오차”가 아니라 **스냅 포인트가 실제로는 `leadingInset + index*weekWidth`에 찍혀있다는 증거**로 해석이 됨.
-
-예를 들어 `leadingInset = 200`이라면 스냅 포인트는:
-
-* week 519 시작: `200 + 519*400 = 207800` ✅ (네 실제 landing)
-* week 520 시작: `200 + 520*400 = 208200`
-
-근데 너는 week 520으로 가려고 `208000`으로 스크롤을 던짐 → 이 값은 **207800과 208200의 정확히 정중앙**임.
-
-웹 스냅 구현이 정중앙이면 “앞쪽”을 택하는 식으로 타이브레이크 걸면:
-
-* 첫 클릭: 208000 → 207800로 스냅(이전 주) → UI상 “안 움직인 것처럼” 보일 수 있음
-* 두 번째 클릭: 다음 목표로 넘어가면서 그제서야 점프
-
-➡️ 그래서 **“첫 화살표 클릭이 노옵처럼 보이고, 두 번째가 점프”** 현상이 같이 터짐.
-그리고 viewport에 **인접 주가 섞여 보이는 것도** “반 페이지 밀림”이면 당연히 그렇게 보임.
-
-**leading inset의 대표적인 원인들(대부분 여기서 나옴):**
-
-* `contentContainerStyle={{ paddingHorizontal: weekWidth/2 }}` 같은 반폭 패딩
-* `ListHeaderComponent`로 폭 `weekWidth/2`짜리 spacer를 넣어둔 경우(캐러셀 센터링 트릭)
-* 부모 레이아웃에서 스크롤 영역과 아이템 폭 기준이 어긋나는데, 그 차이가 우연히 반폭으로 고정된 경우
-* `initialScrollIndex` + 수동 `scrollToOffset`를 같이 써서 “한 번은 inset 없는 좌표계, 한 번은 inset 있는 좌표계”로 싸우는 경우
+결론:
+✅ **(A) idle 타이머는 settle/momentum에서 무조건 죽이고**
+✅ **(B) “이미 sync” 판단 기준에 index + weekWindowKey까지 포함**하면, 지금 반복 정착/앵커 튐 대부분 잡힘.
 
 ---
 
-## 2) 단일 코드패스로 “무조건 주간 정렬 고정”하는 가장 튼튼한 전략 1개
-
-**전략 이름: “측정 기반 페이지 좌표계 + 스냅 보정(quantize)”**
-
-플랫폼 분기 없이(=웹/네이티브 동일 로직) 아래 3가지만 지키면 됨:
-
-### A. 페이지 폭(pageWidth)은 “실제 FlashList 컨테이너 onLayout”로 측정
-
-* `Dimensions.get('window').width` 같은 전역 값 말고,
-* **FlashList를 감싸는 컨테이너의 `onLayout` width**를 pageWidth로 씀
-  (웹에서 특히 레이아웃/스크롤 컨테이너 폭이 window랑 안 맞는 경우가 흔함)
-
-### B. 스냅 기준 오프셋은 무조건 이 공식 하나로 통일
-
-> `snapOffset(index) = leadingInset + index * pageWidth`
-
-* 이상적으로는 **leadingInset = 0**으로 만드는 게 가장 깔끔함(추천).
-* 제거 못 하면, leadingInset을 “정확히” 반영하고 **FlashList에도 알려줘야 함**(아래 5번에서 설명).
-
-### C. 어떤 스크롤이든 “정착 시점”에 최종 1번 보정해서 딱 맞춘다
-
-* 웹은 스크롤 최종 위치가 “의도한 값”과 다르게 끝나는 일이 있음(스냅/서브픽셀/타이브레이크 등)
-* 그래서 **스크롤이 멈춘 뒤**(idle 감지) 현재 x를 읽고
-
-  * `index = round((x - leadingInset)/pageWidth)`
-  * `scrollToOffset(snapOffset(index), animated:false)`로 한 번 **정렬 보정**
-* 이 보정 로직은 네이티브에서도 동작하고, 플랫폼 분기가 필요 없음.
-
-이러면:
-
-* 초기 정렬도 0.5페이지 드리프트 없음
-* 손 스와이프/트랙패드 스크롤로 애매하게 멈춰도 “항상 주 경계로” 떨어짐
-* 화살표 클릭 노옵/점프 현상도 같이 사라짐
-
----
-
-## 3) Weekly 리스트 최소 패치 플랜 (state flow + scroll API 호출 순서)
-
-여기서 “최소”는 진짜 최소만 말함. (아키텍처 갈아엎지 말고)
-
-### 0) 먼저 leading inset 후보를 제거하거나 “수치화”하기
-
-**가장 먼저 확인/조치:**
-
-* `contentContainerStyle.paddingHorizontal = weekWidth/2` 같은 거 있으면 **주간에서는 제거**
-  (디자인 여백이 필요하면: 리스트 밖 wrapper에 padding을 주고, 스크롤 콘텐츠에는 주지 마)
-* `ListHeaderComponent`로 반폭 spacer 넣었으면 **주간에서는 제거**
-  (이게 있으면 너의 `index*width` 좌표계가 100% 깨짐)
-
-> 제거가 불가능하면: leadingInset을 변수로 들고가서 오프셋 공식에 포함 + FlashList에 `estimatedFirstItemOffset`까지 세팅해야 함(5번 참고).
-
-### 1) pageWidth를 onLayout으로 확보 (0이면 스크롤 명령 금지)
-
-* `pageWidth`가 준비되기 전엔 어떤 scroll sync도 하지 마
-* `pageWidth`는 가능하면 `Math.round(width)`로 정수화(웹 서브픽셀 방지)
-
-### 2) “초기 정렬”은 딱 한 군데에서만 수행
-
-가장 흔한 실수:
-
-* `initialScrollIndex`도 쓰고
-* mount effect에서 `scrollToOffset`도 또 때림
-  → 서로 싸우면서 웹에서 이상한 스냅/오프셋이 남음
-
-**권장(최소 변경 기준):**
-
-* 주간은 `initialScrollIndex`를 빼고,
-* `pageWidth` + `data` 준비된 뒤 **한 번만** `scrollToOffset({ animated:false })`
-
-호출 순서(권장):
-
-1. `onLayout`로 pageWidth set
-2. `useEffect([pageWidth, targetIndex])`에서
-
-   * `scrollToOffset(targetOffset, animated:false)`
-   * `requestAnimationFrame` 1~2번 뒤에 **같은 오프셋으로 한 번 더** `animated:false` (웹 스냅/레이아웃 적용 타이밍 보정)
-
-### 3) “화살표 클릭”은 state 업데이트보다 스크롤 명령이 먼저
-
-버그가 “첫 클릭 노옵”처럼 보이는 이유 중 하나가
-
-* state는 다음 index로 바뀌었는데 실제 스크롤은 이전에 남아있어서 UI가 꼬이는 패턴임.
-
-최소 플로우:
-
-* 클릭 → `nextIndex` 계산(현재는 **scroll에서 확정된 indexRef**를 기준)
-* `scrollToOffset(snapOffset(nextIndex), animated:true)`
-* 스크롤 정착(아래 4번 idle 스냅)에서 최종 index를 확정하고 상태 반영
-
-### 4) 스크롤 정착 감지(Idle) → 스냅 보정 → index 확정
-
-* `onScroll`에서 마지막 x 저장
-* 80~120ms 정도로 idle 타이머 갱신
-* idle 되면:
-
-  * `snapped = round((x - leadingInset)/pageWidth)`
-  * `scrollToOffset(snapOffset(snapped), animated:false)` (오차가 있을 때만)
-  * `currentIndex state` / `targetWeekStart` 갱신
-
-이게 **웹/네이티브 동일하게 먹히는 “보험”**임.
-
----
-
-## 4) Validation checklist (기대 로그/지표)
-
-아래 로그 찍어보면 원인/해결이 바로 판별됨.
-
-### A. 레이아웃/좌표계 확인
-
-* `pageWidth` (컨테이너 onLayout)
-* `leadingInset` (0이어야 베스트, 아니면 정확한 값이어야 함)
-* `snapOffset(520)` 값
-
-**기대 예시(공적/전문 스타일):**
-
-```txt
-layout: pageWidth=400 leadingInset=0
-target: index=520 snapOffset=208000
-```
-
-만약 leadingInset이 살아있으면:
-
-```txt
-layout: pageWidth=400 leadingInset=200
-target: index=520 snapOffset=208200
-```
-
-### B. scrollToOffset 직후/정착 후 오차(delta) 측정
-
-* `requestedOffset`
-* `firstSampleX`
-* `settledX`
-* `delta = settledX - requestedOffset`
-
-**기대:**
-
-* 패치 후: `|delta| <= 1px` (실무 기준)
-* 그리고 `settledX`가 항상 `leadingInset + n*pageWidth` 형태
-
-### C. “첫 클릭 노옵” 재현 체크
-
-* 클릭 전 `currentIndex`
-* 클릭 후 “정착된 index”
-
-**기대:**
-
-* 첫 클릭부터 `currentIndex`가 +1 되고,
-* viewport가 섞이지 않음(이전/다음 주가 동시에 보이지 않음)
-
-### D. 보정 횟수(metric)
-
-* `snapCorrectionCount`를 카운트해봐.
-  **기대:**
-* 초기 1회(또는 0회)
-* 이후 화살표 이동은 거의 0회
-* 사용자가 트랙패드로 애매하게 멈추는 경우만 보정 1회씩
-
-보정이 과하게 많이 뜨면:
-
-* pageWidth가 매 렌더마다 바뀌거나
-* 아이템 외곽에 margin이 있어 실제 “페이지 길이”가 pageWidth가 아니거나
-* leadingInset이 불안정하게 변하고 있는 거임
-
----
-
-## 5) FlashList props: 추가/제거해야 할 것과 “왜”
-
-### ✅ 추가 권장
-
-#### (1) `overrideItemLayout`
-
-**왜:** 주간은 아이템 길이가 “항상 pageWidth로 고정”이잖아.
-FlashList에게 이걸 명시해주면:
-
-* 측정/추정 오차로 인한 미세 드리프트가 줄고
-* `scrollToIndex/scrollToOffset`의 일관성이 올라감
-* 웹에서 “추정 → 실제 측정 후 보정” 같은 흔들림이 줄어듦
-
-설정 개념:
-
-* horizontal 방향 size를 `pageWidth`로 고정
-
-#### (2) `estimatedItemSize={pageWidth}`
-
-**왜:** FlashList 가상화/레이아웃 추정 안정화.
-`estimatedItemSize`가 엉뚱하면 초기 오프셋/측정 보정이 흔들릴 수 있음.
-
-#### (3) (leadingInset이 존재한다면) `estimatedFirstItemOffset={leadingInset}`
-
-**왜:** 헤더/패딩 같은 “첫 아이템 시작 전 오프셋”이 있으면, FlashList의 초기 계산이 틀어질 수 있음.
-특히 `initialScrollIndex`를 쓰는 경우 이 값이 없으면 오프셋이 미묘하게 엇나가고, 웹에서 더 티 남.
-
----
-
-### ❌ 제거/회피 권장 (주간에서 특히)
-
-#### (1) `contentContainerStyle.paddingHorizontal = pageWidth/2` 또는 반폭 `ListHeaderComponent` 스페이서
-
-**왜:** 네가 지금 겪는 “반 페이지 드리프트”를 만드는 1순위 후보.
-이게 있으면 스냅 포인트가 `index*width`가 아니라 `leadingInset + index*width`가 됨.
-
-주간이 “한 주가 viewport를 꽉 채우는 페이지”라면,
-
-* 스크롤 콘텐츠에 반폭 패딩/스페이서는 구조적으로 안 맞음.
-
-#### (2) `pagingEnabled` / `snapToInterval`을 “정확 정렬의 유일한 수단”으로 믿는 것
-
-**왜:** 웹에서는 구현이 DOM scroll-snap 기반이거나, 브라우저별 타이브레이크/서브픽셀 영향이 있어서
-“가끔 정확히 안 떨어지는” 사례가 생김.
-
-그래서 결론은:
-
-* `pagingEnabled`를 유지하든 말든(단일 코드패스 가능),
-* **최종 정착 후 보정(quantize)** 로직을 “정확 정렬의 최종 권위”로 둬라.
-
-> 제일 깔끔한 구성은: 주간에서는 `pagingEnabled/snapToInterval` 다 빼고,
-> “idle 스냅 보정”으로만 페이지화시키는 것. (웹/네이티브 체감도 비슷하게 만들기 쉬움)
-
----
-
-## (참고) 최소 레퍼런스 구현 스케치 (복붙 가능한 형태, 단일 코드패스)
-
-아래는 “측정 기반 + idle 스냅 보정 + inset=0 전제”의 가장 단순한 형태임.
-(예시는 공적/전문적인 스타일로 작성)
-
-```tsx
-import React, { useCallback, useEffect, useRef, useState } from "react";
-import { View, Text, Pressable, NativeSyntheticEvent, NativeScrollEvent } from "react-native";
-import { FlashList } from "@shopify/flash-list";
-
-type WeekItem = {
-  id: string;
-  weekStartISO: string; // e.g. "2026-02-15"
-};
-
-type Props = {
-  weeks: WeekItem[];
-  targetIndex: number; // e.g. 520
-  onIndexSettled?: (index: number) => void;
-};
-
-export function WeeklyStripCalendar({ weeks, targetIndex, onIndexSettled }: Props) {
-  const listRef = useRef<FlashList<WeekItem>>(null);
-
-  const pageWidthRef = useRef(0);
-  const leadingInsetRef = useRef(0); // keep 0; if you must have inset, set it explicitly and use estimatedFirstItemOffset too.
-  const lastScrollXRef = useRef(0);
-
-  const isProgrammaticRef = useRef(false);
-  const idleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const [pageWidth, setPageWidth] = useState(0);
-  const currentIndexRef = useRef(targetIndex);
-
-  const clampIndex = useCallback(
-    (i: number) => Math.max(0, Math.min(i, weeks.length - 1)),
-    [weeks.length]
-  );
-
-  const snapOffset = useCallback((index: number) => {
-    const w = pageWidthRef.current;
-    const inset = leadingInsetRef.current;
-    return inset + index * w;
+## 1) 바로 꽂아넣는 안정화 패치 (경쟁 정착 + recenter 꼬임 방지)
+
+아래는 내가 **MonthlyStripList.js 전체**를 “바로 적용 가능한 형태”로 수정한 버전임.
+(수정 포인트: `clearWebIdleSettleTimer` 추가, settle/momentum/sync에서 타이머 정리, sync skip 조건 강화, 스크롤 샘플 로그는 detail에서만 찍게 변경)
+
+> **전문적인 적용 가이드(예시)**
+>
+> * 아래 파일 전체를 `MonthlyStripList.js`에 그대로 교체합니다.
+> * 적용 후 웹에서 휠/트랙패드 스크롤을 반복하며 `scrollIdleWeb` 기반 settle이 연속 발생하는지 확인합니다.
+> * week window recenter가 발생하는 구간(Prev/Next 연타 등)에서도 anchor가 불필요하게 연쇄 변경되지 않는지 확인합니다.
+
+```js
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Platform, StyleSheet, View } from 'react-native';
+import { FlashList } from '@shopify/flash-list';
+import WeekRow from './WeekRow';
+import { getWeekDates } from '../utils/stripCalendarDateUtils';
+import {
+  DEBUG_STRIP_CALENDAR,
+  MONTHLY_DRIFT_CORRECTION_THRESHOLD_PX,
+  MONTHLY_SCROLL_SAMPLE_LIMIT,
+  MONTHLY_VISIBLE_WEEK_COUNT,
+  STRIP_CALENDAR_DETAIL_LOG_ENABLED,
+  MONTHLY_WEB_CORRECTION_COOLDOWN_MS,
+  MONTHLY_WEB_IDLE_REARM_THRESHOLD_PX,
+  MONTHLY_WEB_IDLE_SETTLE_DELAY_MS,
+  MONTHLY_WEB_INITIAL_IDLE_GUARD_MS,
+  MONTHLY_MIN_SCROLL_DELTA_PX,
+  MONTHLY_WEB_PROGRAMMATIC_SCROLL_GUARD_MS,
+  MONTHLY_WEB_PROGRAMMATIC_SETTLE_DELAY_MS,
+  MONTHLY_WEB_SETTLE_HARD_COOLDOWN_MS,
+  WEEK_ROW_HEIGHT,
+} from '../utils/stripCalendarConstants';
+import { logStripCalendar } from '../utils/stripCalendarDebug';
+
+export default function MonthlyStripList({
+  weekStarts,
+  targetTopWeekStart,
+  todayDate,
+  currentDate,
+  language,
+  getSummaryByDate,
+  onDayPress,
+  onTopWeekSettled,
+  scrollAnimated = false,
+}) {
+  const listRef = useRef(null);
+  const lastSyncedTargetRef = useRef(null);
+  const lastSyncedIndexRef = useRef(null);
+  const lastSyncedWeekWindowKeyRef = useRef(null);
+  const lastEmittedSettledRef = useRef(null);
+  const hasInitializedSyncRef = useRef(false);
+  const scrollSampleCountRef = useRef(0);
+  const lastCorrectionAtRef = useRef(0);
+  const webIdleSnapTimerRef = useRef(null);
+  const lastScrollOffsetRef = useRef(0);
+  const correctionCooldownUntilRef = useRef(0);
+  const initialIdleGuardUntilRef = useRef(Date.now() + MONTHLY_WEB_INITIAL_IDLE_GUARD_MS);
+  const programmaticScrollGuardUntilRef = useRef(0);
+  const hasUserInteractionRef = useRef(false);
+  const idleSettleArmedRef = useRef(false);
+  const idleSettleLockRef = useRef(false);
+  const lastSettledOffsetRef = useRef(null);
+  const settleHardCooldownUntilRef = useRef(0);
+  const isDraggingRef = useRef(false);
+  const [isInitialAligned, setIsInitialAligned] = useState(false);
+
+  const weekIndexMap = useMemo(() => {
+    const map = new Map();
+    weekStarts.forEach((weekStart, index) => map.set(weekStart, index));
+    return map;
+  }, [weekStarts]);
+
+  const weekWindowKey = useMemo(() => {
+    if (!weekStarts.length) return 'empty';
+    return `${weekStarts[0]}|${weekStarts[weekStarts.length - 1]}|${weekStarts.length}`;
+  }, [weekStarts]);
+
+  const clearWebIdleSettleTimer = useCallback(() => {
+    if (webIdleSnapTimerRef.current) {
+      clearTimeout(webIdleSnapTimerRef.current);
+      webIdleSnapTimerRef.current = null;
+    }
   }, []);
 
-  const scrollToIndexExact = useCallback(
-    (index: number, animated: boolean) => {
-      const w = pageWidthRef.current;
-      if (!listRef.current || w <= 0) return;
+  const renderItem = useCallback(
+    ({ item }) => {
+      const weekDays = getWeekDates(item, todayDate, currentDate, language);
+      return (
+        <View style={styles.rowContainer}>
+          <WeekRow
+            weekStart={item}
+            weekDays={weekDays}
+            getSummaryByDate={getSummaryByDate}
+            onDayPress={onDayPress}
+          />
+        </View>
+      );
+    },
+    [currentDate, getSummaryByDate, language, onDayPress, todayDate]
+  );
 
-      const i = clampIndex(index);
-      const offset = snapOffset(i);
+  const settleByOffset = useCallback(
+    (offsetY, source = 'momentumEnd', options = {}) => {
+      if (!weekStarts.length) return;
 
-      isProgrammaticRef.current = true;
-      listRef.current.scrollToOffset({ offset, animated });
+      // ✅ settle이 호출되는 순간, 남아있는 web idle timer는 무조건 제거 (중복 경쟁 방지)
+      if (Platform.OS === 'web') {
+        clearWebIdleSettleTimer();
+      }
 
-      // Post-settle correction: ensure exact alignment even on web scroll-snap timing.
-      requestAnimationFrame(() => {
-        listRef.current?.scrollToOffset({ offset, animated: false });
-        requestAnimationFrame(() => {
-          isProgrammaticRef.current = false;
-        });
+      const allowCorrection = options.allowCorrection ?? true;
+      const correctionAnimated = options.correctionAnimated ?? false;
+      const maxIndex = weekStarts.length - 1;
+      const rawIndex = offsetY / WEEK_ROW_HEIGHT;
+      const snappedIndex = Math.max(0, Math.min(maxIndex, Math.round(rawIndex)));
+      const snappedOffset = snappedIndex * WEEK_ROW_HEIGHT;
+      const drift = offsetY - snappedOffset;
+      const weekStart = weekStarts[snappedIndex];
+      lastSettledOffsetRef.current = snappedOffset;
+      settleHardCooldownUntilRef.current = Date.now() + MONTHLY_WEB_SETTLE_HARD_COOLDOWN_MS;
+
+      logStripCalendar('MonthlyStripList', 'momentum:settleByOffset', {
+        source,
+        offsetY,
+        rawIndex,
+        snappedIndex,
+        snappedOffset,
+        drift,
+        allowCorrection,
+        correctionAnimated,
+        weekStart,
+        settleHardCooldownMs: MONTHLY_WEB_SETTLE_HARD_COOLDOWN_MS,
       });
 
-      currentIndexRef.current = i;
+      if (allowCorrection && Math.abs(drift) > MONTHLY_DRIFT_CORRECTION_THRESHOLD_PX) {
+        const now = Date.now();
+        const sinceLastCorrectionMs = lastCorrectionAtRef.current
+          ? now - lastCorrectionAtRef.current
+          : null;
+        lastCorrectionAtRef.current = now;
+        correctionCooldownUntilRef.current = now + MONTHLY_WEB_CORRECTION_COOLDOWN_MS;
+        if (Platform.OS === 'web') {
+          programmaticScrollGuardUntilRef.current = now + MONTHLY_WEB_PROGRAMMATIC_SCROLL_GUARD_MS;
+        }
+
+        logStripCalendar('MonthlyStripList', 'settle:quantizeCorrection', {
+          source,
+          snappedIndex,
+          snappedOffset,
+          drift,
+          sinceLastCorrectionMs,
+          correctionAnimated,
+        });
+        listRef.current?.scrollToOffset({ offset: snappedOffset, animated: correctionAnimated });
+      }
+
+      if (weekStart) {
+        if (lastEmittedSettledRef.current === weekStart) {
+          logStripCalendar('MonthlyStripList', 'settle:skipDuplicate', {
+            source,
+            weekStart,
+          });
+          return;
+        }
+
+        // ✅ “현재 window에서 snappedIndex로 정착했다”까지 기록
+        //    (recenter로 window가 바뀌면 index가 바뀌므로, sync 스킵하면 안 됨)
+        lastSyncedTargetRef.current = weekStart;
+        lastSyncedIndexRef.current = snappedIndex;
+        lastSyncedWeekWindowKeyRef.current = weekWindowKey;
+
+        lastEmittedSettledRef.current = weekStart;
+        onTopWeekSettled(weekStart);
+      }
     },
-    [clampIndex, snapOffset]
+    [clearWebIdleSettleTimer, onTopWeekSettled, weekStarts, weekWindowKey]
   );
 
-  const onContainerLayout = useCallback((e: any) => {
-    const w = Math.round(e.nativeEvent.layout.width);
-    if (!w || w === pageWidthRef.current) return;
-    pageWidthRef.current = w;
-    setPageWidth(w);
-  }, []);
+  const onMomentumScrollEnd = useCallback(
+    (event) => {
+      // ✅ momentumEnd settle 직전에 idle 타이머 제거 (이거 안 하면 100ms 뒤 idle settle이 추가로 뜰 수 있음)
+      clearWebIdleSettleTimer();
 
-  // Initial / sync scroll (single source of truth)
-  useEffect(() => {
-    if (pageWidth <= 0 || weeks.length === 0) return;
-    scrollToIndexExact(targetIndex, false);
-  }, [pageWidth, weeks.length, targetIndex, scrollToIndexExact]);
+      idleSettleArmedRef.current = false;
+      hasUserInteractionRef.current = false;
+      idleSettleLockRef.current = true;
+      settleByOffset(event.nativeEvent.contentOffset.y, 'momentumEnd', { allowCorrection: true });
+    },
+    [clearWebIdleSettleTimer, settleByOffset]
+  );
 
-  const settleSnapFromX = useCallback(() => {
-    const w = pageWidthRef.current;
-    if (w <= 0) return;
+  const onScrollEndDrag = useCallback(
+    (event) => {
+      const offsetY = event.nativeEvent.contentOffset.y;
+      const velocityY = event.nativeEvent.velocity?.y ?? null;
+      isDraggingRef.current = false;
+      logStripCalendar('MonthlyStripList', 'drag:end', {
+        platform: Platform.OS,
+        offsetY,
+        velocityY,
+      });
+    },
+    []
+  );
 
-    const inset = leadingInsetRef.current;
-    const raw = (lastScrollXRef.current - inset) / w;
-    const snappedIndex = clampIndex(Math.round(raw));
-    const snappedOffset = snapOffset(snappedIndex);
+  const onScrollBeginDrag = useCallback(
+    (event) => {
+      clearWebIdleSettleTimer();
+      hasUserInteractionRef.current = true;
+      idleSettleArmedRef.current = true;
+      if (idleSettleLockRef.current) {
+        logStripCalendar('MonthlyStripList', 'idle:unlockByDrag', {
+          offsetY: event.nativeEvent.contentOffset.y,
+        });
+      }
+      idleSettleLockRef.current = false;
+      isDraggingRef.current = true;
+      logStripCalendar('MonthlyStripList', 'drag:begin', {
+        offsetY: event.nativeEvent.contentOffset.y,
+      });
+    },
+    [clearWebIdleSettleTimer]
+  );
 
-    const delta = lastScrollXRef.current - snappedOffset;
-    if (Math.abs(delta) > 1) {
-      // Correct only when meaningfully misaligned
-      scrollToIndexExact(snappedIndex, false);
-    }
-
-    if (snappedIndex !== currentIndexRef.current) {
-      currentIndexRef.current = snappedIndex;
-      onIndexSettled?.(snappedIndex);
-    }
-  }, [clampIndex, onIndexSettled, scrollToIndexExact, snapOffset]);
+  const onMomentumScrollBegin = useCallback(
+    (event) => {
+      clearWebIdleSettleTimer();
+      hasUserInteractionRef.current = true;
+      idleSettleArmedRef.current = true;
+      if (idleSettleLockRef.current) {
+        logStripCalendar('MonthlyStripList', 'idle:unlockByMomentum', {
+          offsetY: event.nativeEvent.contentOffset.y,
+        });
+      }
+      idleSettleLockRef.current = false;
+      logStripCalendar('MonthlyStripList', 'momentum:begin', {
+        offsetY: event.nativeEvent.contentOffset.y,
+      });
+    },
+    [clearWebIdleSettleTimer]
+  );
 
   const onScroll = useCallback(
-    (e: NativeSyntheticEvent<NativeScrollEvent>) => {
-      lastScrollXRef.current = e.nativeEvent.contentOffset.x;
+    (event) => {
+      const now = Date.now();
+      const offsetY = event.nativeEvent.contentOffset.y;
+      const previousOffsetY = lastScrollOffsetRef.current;
+      lastScrollOffsetRef.current = offsetY;
 
-      if (isProgrammaticRef.current) return;
+      if (Platform.OS === 'web') {
+        const settledBaseOffset = lastSettledOffsetRef.current ?? offsetY;
+        const distanceFromSettled = Math.abs(offsetY - settledBaseOffset);
+        if (idleSettleLockRef.current && distanceFromSettled >= MONTHLY_WEB_IDLE_REARM_THRESHOLD_PX) {
+          logStripCalendar('MonthlyStripList', 'idle:unlockByDistance', {
+            distanceFromSettled,
+            rearmThresholdPx: MONTHLY_WEB_IDLE_REARM_THRESHOLD_PX,
+            offsetY,
+            settledBaseOffset,
+          });
+          idleSettleLockRef.current = false;
+        }
 
-      if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
-      idleTimerRef.current = setTimeout(() => {
-        settleSnapFromX();
-      }, 100);
+        const canTreatAsUserScroll =
+          now >= initialIdleGuardUntilRef.current &&
+          now >= programmaticScrollGuardUntilRef.current &&
+          now >= settleHardCooldownUntilRef.current &&
+          Math.abs(offsetY - previousOffsetY) > MONTHLY_MIN_SCROLL_DELTA_PX &&
+          !idleSettleLockRef.current &&
+          distanceFromSettled >= MONTHLY_WEB_IDLE_REARM_THRESHOLD_PX;
+
+        if (!hasUserInteractionRef.current && canTreatAsUserScroll) {
+          logStripCalendar('MonthlyStripList', 'idle:armByScroll', {
+            offsetY,
+            previousOffsetY,
+            distanceFromSettled,
+            rearmThresholdPx: MONTHLY_WEB_IDLE_REARM_THRESHOLD_PX,
+          });
+          hasUserInteractionRef.current = true;
+          idleSettleArmedRef.current = true;
+        }
+
+        if (now < initialIdleGuardUntilRef.current) {
+          if (webIdleSnapTimerRef.current) {
+            clearTimeout(webIdleSnapTimerRef.current);
+          }
+        } else if (now < correctionCooldownUntilRef.current) {
+          if (!DEBUG_STRIP_CALENDAR) return;
+        } else if (now < settleHardCooldownUntilRef.current) {
+          if (webIdleSnapTimerRef.current) {
+            clearTimeout(webIdleSnapTimerRef.current);
+          }
+          if (!DEBUG_STRIP_CALENDAR) return;
+        } else {
+          if (!hasUserInteractionRef.current || !idleSettleArmedRef.current) {
+            if (!DEBUG_STRIP_CALENDAR) return;
+          } else {
+            if (webIdleSnapTimerRef.current) {
+              clearTimeout(webIdleSnapTimerRef.current);
+            }
+
+            webIdleSnapTimerRef.current = setTimeout(() => {
+              if (isDraggingRef.current) return;
+              idleSettleArmedRef.current = false;
+              hasUserInteractionRef.current = false;
+              idleSettleLockRef.current = true;
+              settleByOffset(lastScrollOffsetRef.current, 'scrollIdleWeb', {
+                allowCorrection: true,
+                correctionAnimated: false,
+              });
+            }, MONTHLY_WEB_IDLE_SETTLE_DELAY_MS);
+          }
+        }
+      }
+
+      // ✅ 스크롤 샘플 로그는 detail일 때만 (DEBUG만 켜두고 쓰면 콘솔이 스크롤을 잡아먹음)
+      if (!DEBUG_STRIP_CALENDAR) return;
+      if (!STRIP_CALENDAR_DETAIL_LOG_ENABLED) return;
+
+      if (scrollSampleCountRef.current >= MONTHLY_SCROLL_SAMPLE_LIMIT) return;
+      scrollSampleCountRef.current += 1;
+      if (scrollSampleCountRef.current % 2 !== 0) return;
+
+      logStripCalendar('MonthlyStripList', 'scroll:sample', {
+        y: offsetY,
+        sample: scrollSampleCountRef.current,
+      });
     },
-    [settleSnapFromX]
+    [settleByOffset]
   );
 
-  const goPrev = useCallback(() => {
-    scrollToIndexExact(currentIndexRef.current - 1, true);
-  }, [scrollToIndexExact]);
+  const keyExtractor = useCallback((item) => item, []);
+  const targetIndex = targetTopWeekStart ? weekIndexMap.get(targetTopWeekStart) : null;
 
-  const goNext = useCallback(() => {
-    scrollToIndexExact(currentIndexRef.current + 1, true);
-  }, [scrollToIndexExact]);
+  useEffect(() => {
+    if (targetIndex == null) {
+      setIsInitialAligned(true);
+    }
+  }, [targetIndex]);
 
-  const overrideItemLayout = useCallback((layout: any) => {
-    // Force fixed page size for best cross-platform determinism
-    layout.size = pageWidthRef.current || 1;
+  const onScrollToIndexFailed = useCallback((info) => {
+    logStripCalendar('MonthlyStripList', 'scrollToIndexFailed', {
+      index: info.index,
+      highestMeasuredFrameIndex: info.highestMeasuredFrameIndex,
+      averageItemLength: info.averageItemLength,
+    });
+    listRef.current?.scrollToOffset({
+      offset: info.averageItemLength * info.index,
+      animated: false,
+    });
   }, []);
 
-  return (
-    <View onLayout={onContainerLayout} style={{ width: "100%" }}>
-      <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 8 }}>
-        <Pressable onPress={goPrev}><Text>◀</Text></Pressable>
-        <Pressable onPress={goNext}><Text>▶</Text></Pressable>
-      </View>
+  useEffect(() => {
+    logStripCalendar('MonthlyStripList', 'mount', {
+      dataLength: weekStarts.length,
+      targetTopWeekStart,
+      targetIndex,
+    });
 
+    return () => {
+      if (webIdleSnapTimerRef.current) {
+        clearTimeout(webIdleSnapTimerRef.current);
+      }
+      logStripCalendar('MonthlyStripList', 'unmount', {
+        targetTopWeekStart,
+      });
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!targetTopWeekStart) return;
+    const index = targetIndex;
+    if (index == null) return;
+
+    const isInitialSync = !hasInitializedSyncRef.current;
+    hasInitializedSyncRef.current = true;
+
+    // ✅ “targetTopWeekStart가 같다”만으로는 sync를 스킵하면 안 됨
+    //    recenter로 weekStarts window가 바뀌면 index가 달라짐 → 그때는 재정렬 필요
+    const isAlreadySynced =
+      !isInitialSync &&
+      lastSyncedTargetRef.current === targetTopWeekStart &&
+      lastSyncedIndexRef.current === index &&
+      lastSyncedWeekWindowKeyRef.current === weekWindowKey;
+
+    if (isAlreadySynced) {
+      logStripCalendar('MonthlyStripList', 'sync:skipAlreadySynced', {
+        targetTopWeekStart,
+        index,
+        weekWindowKey,
+      });
+      return;
+    }
+
+    clearWebIdleSettleTimer();
+
+    const animated = isInitialSync ? false : scrollAnimated;
+
+    logStripCalendar('MonthlyStripList', 'sync:scrollToIndex', {
+      targetTopWeekStart,
+      index,
+      scrollAnimated: animated,
+      isInitialSync,
+      lastSyncedTarget: lastSyncedTargetRef.current,
+      lastSyncedIndex: lastSyncedIndexRef.current,
+      lastSyncedWeekWindowKey: lastSyncedWeekWindowKeyRef.current,
+      weekWindowKey,
+    });
+
+    lastSyncedTargetRef.current = targetTopWeekStart;
+    lastSyncedIndexRef.current = index;
+    lastSyncedWeekWindowKeyRef.current = weekWindowKey;
+
+    if (Platform.OS === 'web') {
+      const now = Date.now();
+      initialIdleGuardUntilRef.current = now + MONTHLY_WEB_INITIAL_IDLE_GUARD_MS;
+      programmaticScrollGuardUntilRef.current = now + MONTHLY_WEB_PROGRAMMATIC_SCROLL_GUARD_MS;
+      hasUserInteractionRef.current = false;
+      idleSettleArmedRef.current = false;
+      idleSettleLockRef.current = true;
+      lastSettledOffsetRef.current = index * WEEK_ROW_HEIGHT;
+    }
+
+    if (isInitialSync) {
+      const timeoutId = setTimeout(() => {
+        setIsInitialAligned(true);
+        logStripCalendar('MonthlyStripList', 'sync:initialAlignmentDone', {
+          targetTopWeekStart,
+          index,
+        });
+      }, 0);
+
+      return () => clearTimeout(timeoutId);
+    }
+
+    requestAnimationFrame(() => {
+      listRef.current?.scrollToIndex({ index, animated });
+    });
+
+    if (!isInitialSync && Platform.OS === 'web') {
+      const timeoutId = setTimeout(() => {
+        logStripCalendar('MonthlyStripList', 'settle:fallbackWebProgrammatic', {
+          targetTopWeekStart,
+          index,
+        });
+        settleByOffset(index * WEEK_ROW_HEIGHT, 'fallbackWebProgrammatic', { allowCorrection: false });
+      }, animated ? MONTHLY_WEB_PROGRAMMATIC_SETTLE_DELAY_MS : 0);
+
+      return () => clearTimeout(timeoutId);
+    }
+
+    return undefined;
+  }, [
+    clearWebIdleSettleTimer,
+    scrollAnimated,
+    settleByOffset,
+    targetIndex,
+    targetTopWeekStart,
+    weekWindowKey,
+  ]);
+
+  return (
+    <View style={[styles.viewport, !isInitialAligned && styles.hiddenBeforeAlign]}>
       <FlashList
         ref={listRef}
-        horizontal
-        data={weeks}
-        keyExtractor={(item) => item.id}
-        estimatedItemSize={pageWidth || 1}
-        overrideItemLayout={overrideItemLayout}
-        renderItem={({ item }) => (
-          <View style={{ width: pageWidth, justifyContent: "center", alignItems: "center" }}>
-            <Text>{item.weekStartISO}</Text>
-          </View>
-        )}
+        data={weekStarts}
+        initialScrollIndex={targetIndex ?? 0}
+        renderItem={renderItem}
+        keyExtractor={keyExtractor}
+        estimatedItemSize={WEEK_ROW_HEIGHT}
+        pagingEnabled={false}
+        snapToInterval={WEEK_ROW_HEIGHT}
+        snapToAlignment="start"
+        decelerationRate="fast"
+        disableIntervalMomentum
+        onScrollBeginDrag={onScrollBeginDrag}
         onScroll={onScroll}
-        scrollEventThrottle={16}
-        showsHorizontalScrollIndicator={false}
+        scrollEventThrottle={32}
+        onMomentumScrollBegin={onMomentumScrollBegin}
+        onMomentumScrollEnd={onMomentumScrollEnd}
+        onScrollEndDrag={onScrollEndDrag}
+        onScrollToIndexFailed={onScrollToIndexFailed}
+        showsVerticalScrollIndicator={false}
+        getItemType={() => 'week'}
       />
     </View>
   );
 }
+
+const styles = StyleSheet.create({
+  viewport: {
+    height: WEEK_ROW_HEIGHT * MONTHLY_VISIBLE_WEEK_COUNT,
+  },
+  hiddenBeforeAlign: {
+    opacity: 0,
+  },
+  rowContainer: {
+    height: WEEK_ROW_HEIGHT,
+  },
+});
 ```
 
 ---
 
-## 결론(한 줄 요약)
+## 2) “스크롤 작동될 때 작업 좀 빼야되나?” → 응, 빼는 게 맞음
 
-지금 현상은 웹이 멍청해서가 아니라(…라고 하고 싶지만) **leadingInset(대개 반폭 스페이서/패딩) + 스냅의 타이브레이크** 때문에 딱 `width/2`로 밀리는 “구조적 버그”에 가깝고,
-해결은 **(1) inset 제거 또는 오프셋 공식에 포함** + **(2) 스크롤 정착 후 quantize 보정** 이 두 개면 끝임. 플랫폼 분기 필요 없음.
+지금 onScroll은 **상태머신/타이머/가드/로깅** 다 들고 있어서, 디버그 켜진 순간 체감이 바로 흔들릴 수밖에 없음.
 
-원하면, 네 현재 FlashList props 목록(weekly 쪽) 그대로 붙여주면 내가 “어느 prop이 실제로 inset/스냅을 만들고 있는지”를 로그 값 기준으로 더 확정적으로 지목해서 **딱 필요한 줄만 최소 수정안**으로 깎아줄게.
+### 추천 구조(최신/더 나은 방향)
+
+**onScroll에서 해야 할 일은 사실 2개면 끝**이야.
+
+> **전문적인 설계 예시**
+>
+> 1. `onScroll`: 최신 offset/timestamp만 저장
+> 2. `requestAnimationFrame` 또는 단일 idle timer에서 “정착 조건 판단 + settle 호출” 처리
+> 3. settle 호출 경로는 `requestSettle()`로 단일화(중복 호출 coalesce)
+
+예시(개념):
+
+```js
+// onScroll: 초경량
+function onScroll(e) {
+  latestOffsetRef.current = e.nativeEvent.contentOffset.y;
+  latestAtRef.current = performance.now();
+  scheduleProcess(); // rAF 1회만 예약
+}
+
+// rAF 1프레임에 1번만 실행
+function processScrollFrame() {
+  if (now < guardUntil) return;
+  if (abs(latestOffset - lastSettledOffset) < rearmThreshold) return;
+  scheduleIdleSettle(); // 마지막 스크롤 이후 N ms
+}
+```
+
+이렇게 하면:
+
+* 스크롤 이벤트가 1초에 60번 와도, “판단 로직”은 프레임당 1번만 함
+* 타이머/락/가드가 여기저기서 싸우는 구조가 **자연스럽게 정리됨**
+
+---
+
+## 3) “쓸모없으면 빼도 됨” 기준으로, 삭제 후보 찍어준다
+
+지금 코드 기준으로 **정리해도 되는(혹은 합쳐도 되는) 애들**:
+
+### 바로 삭제/비활성 추천
+
+* **scroll:sample 로그** (지금도 패치에서 detail일 때만 찍게 낮춤)
+  → 이거 켜져 있으면 콘솔이 스크롤 성능 잡아먹는 주범임
+
+### 구조 리팩터링하면서 삭제 추천 (web only)
+
+* `hasUserInteractionRef`, `idleSettleArmedRef`, `idleSettleLockRef`
+  → “거리 조건 + 가드 시간 + idle timer”만으로 대부분 대체 가능함
+  → 지금은 상태가 셋으로 갈라져서 추론 난이도만 올림
+
+### 합치는 게 더 나은 애들
+
+* `initialIdleGuardUntilRef`, `correctionCooldownUntilRef`, `settleHardCooldownUntilRef`
+  → 전부 “지금은 settle 금지”라는 동일 목적이라
+  `idleSettleBlockedUntilRef = max(...)` 이런 식으로 **단일 타임가드**로 통합 가능
+
+---
+
+## 4) 너가 물은 질문에 한 줄로 대답
+
+* “스크롤 작동될 때 작업 빼야되나?” → **응. onScroll은 ‘기록만’ 하게 만들면 승리임.**
+* “쓸모없는 건 빼도 됨?” → **응. 특히 스크롤 샘플 로그/복잡한 ref 상태머신은 과감히 빼는 게 맞음.**
+
+---
+
+원하면 내가 다음 단계로 **(A) onScroll 다이어트 버전(상태 3개 삭제하고 idle settle 단순화)**도 “컴포넌트 전체 코드”로 바로 만들어줄게.
+지금은 일단 위 패치만 넣어도, 니가 말한 **scrollIdleWeb 반복 정착 + anchor 연쇄 변경** 같은 똥줄타는 증상은 확 꺾일 확률이 높다.

@@ -61,55 +61,31 @@ export const WEEKLY_LAYOUT_PAGE_DEBUG_SAMPLE_LIMIT = 4;
 export const WEEKLY_WEB_PROGRAMMATIC_SETTLE_DELAY_MS = 220;
 
 /**
- * Monthly strip 튜닝값 (특히 web)
+ * Monthly strip 튜닝값
+ *
+ * 리팩터 이전 9개 상수가 있었으나, phase 기반 상태 머신 도입으로 시간/거리
+ * 가드 5개(CORRECTION_COOLDOWN, INITIAL_IDLE_GUARD, SETTLE_HARD_COOLDOWN,
+ * IDLE_REARM_THRESHOLD, MIN_SCROLL_DELTA)를 제거했다.
  *
  * MONTHLY_DRIFT_CORRECTION_THRESHOLD_PX:
  * - 정착 시 보정 개입 임계 오차(px). (|drift| > threshold 일 때 보정)
- * - 높이면 보정 횟수 감소, 낮추면 정렬 정확도는 올라가지만 개입이 잦아짐.
+ * - phase 상호 배제로 보정 루프가 차단되므로 이전(18px)보다 빡빡하게 설정 가능.
  *
- * MONTHLY_WEB_IDLE_SETTLE_DELAY_MS:
+ * MONTHLY_IDLE_SETTLE_DELAY_MS:
  * - 스크롤 멈춤으로 판단하기 전 대기 시간.
- * - 너무 짧으면 감속 중 개입해서 버벅임, 너무 길면 보정이 늦게 느껴짐.
+ * - 웹에서 momentum 이벤트 대신 idle timeout으로 정착을 판정한다.
  *
- * MONTHLY_WEB_CORRECTION_COOLDOWN_MS:
- * - 보정 직후 추가 보정을 잠시 막는 쿨다운.
- * - 연쇄 보정 루프를 줄이는 역할.
- *
- * MONTHLY_WEB_INITIAL_IDLE_GUARD_MS:
- * - 마운트/초기 정렬 직후 idle settle 비활성 시간.
- * - initialScrollIndex/프로그램 스크롤 부작용을 막음.
- *
- * MONTHLY_WEB_PROGRAMMATIC_SCROLL_GUARD_MS:
+ * MONTHLY_PROGRAMMATIC_GUARD_MS:
  * - 코드가 일으킨 스크롤 직후 사용자 스크롤로 오판하지 않기 위한 가드 시간.
+ * - phase='programmatic' 동안 idle settle을 차단한다.
  *
- * MONTHLY_WEB_IDLE_REARM_THRESHOLD_PX:
- * - 한 번 정착된 뒤, 다음 idle settle을 다시 "활성화(arm)"하기 위한 최소 이동 거리.
- * - 값이 크면 미세 스크롤은 무시, 값이 작으면 작은 이동에도 다시 보정.
- *
- * MONTHLY_WEB_SETTLE_HARD_COOLDOWN_MS:
- * - 정착 직후 강제 재정착을 막는 하드 쿨다운.
- * - 웹에서 무입력 재정착 루프를 끊는 핵심 보호막.
- *
- * MONTHLY_WEB_PROGRAMMATIC_SETTLE_DELAY_MS:
+ * MONTHLY_PROGRAMMATIC_SETTLE_DELAY_MS:
  * - 웹에서 programmatic scroll 이후 fallback settle 호출까지의 지연.
- *
- * MONTHLY_MIN_SCROLL_DELTA_PX:
- * - arm 판단 시 무시할 최소 스크롤 변화량.
- * - 트랙패드/브라우저 미세 지터를 사용자 입력으로 오인하지 않게 함.
- *
- * MONTHLY_SCROLL_SAMPLE_LIMIT:
- * - 월간 onScroll 샘플 로그 최대 개수.
  */
-export const MONTHLY_DRIFT_CORRECTION_THRESHOLD_PX = 18;
-export const MONTHLY_WEB_IDLE_SETTLE_DELAY_MS = 100;
-export const MONTHLY_WEB_CORRECTION_COOLDOWN_MS = 220;
-export const MONTHLY_WEB_INITIAL_IDLE_GUARD_MS = 360;
-export const MONTHLY_WEB_PROGRAMMATIC_SCROLL_GUARD_MS = 320;
-export const MONTHLY_WEB_IDLE_REARM_THRESHOLD_PX = WEEK_ROW_HEIGHT;
-export const MONTHLY_WEB_SETTLE_HARD_COOLDOWN_MS = 1200;
-export const MONTHLY_WEB_PROGRAMMATIC_SETTLE_DELAY_MS = 220;
-export const MONTHLY_MIN_SCROLL_DELTA_PX = 1;
-export const MONTHLY_SCROLL_SAMPLE_LIMIT = 60;
+export const MONTHLY_DRIFT_CORRECTION_THRESHOLD_PX = 2;
+export const MONTHLY_IDLE_SETTLE_DELAY_MS = 100;
+export const MONTHLY_PROGRAMMATIC_GUARD_MS = 320;
+export const MONTHLY_PROGRAMMATIC_SETTLE_DELAY_MS = 220;
 
 /**
  * 한 줄 요약 로그에서 우선 노출할 키 순서.
@@ -119,6 +95,7 @@ export const MONTHLY_SCROLL_SAMPLE_LIMIT = 60;
 export const STRIP_CALENDAR_LOG_PRIORITY_KEYS = [
   'source',
   'mode',
+  'phase',
   'offsetX',
   'offsetY',
   'drift',
