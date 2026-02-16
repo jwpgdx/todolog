@@ -4,9 +4,13 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 function DayCell({ day, summary, onPress }) {
   const dotColors = summary.uniqueCategoryColors.slice(0, 3);
   const overflow = summary.dotCount > 3;
+  const isEvenMonth = (day.month + 1) % 2 === 0;
 
   return (
-    <Pressable style={styles.cell} onPress={() => onPress(day.date)}>
+    <Pressable
+      style={[styles.cell, isEvenMonth ? styles.evenMonthCell : styles.oddMonthCell]}
+      onPress={() => onPress(day.date)}
+    >
       {day.monthLabel ? <Text style={styles.monthLabel}>{day.monthLabel}</Text> : <View style={styles.monthPlaceholder} />}
 
       <View style={[styles.dateContainer, day.isSelected && styles.selectedDateContainer]}>
@@ -39,6 +43,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'flex-start',
     paddingTop: 3,
+  },
+  oddMonthCell: {
+    backgroundColor: '#FFFFFF',
+  },
+  evenMonthCell: {
+    backgroundColor: '#F8FAFC',
   },
   monthLabel: {
     fontSize: 10,

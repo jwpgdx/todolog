@@ -143,6 +143,9 @@ Evidence:
 - Strip-calendar month-boundary label consistency fix
   - Fixed omission case where month label could be skipped when day `1` was rendered as the first cell of a week row
   - Month label now appears for day `1` across both weekly/monthly rendering paths
+- Strip-calendar day-cell readability improvement
+  - Added subtle odd/even month background tint to reduce month-transition confusion
+  - Preserved visual priority of selected circle, today bold text, and dot indicators
 
 Evidence:
 
@@ -150,6 +153,7 @@ Evidence:
 - `client/src/features/strip-calendar/ui/ModeToggleBar.js`
 - `client/src/features/strip-calendar/hooks/useStripCalendarController.js`
 - `client/src/features/strip-calendar/utils/stripCalendarDateUtils.js`
+- `client/src/features/strip-calendar/ui/DayCell.js`
 - `client/src/features/strip-calendar/ui/WeeklyStripList.js`
 - `.kiro/specs/strip-calendar/requirements.md`
 - `.kiro/specs/strip-calendar/design.md`

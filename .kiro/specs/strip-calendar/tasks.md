@@ -218,6 +218,14 @@ This plan implements Strip Calendar using the approved requirements (R1-R25) and
   - Verify weekly/monthly views both show month label for `... 1 ...` cases
   - _Requirements: R9_
 
+- [x] 32. Apply odd/even month tint for calendar readability
+  - Add subtle month-parity background tint in `DayCell`:
+    - odd month: neutral background
+    - even month: light tinted background
+  - Ensure tint does not reduce readability of selected-circle, today-text, and dot indicators
+  - Verify both weekly/monthly rendering paths apply identical tint rule
+  - _Requirements: R9, R23_
+
 - [ ] 20. Checkpoint: Interaction and contract validation
   - Verify weekly horizontal navigation
   - Verify weekly free horizontal drag scrolling is blocked
@@ -230,6 +238,7 @@ This plan implements Strip Calendar using the approved requirements (R1-R25) and
     - `Weekly_Mode` + swipe-down => `Monthly_Mode`
     - `Monthly_Mode` + swipe-up => `Weekly_Mode`
   - Verify month label appears when day-number is `1` even when rendered at week-first cell
+  - Verify odd/even month tint is visible and subtle without reducing selected/today/dot readability
   - Verify first render starts at week containing `todayDate`
   - Verify mode switch does not show index-0 flash or glide from wrong week
   - Verify `<`/`>` week navigation remains animated

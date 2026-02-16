@@ -180,6 +180,10 @@ Responsibilities:
   - `Today_Marker`: bold text only
   - `currentDate`: circular indicator
   - composed state (`todayDate === currentDate`): selected circle + bold text
+- Apply subtle month-parity background tint for readability:
+  - odd month: neutral base
+  - even month: lightly tinted base
+  - tint must stay below selection/today/dot visual priority
 - Render dot summary:
   - max 3 unique category dots
   - overflow `+` indicator when unique categories >= 4
@@ -410,13 +414,16 @@ Because this project currently has no mandatory automated runner, testing is spl
    - 4+ unique categories => 3 dots + `+`
 10. Month label rule:
    - month label appears when day-number is `1`, including week-first cell
-11. Language/startDayOfWeek/timezone changes reflect immediately
-12. Today marker updates on timezone changes and app foreground return
-13. Offline mode still shows cached summaries and remains interactive
-14. Perf Monitor check: mode transition does not trigger repeated lower todo-list reflow/layout thrash
-15. Weekly mode: if today week is off-screen, header today button appears; click returns to today week and selects today
-16. Monthly mode: if today is outside visible 5-row window, header today button appears; click aligns today week to top and selects today
-17. Monthly settle guard behavior:
+11. Month parity tint rule:
+   - odd/even month backgrounds are visually distinguishable but subtle
+   - selected circle, today bold text, and dot visibility remain readable over tint
+12. Language/startDayOfWeek/timezone changes reflect immediately
+13. Today marker updates on timezone changes and app foreground return
+14. Offline mode still shows cached summaries and remains interactive
+15. Perf Monitor check: mode transition does not trigger repeated lower todo-list reflow/layout thrash
+16. Weekly mode: if today week is off-screen, header today button appears; click returns to today week and selects today
+17. Monthly mode: if today is outside visible 5-row window, header today button appears; click aligns today week to top and selects today
+18. Monthly settle guard behavior:
    - while dragging/momentum/programmatic, idle settle does not fire
    - near-snapped + same-week state does not trigger redundant settle
 

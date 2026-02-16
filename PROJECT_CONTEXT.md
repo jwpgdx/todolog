@@ -230,6 +230,9 @@ Behavior:
 9. Month-boundary label rendering policy:
    - month label is shown on month-change boundary inside a week row
    - month label is also shown when day-number is `1`, including week-first cell
+10. Day-cell month readability tint policy:
+   - odd/even month uses subtle background tint difference at day-cell level
+   - tint is subordinate to selected-circle, today-text, and dot indicators
 
 ## 7. Key Files by Responsibility
 

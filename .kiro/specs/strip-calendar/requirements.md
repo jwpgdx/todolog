@@ -134,6 +134,8 @@ Strip Calendar는 `TodoScreen` 메인 화면에서 날짜 선택을 담당하는
 2. WHEN a day cell day-number is `1`, THEN THE cell SHALL show that month label even if it is the first cell of the rendered week row
 3. THE label SHALL be visually secondary (small/subtle)
 4. THE label SHALL work in both weekly and monthly representations where applicable
+5. THE day cell background SHALL apply subtle month-parity tint (`odd month` vs `even month`) to improve month-boundary readability
+6. THE month-parity tint SHALL NOT override selected-circle, today-text, or dot visibility semantics
 
 ### Requirement 10: Category Dot Deduplication
 
