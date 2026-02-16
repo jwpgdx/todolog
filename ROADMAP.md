@@ -140,6 +140,9 @@ Evidence:
 - Strip-calendar bottom mode-toggle policy finalized as swipe-only
   - Removed bottom bar click/tap toggle action
   - Direction policy: `Weekly_Mode` swipe-down => `Monthly_Mode`, `Monthly_Mode` swipe-up => `Weekly_Mode`
+- Strip-calendar month-boundary label consistency fix
+  - Fixed omission case where month label could be skipped when day `1` was rendered as the first cell of a week row
+  - Month label now appears for day `1` across both weekly/monthly rendering paths
 
 Evidence:
 

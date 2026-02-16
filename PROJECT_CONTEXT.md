@@ -227,6 +227,9 @@ Behavior:
    - bottom bar is swipe-only (click/tap toggle removed)
    - `Weekly_Mode` + swipe-down => `Monthly_Mode`
    - `Monthly_Mode` + swipe-up => `Weekly_Mode`
+9. Month-boundary label rendering policy:
+   - month label is shown on month-change boundary inside a week row
+   - month label is also shown when day-number is `1`, including week-first cell
 
 ## 7. Key Files by Responsibility
 

@@ -70,9 +70,10 @@ export function getWeekDates(weekStartYmd, todayDate, currentDate, language = 'k
     const date = addDays(weekStartYmd, i);
     const parsed = dayjs(date);
     const month = parsed.month();
+    const isFirstDayOfMonth = parsed.date() === 1;
 
     let monthLabel = null;
-    if (previousMonth !== null && previousMonth !== month) {
+    if (isFirstDayOfMonth || (previousMonth !== null && previousMonth !== month)) {
       monthLabel = formatShortMonthLabel(parsed, language);
     }
 

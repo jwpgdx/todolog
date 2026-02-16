@@ -169,6 +169,7 @@ Responsibilities:
 - Render 7 `DayCell`s
 - Apply week-start rule from settings (`sunday`/`monday`)
 - Provide month-boundary label per cell when month changes in same row
+- Ensure month label is also shown when day-number is `1` (including week-first cell)
 
 ### 7. `DayCell`
 
@@ -407,13 +408,15 @@ Because this project currently has no mandatory automated runner, testing is spl
 9. Dot rules:
    - Same category many todos => one dot
    - 4+ unique categories => 3 dots + `+`
-10. Language/startDayOfWeek/timezone changes reflect immediately
-11. Today marker updates on timezone changes and app foreground return
-12. Offline mode still shows cached summaries and remains interactive
-13. Perf Monitor check: mode transition does not trigger repeated lower todo-list reflow/layout thrash
-14. Weekly mode: if today week is off-screen, header today button appears; click returns to today week and selects today
-15. Monthly mode: if today is outside visible 5-row window, header today button appears; click aligns today week to top and selects today
-16. Monthly settle guard behavior:
+10. Month label rule:
+   - month label appears when day-number is `1`, including week-first cell
+11. Language/startDayOfWeek/timezone changes reflect immediately
+12. Today marker updates on timezone changes and app foreground return
+13. Offline mode still shows cached summaries and remains interactive
+14. Perf Monitor check: mode transition does not trigger repeated lower todo-list reflow/layout thrash
+15. Weekly mode: if today week is off-screen, header today button appears; click returns to today week and selects today
+16. Monthly mode: if today is outside visible 5-row window, header today button appears; click aligns today week to top and selects today
+17. Monthly settle guard behavior:
    - while dragging/momentum/programmatic, idle settle does not fire
    - near-snapped + same-week state does not trigger redundant settle
 

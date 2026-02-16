@@ -212,6 +212,12 @@ This plan implements Strip Calendar using the approved requirements (R1-R25) and
   - Keep header toggle button as explicit click-based mode switch path
   - _Requirements: R7, R8_
 
+- [x] 31. Fix month-label omission when day `1` is rendered at week-first cell
+  - Update week date labeling logic so day-number `1` always emits month label
+  - Keep existing month-boundary transition labeling behavior for non-first-day boundaries
+  - Verify weekly/monthly views both show month label for `... 1 ...` cases
+  - _Requirements: R9_
+
 - [ ] 20. Checkpoint: Interaction and contract validation
   - Verify weekly horizontal navigation
   - Verify weekly free horizontal drag scrolling is blocked
@@ -223,6 +229,7 @@ This plan implements Strip Calendar using the approved requirements (R1-R25) and
   - Verify bottom swipe direction policy:
     - `Weekly_Mode` + swipe-down => `Monthly_Mode`
     - `Monthly_Mode` + swipe-up => `Weekly_Mode`
+  - Verify month label appears when day-number is `1` even when rendered at week-first cell
   - Verify first render starts at week containing `todayDate`
   - Verify mode switch does not show index-0 flash or glide from wrong week
   - Verify `<`/`>` week navigation remains animated

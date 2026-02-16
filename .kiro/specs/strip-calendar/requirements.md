@@ -131,8 +131,9 @@ Strip Calendar는 `TodoScreen` 메인 화면에서 날짜 선택을 담당하는
 #### Acceptance Criteria
 
 1. WHEN a day cell belongs to a new month within the same week row, THEN THE cell SHALL show a small month label
-2. THE label SHALL be visually secondary (small/subtle)
-3. THE label SHALL work in both weekly and monthly representations where applicable
+2. WHEN a day cell day-number is `1`, THEN THE cell SHALL show that month label even if it is the first cell of the rendered week row
+3. THE label SHALL be visually secondary (small/subtle)
+4. THE label SHALL work in both weekly and monthly representations where applicable
 
 ### Requirement 10: Category Dot Deduplication
 
