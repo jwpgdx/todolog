@@ -167,6 +167,15 @@ export default function MainStack() {
         }}
       />
       <Stack.Screen
+        name="RecurrenceEngineTest"
+        component={require('../test/RecurrenceEngineTestScreen').default}
+        options={{
+          title: 'Recurrence Engine Test',
+          headerBackTitle: '뒤로',
+          headerShown: true,
+        }}
+      />
+      <Stack.Screen
         name="Debug"
         component={DebugScreen}
         options={{

@@ -936,6 +936,13 @@ export default function DebugScreen({ navigation }) {
         >
           <Text style={styles.buttonText}>📅 Calendar Service Test</Text>
         </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.button, styles.testButton]}
+          onPress={() => navigation.navigate('RecurrenceEngineTest')}
+        >
+          <Text style={styles.buttonText}>🔁 Recurrence Engine Test</Text>
+        </TouchableOpacity>
       </ScrollView>
 
       <View style={styles.logContainer}>

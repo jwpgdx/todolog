@@ -2,6 +2,8 @@
  * 클라이언트용 반복 규칙 유틸리티 (RRULE 기반)
  */
 
+import { normalizeRecurrence, occursOnDateNormalized } from './recurrenceEngine';
+
 /**
  * 할일 입력 데이터를 RRULE 기반 API 형식으로 변환
  * @param {Object} formData - 폼에서 입력받은 데이터
@@ -368,67 +370,11 @@ export function occursOnDate(todo, targetDate) {
 function checkRecurrenceOnDate(rruleString, startDate, targetDate, recurrenceEndDate) {
   if (!rruleString) return false;
 
-  // 배열인 경우 첫 번째 요소 사용
-  const rrule = Array.isArray(rruleString) ? rruleString[0] : rruleString;
-  if (!rrule || typeof rrule !== 'string') return false;
+  const normalized = normalizeRecurrence(rruleString, recurrenceEndDate, {
+    startDate,
+  });
 
-  // 시작 날짜 이전이면 false
-  if (targetDate < startDate) return false;
-
-  // 반복 종료 날짜 이후면 false
-  if (recurrenceEndDate && targetDate > recurrenceEndDate) return false;
-
-  // FREQ 파싱
-  const freqMatch = rrule.match(/FREQ=(\w+)/);
-  if (!freqMatch) return false;
-
-  const frequency = freqMatch[1].toLowerCase();
-
-  const start = new Date(startDate + 'T00:00:00');
-  const target = new Date(targetDate + 'T00:00:00');
-
-  switch (frequency) {
-    case 'daily':
-      return true; // 매일 발생
-
-    case 'weekly':
-      // BYDAY 파싱
-      const bydayMatch = rrule.match(/BYDAY=([^;]+)/);
-      if (bydayMatch) {
-        const days = ['SU', 'MO', 'TU', 'WE', 'TH', 'FR', 'SA'];
-        const allowedDays = bydayMatch[1].split(',');
-        const targetDay = target.getDay(); // 0 (일요일) ~ 6 (토요일)
-        const targetDayStr = days[targetDay];
-        return allowedDays.includes(targetDayStr);
-      }
-      // BYDAY가 없으면 시작 요일과 같은 요일에만 발생
-      return target.getDay() === start.getDay();
-
-    case 'monthly':
-      // BYMONTHDAY 파싱
-      const bymonthdayMatch = rrule.match(/BYMONTHDAY=(\d+)/);
-      if (bymonthdayMatch) {
-        const dayOfMonth = parseInt(bymonthdayMatch[1]);
-        return target.getDate() === dayOfMonth;
-      }
-      // BYMONTHDAY가 없으면 시작일과 같은 날짜에만 발생
-      return target.getDate() === start.getDate();
-
-    case 'yearly':
-      // BYMONTH, BYMONTHDAY 파싱
-      const bymonthMatch = rrule.match(/BYMONTH=(\d+)/);
-      const yearlyBymonthdayMatch = rrule.match(/BYMONTHDAY=(\d+)/);
-      if (bymonthMatch && yearlyBymonthdayMatch) {
-        const month = parseInt(bymonthMatch[1]);
-        const day = parseInt(yearlyBymonthdayMatch[1]);
-        return target.getMonth() + 1 === month && target.getDate() === day;
-      }
-      // 없으면 시작일과 같은 월/일에만 발생
-      return target.getMonth() === start.getMonth() && target.getDate() === start.getDate();
-
-    default:
-      return false;
-  }
+  return occursOnDateNormalized(normalized, targetDate);
 }
 
 /**
