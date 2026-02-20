@@ -16,10 +16,11 @@ Todolog is designed to work fully offline, then sync safely to server and Google
 
 ## Current Status
 
-As of 2026-02-15:
+As of 2026-02-20:
 
 - Phase 1-2 calendar integration: complete
 - Phase 2.5 data normalization (floating date/time string contract): complete
+- Sync hardening (`Pending Push -> Delta Pull`): complete
 - Strip-calendar stabilization/debugging: in progress
 - Phase 3 recurrence engine: planned
 
@@ -39,7 +40,7 @@ Core principles:
 
 1. Local-first UX: UI is never blocked by server calls.
 2. Sync as background concern.
-3. Dependency-safe sync order: Category -> Todo -> Completion.
+3. Dependency-safe sync order: `ensureDatabase -> Pending Push -> Delta Pull -> Cursor Commit -> Cache Refresh`.
 4. Strict date/time string contracts across client/API/server.
 
 ## Tech Stack
@@ -212,11 +213,12 @@ Use lightweight flow for small bug fixes or doc-only changes.
 
 If you are an AI agent, read in this order:
 
-1. `.kiro/steering/requirements.md`
-2. `PROJECT_CONTEXT.md`
-3. `README.md`
-4. `ROADMAP.md`
-5. Relevant `.kiro/specs/<feature>/...`
+1. `AGENTS.md`
+2. `AI_COMMON_RULES.md`
+3. `PROJECT_CONTEXT.md`
+4. `README.md`
+5. `ROADMAP.md`
+6. Relevant `.kiro/specs/<feature>/...`
 
 ## Documentation Map
 

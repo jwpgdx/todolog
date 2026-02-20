@@ -1,7 +1,7 @@
 # Todolog Project Context
 
-Last Updated: 2026-02-16
-Status: Phase 2.5 complete, strip-calendar stabilization in progress, Phase 3 not started
+Last Updated: 2026-02-20
+Status: Sync hardening complete (Pending Push -> Delta Pull), strip-calendar stabilization in progress, Phase 3 not started
 
 ## 1. Purpose
 
@@ -34,6 +34,7 @@ Server:
 
 - Phase 1-2 calendar integration: complete
 - Phase 2.5 data normalization: complete
+- Sync hardening (`Pending Push -> Delta Pull`): complete
 - Strip-calendar foundation (weekly/monthly shell + anchor sync + debug instrumentation): in progress
 - Phase 3 recurrence engine: planned, not implemented
 
@@ -59,7 +60,11 @@ Server:
 
 Dependency order must stay:
 
-Category -> Todo -> Completion
+1. `ensureDatabase`
+2. `Pending Push`
+3. `Delta Pull` (category full + todo/completion delta)
+4. `Cursor Commit`
+5. `Cache Refresh`
 
 Main sync entry point:
 
@@ -113,7 +118,7 @@ Validation and rejection logic:
 
 File: `client/src/services/db/database.js`
 
-- `MIGRATION_VERSION = 4`
+- `MIGRATION_VERSION = 5`
 - `todos` key columns:
   - `_id TEXT PRIMARY KEY`
   - `date TEXT` (legacy compatibility column; runtime contract uses start/end date)
@@ -125,6 +130,11 @@ File: `client/src/services/db/database.js`
   - `recurrence_end_date TEXT`
 - Key index:
   - `idx_todos_recurrence_window(start_date, recurrence_end_date)`
+- Pending queue v5 additions:
+  - `retry_count INTEGER NOT NULL DEFAULT 0`
+  - `last_error TEXT NULL`
+  - `next_retry_at TEXT NULL`
+  - `status TEXT NOT NULL DEFAULT 'pending'`
 
 ### 5.2 Server MongoDB Todo model
 
@@ -254,9 +264,12 @@ SQLite:
 Sync:
 
 - `client/src/services/sync/index.js`
-- `client/src/services/sync/todoSync.js`
-- `client/src/services/sync/categorySync.js`
-- `client/src/services/sync/completionSync.js`
+- `client/src/services/sync/pendingPush.js`
+- `client/src/services/sync/deltaPull.js`
+- `client/src/services/sync/syncErrorPolicy.js`
+- `client/src/services/sync/todoSync.js` (legacy full-pull module)
+- `client/src/services/sync/categorySync.js` (legacy full-pull module)
+- `client/src/services/sync/completionSync.js` (legacy full-pull module)
 
 Calendar module:
 
@@ -395,7 +408,7 @@ If requests fail locally, check `EXPO_PUBLIC_API_URL` first.
 
 1. Re-introducing legacy schedule fields.
 2. Violating the string date/time contract.
-3. Breaking sync order (Category -> Todo -> Completion).
+3. Breaking sync order (`Pending Push -> Delta Pull -> Cursor Commit -> Cache Refresh`).
 4. Missing calendar month-cache invalidation on todo/completion updates.
 5. Leaving verbose debug logs in production flows.
 6. Monthly strip web settle path currently mixes list snap physics and JS idle-settle correction logic; this area is still under tuning.

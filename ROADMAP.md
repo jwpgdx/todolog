@@ -1,6 +1,6 @@
 # Todolog Roadmap
 
-Last Updated: 2026-02-16
+Last Updated: 2026-02-20
 Owner: Product + Engineering
 
 ## 1. Purpose
@@ -19,13 +19,15 @@ For execution rules, see `.kiro/steering/requirements.md`.
 Current state:
 
 - Phase 2.5 data normalization is complete
+- Sync hardening (`Pending Push -> Delta Pull`) is complete
 - Strip-calendar module is in stabilization/debugging phase
 - Phase 3 recurrence engine is the next major deliverable
 
 Immediate objective:
 
+- maintain sync operational stability (retry/dead-letter/throughput monitoring)
 - stabilize strip-calendar weekly/monthly settle behavior and mode-anchor consistency
-- keep Phase 3 recurrence engine as next major deliverable after strip-calendar stabilization
+- start Phase 3 recurrence engine kickoff
 
 ## 3. Dated Milestones (Completed)
 
@@ -158,6 +160,22 @@ Evidence:
 - `.kiro/specs/strip-calendar/requirements.md`
 - `.kiro/specs/strip-calendar/design.md`
 - `.kiro/specs/strip-calendar/tasks.md`
+
+### 2026-02-20
+
+- Sync service hardening completed (`Pending Push -> Delta Pull`)
+  - Pending queue v5 migration applied (`retry_count`, `last_error`, `next_retry_at`, `status`)
+  - Replay routing completed for todo/category/completion (toggle replay 금지)
+  - Retry/backoff/dead-letter policy and cursor commit rule 적용
+  - Delta pull path stabilized (category full + todo/completion delta)
+  - Performance/operations checks and trigger dedupe checks completed
+
+Evidence:
+
+- `.kiro/specs/sync-service-pending-delta/requirements.md`
+- `.kiro/specs/sync-service-pending-delta/design.md`
+- `.kiro/specs/sync-service-pending-delta/tasks.md`
+- `.kiro/specs/sync-service-pending-delta/log.md`
 
 ## 4. Next Milestones (Planned)
 
