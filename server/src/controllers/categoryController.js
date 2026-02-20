@@ -1,5 +1,6 @@
 const Category = require('../models/Category');
 const Todo = require('../models/Todo');
+const Completion = require('../models/Completion');
 const { generateId, isValidUUID } = require('../utils/idGenerator');
 
 // Get all categories for a user
@@ -92,17 +93,70 @@ exports.deleteCategory = async (req, res) => {
       return res.status(400).json({ message: 'Cannot delete default category' });
     }
 
-    // Find default category
-    const defaultCategory = await Category.findOne({ userId: req.userId, isDefault: true });
-    if (!defaultCategory) {
-      return res.status(500).json({ message: 'Default category not found. Contact support.' });
+    const now = new Date();
+    const isCategoryAlreadyDeleted = Boolean(category.deletedAt);
+
+    // Cascade tombstone 대상 Todo 조회
+    const activeTodos = await Todo.find({
+      userId: req.userId,
+      categoryId: category._id,
+      deletedAt: null,
+    }).select('_id');
+    const todoIds = activeTodos.map(t => t._id);
+
+    // Category tombstone (이미 tombstone인 경우 idempotent 유지)
+    if (!isCategoryAlreadyDeleted) {
+      category.deletedAt = now;
+      category.updatedAt = now;
+      await category.save();
     }
 
-    // Delete todos in this category
-    await Todo.deleteMany({ categoryId: category._id });
+    // Todo tombstone cascade
+    const todoTombstoneResult = await Todo.updateMany(
+      {
+        userId: req.userId,
+        categoryId: category._id,
+        deletedAt: null,
+      },
+      {
+        deletedAt: now,
+        updatedAt: now,
+      }
+    );
 
-    await category.deleteOne();
-    res.json({ message: 'Category deleted and todos moved to default category' });
+    // Completion tombstone cascade
+    let completionTombstoneCount = 0;
+    if (todoIds.length > 0) {
+      const completionTombstoneResult = await Completion.updateMany(
+        {
+          userId: req.userId,
+          todoId: { $in: todoIds },
+          deletedAt: null,
+        },
+        {
+          deletedAt: now,
+          updatedAt: now,
+        }
+      );
+      completionTombstoneCount = completionTombstoneResult.modifiedCount || 0;
+    }
+
+    // Idempotent delete 응답 (이미 삭제된 카테고리 재호출)
+    if (isCategoryAlreadyDeleted) {
+      return res.status(200).json({
+        message: 'Category already deleted',
+        idempotent: true,
+        alreadyDeleted: true,
+        tombstonedTodoCount: todoTombstoneResult.modifiedCount || 0,
+        tombstonedCompletionCount: completionTombstoneCount,
+      });
+    }
+
+    res.json({
+      message: 'Category deleted with tombstone cascade',
+      tombstonedTodoCount: todoTombstoneResult.modifiedCount || 0,
+      tombstonedCompletionCount: completionTombstoneCount,
+    });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }

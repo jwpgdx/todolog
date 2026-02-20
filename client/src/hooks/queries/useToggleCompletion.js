@@ -3,8 +3,6 @@ import NetInfo from '@react-native-community/netinfo';
 import { completionAPI } from '../../api/todos';
 import {
   toggleCompletion as sqliteToggleCompletion,
-  createCompletion,
-  deleteCompletion
 } from '../../services/db/completionService';
 import { addPendingChange } from '../../services/db/pendingService';
 import { ensureDatabase } from '../../services/db/database';
@@ -18,13 +16,13 @@ import { invalidateDateSummary } from '../../features/strip-calendar/services/st
  * 수정된 흐름 (2026-02-03):
  * 1. SQLite 즉시 토글 (Optimistic Update)
  * 2. 네트워크 확인
- *    - 온라인: 서버 요청 → 서버 응답으로 SQLite 동기화
+ *    - 온라인: completion create/delete 명시 API 호출
  *    - 오프라인: Pending Queue 추가
  * 3. 실패 시: Pending Queue 추가
  * 
  * 버그 수정:
  * - 이전: SQLite와 서버가 독립적으로 토글 → 불일치 발생
- * - 수정: 서버 응답을 Source of Truth로 사용 → SQLite 동기화
+ * - 수정: 재시도/리플레이 안정성을 위해 toggle replay 금지, 명시 API 사용
  */
 export const useToggleCompletion = () => {
   const queryClient = useQueryClient();
@@ -39,6 +37,7 @@ export const useToggleCompletion = () => {
       // - 비반복 일정 (단일/기간 모두): 한 번 완료하면 끝 → null
       const isRecurring = todo && !!todo.recurrence;
       const completionDate = isRecurring ? date : null;
+      const completionKey = `${todoId}_${completionDate || 'null'}`;
 
       // UUID 생성 (완료 생성 시 사용)
       const completionId = generateId();
@@ -57,10 +56,14 @@ export const useToggleCompletion = () => {
       const netInfo = await NetInfo.fetch();
 
       if (!netInfo.isConnected) {
+        const pendingData = optimisticState
+          ? { _id: completionId, todoId, date: completionDate, isRecurring }
+          : { todoId, date: completionDate, isRecurring };
+
         await addPendingChange({
           type: optimisticState ? 'createCompletion' : 'deleteCompletion',
-          entityId: completionId,
-          data: { todoId, date: completionDate },
+          entityId: completionKey,
+          data: pendingData,
         });
         const fnEndTime = performance.now();
         console.log(`⚡ [useToggleCompletion] mutationFn 완료 (오프라인): ${(fnEndTime - fnStartTime).toFixed(2)}ms`);
@@ -69,28 +72,32 @@ export const useToggleCompletion = () => {
 
       // 3. 온라인: 서버 요청
       try {
-        const res = await completionAPI.toggleCompletion(todoId, completionDate, completionId);
-
-        // 서버 응답으로 SQLite 동기화
-        const serverState = res.data.completed;
-        if (serverState !== optimisticState) {
-          // SQLite를 서버 상태로 강제 동기화
-          if (serverState) {
-            await createCompletion(todoId, completionDate, completionId);
-          } else {
-            await deleteCompletion(todoId, completionDate);
-          }
-        }
+        const res = optimisticState
+          ? await completionAPI.createCompletion({
+            _id: completionId,
+            todoId,
+            date: completionDate,
+            isRecurring,
+          })
+          : await completionAPI.deleteCompletion({
+            todoId,
+            date: completionDate,
+            isRecurring,
+          });
 
         const fnEndTime = performance.now();
         console.log(`⚡ [useToggleCompletion] mutationFn 완료 (온라인): ${(fnEndTime - fnStartTime).toFixed(2)}ms`);
-        return { ...res.data, isRecurring };
+        return { ...res.data, completed: optimisticState, isRecurring };
       } catch (error) {
         console.error('❌ [useToggleCompletion] 서버 요청 실패:', error.message);
+        const pendingData = optimisticState
+          ? { _id: completionId, todoId, date: completionDate, isRecurring }
+          : { todoId, date: completionDate, isRecurring };
+
         await addPendingChange({
           type: optimisticState ? 'createCompletion' : 'deleteCompletion',
-          entityId: completionId,
-          data: { todoId, date: completionDate },
+          entityId: completionKey,
+          data: pendingData,
         });
         const fnEndTime = performance.now();
         console.log(`⚡ [useToggleCompletion] mutationFn 완료 (서버 실패): ${(fnEndTime - fnStartTime).toFixed(2)}ms`);

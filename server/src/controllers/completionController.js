@@ -88,13 +88,40 @@ exports.createCompletion = async (req, res) => {
     // 완료 날짜 결정
     // - 반복 일정: 날짜별로 완료 추적
     // - 비반복 일정 (단일/기간 모두): date=null (한 번 완료하면 끝)
-    const completionDate = isRecurring ? date : null;
+    const recurringFlag = isRecurring === true || isRecurring === 'true';
+    const completionDate = recurringFlag ? date : null;
+    const key = `${todoId}_${completionDate || 'null'}`;
+
+    // Idempotent create:
+    // - 이미 활성 완료 기록이 있으면 성공등가 처리
+    // - soft-delete 상태 기록이 있으면 복구 처리
+    const existingCompletion = await Completion.findOne({ key, userId });
+    if (existingCompletion) {
+      if (existingCompletion.deletedAt) {
+        existingCompletion.deletedAt = null;
+        existingCompletion.completedAt = new Date();
+        existingCompletion.updatedAt = new Date();
+        await existingCompletion.save();
+
+        return res.status(200).json({
+          ...existingCompletion.toObject(),
+          idempotent: true,
+          restored: true,
+        });
+      }
+
+      return res.status(200).json({
+        ...existingCompletion.toObject(),
+        idempotent: true,
+        alreadyExists: true,
+      });
+    }
 
     // 클라이언트가 _id를 보냈으면 사용, 없으면 서버에서 생성
     const completionId = req.body._id || generateId();
     const completion = new Completion({
       _id: completionId,
-      key: `${todoId}_${completionDate || 'null'}`,  // key 필드 추가
+      key,
       todoId,
       userId,
       date: completionDate,
@@ -107,7 +134,19 @@ exports.createCompletion = async (req, res) => {
   } catch (error) {
     console.error('Completion creation error:', error);
     if (error.code === 11000) {
-      return res.status(400).json({ message: '이미 완료된 할일입니다' });
+      // 경쟁 상황(race)에서 중복키가 발생하면 idempotent 성공등가 처리
+      const { todoId, date, isRecurring } = req.body;
+      const recurringFlag = isRecurring === true || isRecurring === 'true';
+      const completionDate = recurringFlag ? date : null;
+      const key = `${todoId}_${completionDate || 'null'}`;
+      const existingCompletion = await Completion.findOne({ key, userId: req.userId });
+      if (existingCompletion) {
+        return res.status(200).json({
+          ...existingCompletion.toObject(),
+          idempotent: true,
+          alreadyExists: true,
+        });
+      }
     }
     res.status(400).json({ message: error.message });
   }
@@ -123,17 +162,31 @@ exports.deleteCompletion = async (req, res) => {
     // 삭제할 완료 기록의 날짜 결정
     // - 반복 일정: 날짜별로 삭제
     // - 비반복 일정: date=null로 삭제
-    const completionDate = isRecurring === 'true' ? date : null;
-
-    const completion = await Completion.findOneAndDelete({
-      todoId,
-      userId,
-      date: completionDate,
-    });
+    const recurringFlag = isRecurring === true || isRecurring === 'true';
+    const completionDate = recurringFlag ? date : null;
+    const key = `${todoId}_${completionDate || 'null'}`;
+    const completion = await Completion.findOne({ key, userId });
 
     if (!completion) {
-      return res.status(404).json({ message: '완료 기록을 찾을 수 없습니다' });
+      // Idempotent delete: 이미 삭제된 상태와 동일로 간주
+      return res.status(200).json({
+        message: '이미 완료 취소된 상태입니다',
+        idempotent: true,
+        alreadyDeleted: true,
+      });
     }
+
+    if (completion.deletedAt) {
+      return res.status(200).json({
+        message: '이미 완료 취소된 상태입니다',
+        idempotent: true,
+        alreadyDeleted: true,
+      });
+    }
+
+    completion.deletedAt = new Date();
+    completion.updatedAt = new Date();
+    await completion.save();
 
     res.json({ message: '완료 취소됨' });
   } catch (error) {
@@ -147,7 +200,7 @@ exports.getCompletions = async (req, res) => {
     const { startDate, endDate } = req.query;
     const userId = req.userId;
 
-    const query = { userId };
+    const query = { userId, deletedAt: null };
     if (startDate && endDate) {
       query.date = { $gte: startDate, $lte: endDate };
     }

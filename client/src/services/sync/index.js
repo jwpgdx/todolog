@@ -3,10 +3,22 @@ import { AppState } from 'react-native';
 import { useQueryClient } from '@tanstack/react-query';
 import NetInfo from '@react-native-community/netinfo';
 import { useAuthStore } from '../../store/authStore';
-import { syncCategories } from './categorySync';
-import { syncTodos } from './todoSync';
-import { syncCompletions } from './completionSync';
 import { useTodoCalendarStore } from '../../features/todo-calendar/store/todoCalendarStore';
+import { useStripCalendarStore } from '../../features/strip-calendar/store/stripCalendarStore';
+import { invalidateRanges } from '../../features/strip-calendar/services/stripCalendarDataAdapter';
+import { ensureDatabase, getMetadata, setMetadata } from '../db/database';
+import { runPendingPush } from './pendingPush';
+import { runDeltaPull } from './deltaPull';
+
+const SYNC_CURSOR_KEY = 'sync.last_success_at';
+const DEFAULT_SYNC_CURSOR = '1970-01-01T00:00:00.000Z';
+
+function normalizeCursor(value) {
+  if (!value) return DEFAULT_SYNC_CURSOR;
+  const ts = Date.parse(value);
+  if (Number.isNaN(ts)) return DEFAULT_SYNC_CURSOR;
+  return new Date(ts).toISOString();
+}
 
 /**
  * 중앙 집중 동기화 서비스
@@ -26,7 +38,12 @@ export const useSyncService = () => {
   
   /**
    * 전체 동기화 실행
-   * 순서: Category → Todo → Completion → 캐시 무효화
+   * 순서:
+   * 1) ensureDatabase
+   * 2) Pending Push
+   * 3) Delta Pull
+   * 4) Cursor Commit
+   * 5) Cache Refresh
    */
   const syncAll = useCallback(async () => {
     // 로그인 안 됨 (게스트 포함)
@@ -47,16 +64,50 @@ export const useSyncService = () => {
       setError(null);
       
       console.log('🚀 [useSyncService] 전체 동기화 시작');
-      
-      // 1. Category 동기화
-      await syncCategories();
-      
-      // 2. Todo 동기화
-      await syncTodos();
-      
-      // 3. Completion 동기화
-      await syncCompletions();
-      
+
+      // 0. DB 준비
+      await ensureDatabase();
+      const rawCursor = await getMetadata(SYNC_CURSOR_KEY);
+      const cursor = normalizeCursor(rawCursor);
+      if (!rawCursor) {
+        console.log(`🧭 [useSyncService] 커서 없음 → 기본값 사용 (${DEFAULT_SYNC_CURSOR})`);
+      } else if (rawCursor !== cursor) {
+        console.warn(`⚠️ [useSyncService] 커서 파싱 실패 → 기본값 사용 (${DEFAULT_SYNC_CURSOR})`);
+      }
+
+      // 1. Pending Push (실패 시 Pull 중단)
+      const pushResult = await runPendingPush({ maxItems: 200 });
+      console.log('📤 [useSyncService] Pending Push 결과:', pushResult);
+
+      if (!pushResult.ok) {
+        const message = pushResult.lastError || 'Pending push failed';
+        console.warn('⛔ [useSyncService] Pending Push 실패로 Pull 단계 중단:', message);
+        setError(message);
+        return;
+      }
+
+      // 2. Delta Pull
+      const pullResult = await runDeltaPull({ cursor });
+      console.log('📥 [useSyncService] Delta Pull 결과:', pullResult);
+
+      if (!pullResult.ok) {
+        const message = pullResult.lastError || 'Delta pull failed';
+        console.warn('⛔ [useSyncService] Delta Pull 실패로 Cursor Commit/Cache Refresh 중단:', message);
+        setError(message);
+        return;
+      }
+
+      // 3. Cursor Commit (push + pull 성공 시에만)
+      const nextCursor = pullResult.serverSyncTime;
+      if (!nextCursor || Number.isNaN(Date.parse(nextCursor))) {
+        const message = `Invalid serverSyncTime: ${nextCursor}`;
+        console.warn('⛔ [useSyncService] Cursor Commit 중단:', message);
+        setError(message);
+        return;
+      }
+      await setMetadata(SYNC_CURSOR_KEY, nextCursor);
+      console.log('🧭 [useSyncService] Cursor commit 완료:', { from: cursor, to: nextCursor });
+
       // 4. React Query 캐시 무효화
       console.log('🔄 [useSyncService] 캐시 무효화 시작');
       queryClient.invalidateQueries({ queryKey: ['todos'] });
@@ -65,6 +116,25 @@ export const useSyncService = () => {
       // Phase 2: 캘린더 캐시 클리어
       useTodoCalendarStore.getState().clearAll();
       console.log('📅 [useSyncService] 캘린더 캐시 클리어 완료');
+
+      const hasDataChange =
+        pushResult.succeeded > 0 ||
+        pullResult.todos.updated > 0 ||
+        pullResult.todos.deleted > 0 ||
+        pullResult.completions.updated > 0 ||
+        pullResult.completions.deleted > 0;
+
+      if (hasDataChange) {
+        const loadedRanges = useStripCalendarStore.getState().loadedRanges || [];
+        if (loadedRanges.length > 0) {
+          invalidateRanges(loadedRanges);
+          console.log(`🗓️ [useSyncService] strip-calendar summary 무효화: ${loadedRanges.length}개 range`);
+        } else {
+          console.log('🗓️ [useSyncService] strip-calendar summary 무효화 스킵: loaded range 없음');
+        }
+      } else {
+        console.log('🗓️ [useSyncService] strip-calendar summary 무효화 스킵: 동기화 변경 없음');
+      }
       
       console.log('✅ [useSyncService] 캐시 무효화 완료');
       

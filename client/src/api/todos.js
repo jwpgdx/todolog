@@ -54,6 +54,12 @@ export const todoAPI = {
 export const completionAPI = {
   toggleCompletion: (todoId, date = null, completionId = null) => 
     api.post('/completions/toggle', { todoId, date, _id: completionId }),
+  createCompletion: ({ _id, todoId, date = null, isRecurring }) =>
+    api.post('/completions', { _id, todoId, date, isRecurring }),
+  deleteCompletion: ({ todoId, date = null, isRecurring }) =>
+    api.delete(`/completions/${todoId}`, { params: { date, isRecurring } }),
+  getDeltaSync: (lastSyncTime) =>
+    api.get(`/completions/delta-sync?lastSyncTime=${encodeURIComponent(lastSyncTime)}`),
   getCompletions: (startDate, endDate) =>
     api.get(`/completions?startDate=${startDate}&endDate=${endDate}`),
 };

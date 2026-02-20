@@ -311,6 +311,23 @@ export async function deleteCompletionsByTodoId(todoId) {
 }
 
 /**
+ * 키 목록으로 Completion 다중 삭제 (트랜잭션)
+ *
+ * @param {Array<string>} keys
+ * @returns {Promise<void>}
+ */
+export async function deleteCompletionsByKeys(keys) {
+    if (!Array.isArray(keys) || keys.length === 0) return;
+
+    const db = getDatabase();
+    await db.withTransactionAsync(async () => {
+        for (const key of keys) {
+            await db.runAsync('DELETE FROM completions WHERE key = ?', [key]);
+        }
+    });
+}
+
+/**
  * 다중 Completion Upsert (동기화용)
  * 
  * @param {Array} completions - [{ _id, todoId, date, completedAt }]

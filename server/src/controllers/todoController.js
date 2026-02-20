@@ -466,17 +466,40 @@ exports.deleteTodo = async (req, res) => {
   try {
     const { id } = req.params;
     const userId = req.userId;
+    const now = new Date();
 
-    // Soft delete: deletedAt 타임스탬프 설정
-    const todo = await Todo.findOneAndUpdate(
-      { _id: id, userId, deletedAt: null },
-      { deletedAt: new Date() },
-      { new: true }
-    );
+    const todo = await Todo.findOne({ _id: id, userId });
 
     if (!todo) {
       return res.status(404).json({ message: '할일을 찾을 수 없습니다' });
     }
+
+    // Idempotent delete: 이미 soft-delete된 항목은 성공등가 처리
+    if (todo.deletedAt) {
+      // 과거 데이터 정합성 보정: 이미 삭제된 todo라도 active completion이 남아 있으면 tombstone 처리
+      const completionTombstoneResult = await Completion.updateMany(
+        {
+          userId,
+          todoId: id,
+          deletedAt: null,
+        },
+        {
+          deletedAt: now,
+          updatedAt: now,
+        }
+      );
+
+      return res.status(200).json({
+        message: '이미 삭제된 할일입니다',
+        idempotent: true,
+        alreadyDeleted: true,
+        tombstonedCompletionCount: completionTombstoneResult.modifiedCount || 0,
+      });
+    }
+
+    todo.deletedAt = now;
+    todo.updatedAt = now;
+    await todo.save();
 
     // 구글 캘린더 이벤트 삭제
     if (todo.googleCalendarEventId) {
@@ -494,10 +517,24 @@ exports.deleteTodo = async (req, res) => {
       }
     }
 
-    // 관련 완료 기록도 삭제
-    await Completion.deleteMany({ todoId: id });
+    // 관련 완료 기록 tombstone cascade
+    const completionTombstoneResult = await Completion.updateMany(
+      {
+        userId,
+        todoId: id,
+        deletedAt: null,
+      },
+      {
+        deletedAt: now,
+        updatedAt: now,
+      }
+    );
 
-    res.json({ message: '삭제 완료', deletedTodo: todo });
+    res.json({
+      message: '삭제 완료',
+      deletedTodo: todo,
+      tombstonedCompletionCount: completionTombstoneResult.modifiedCount || 0,
+    });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
@@ -842,21 +879,31 @@ exports.bulkDeleteTodos = async (req, res) => {
       }
     }
 
-    // 완료 기록 삭제
-    await Completion.deleteMany({
-      todoId: { $in: todoIds },
-      userId
-    });
+    const now = new Date();
+
+    // 완료 기록 tombstone cascade
+    const completionTombstoneResult = await Completion.updateMany(
+      {
+        todoId: { $in: todoIds },
+        userId,
+        deletedAt: null,
+      },
+      {
+        deletedAt: now,
+        updatedAt: now,
+      }
+    );
 
     // 할일 Soft Delete
     await Todo.updateMany(
       { _id: { $in: todoIds }, userId },
-      { deletedAt: new Date() }
+      { deletedAt: now, updatedAt: now }
     );
 
     res.json({
       message: `${todos.length}개의 할일이 삭제되었습니다`,
-      deletedCount: todos.length
+      deletedCount: todos.length,
+      tombstonedCompletionCount: completionTombstoneResult.modifiedCount || 0,
     });
   } catch (error) {
     console.error('Bulk delete error:', error);

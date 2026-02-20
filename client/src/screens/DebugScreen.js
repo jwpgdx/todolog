@@ -23,7 +23,9 @@ import {
   addPendingChange,
   clearPendingChanges as sqliteClearPendingChanges,
   getPendingChangesCount,
+  getPendingReady,
 } from '../services/db/pendingService';
+import { runPendingPush } from '../services/sync/pendingPush';
 import {
   getAllCategories as sqliteGetAllCategories,
   getCategoryCount,
@@ -385,22 +387,34 @@ export default function DebugScreen({ navigation }) {
 
     try {
       const pending = await sqliteGetPendingChanges();
+      const ready = await getPendingReady();
+      const statusSummary = pending.reduce((acc, item) => {
+        const key = item.status || 'pending';
+        acc[key] = (acc[key] || 0) + 1;
+        return acc;
+      }, {});
       const completionPending = pending.filter(p =>
         p.type === 'createCompletion' || p.type === 'deleteCompletion'
       );
 
       addLog(`⏳ 전체 Pending: ${pending.length}개`);
+      addLog(`🚀 즉시 처리 가능(ready): ${ready.length}개`);
+      addLog(
+        `📊 상태 요약: pending=${statusSummary.pending || 0}, failed=${statusSummary.failed || 0}, dead_letter=${statusSummary.dead_letter || 0}`
+      );
       addLog(`✅ Completion Pending: ${completionPending.length}개`);
       addLog('');
 
-      if (completionPending.length === 0) {
-        addLog('✅ Completion Pending 없음');
+      if (pending.length === 0) {
+        addLog('✅ Pending 없음');
       } else {
-        addLog('📋 Completion Pending:');
-        completionPending.forEach((p, index) => {
-          addLog(`  [${index + 1}] ${p.type}`);
+        addLog('📋 최근 Pending (최대 10개):');
+        pending.slice(0, 10).forEach((p, index) => {
+          addLog(`  [${index + 1}] ${p.type} | status=${p.status || 'pending'} | retry=${p.retryCount || 0}`);
           addLog(`      todoId: ${p.todoId?.slice(-8)}`);
           addLog(`      date: ${p.date || 'null'}`);
+          addLog(`      nextRetryAt: ${p.nextRetryAt || 'null'}`);
+          addLog(`      lastError: ${p.lastError || 'null'}`);
           addLog(`      created: ${new Date(p.createdAt).toLocaleString()}`);
           addLog('');
         });
@@ -411,6 +425,32 @@ export default function DebugScreen({ navigation }) {
 
     addLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
   };
+
+  const runPendingPushWithLimit = async (maxItems, label = `${maxItems}`) => {
+    addLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    addLog(`🚀 Pending Push 실행 (maxItems=${label})`);
+    addLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+
+    try {
+      const result = await runPendingPush({ maxItems });
+      addLog(`ok=${result.ok}`);
+      addLog(`processed=${result.processed}, succeeded=${result.succeeded}, failed=${result.failed}`);
+      addLog(`removed=${result.removed}, deadLetter=${result.deadLetter}, deferred=${result.deferred}`);
+      addLog(`blockingFailure=${result.blockingFailure}`);
+      addLog(`lastError=${result.lastError || 'null'}`);
+
+      const count = await getPendingChangesCount();
+      addLog(`📊 현재 Pending: ${count}개`);
+    } catch (error) {
+      addLog(`❌ Pending Push 실행 실패: ${error.message}`);
+    }
+
+    addLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+  };
+
+  const runPendingPushOnce = async () => runPendingPushWithLimit(200, '200');
+  const runPendingPushOne = async () => runPendingPushWithLimit(1, '1');
+  const runPendingPushThree = async () => runPendingPushWithLimit(3, '3');
 
   // ========== SQLite 조회 테스트 ==========
 
@@ -861,6 +901,18 @@ export default function DebugScreen({ navigation }) {
 
         <TouchableOpacity style={[styles.button, styles.testButton]} onPress={checkPendingChanges}>
           <Text style={styles.buttonText}>⏳ Pending Changes 확인</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity style={[styles.button, styles.testButton]} onPress={runPendingPushOnce}>
+          <Text style={styles.buttonText}>🚀 Pending Push 1회 실행</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity style={[styles.button, styles.testButton]} onPress={runPendingPushOne}>
+          <Text style={styles.buttonText}>🚀 Pending Push 1건 실행</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity style={[styles.button, styles.testButton]} onPress={runPendingPushThree}>
+          <Text style={styles.buttonText}>🚀 Pending Push 3건 실행</Text>
         </TouchableOpacity>
 
         <View style={styles.divider} />

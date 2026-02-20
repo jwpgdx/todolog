@@ -102,7 +102,7 @@ export async function hasPendingChange(id) {
  * 
  * @param {Object} change
  * @param {string} change.type - createTodo, updateTodo, deleteTodo, createCategory, updateCategory, deleteCategory, createCompletion, deleteCompletion
- * @param {string} [change.entityId] - todoId 또는 categoryId
+ * @param {string} [change.entityId] - todoId 또는 categoryId 또는 completionId
  * @param {Object} [change.data]
  * @param {string} [change.date] - Completion용 날짜
  * @returns {Promise<string>} - 생성된 ID
@@ -113,8 +113,8 @@ export async function addPendingChange(change) {
 
     await db.runAsync(`
     INSERT INTO pending_changes 
-    (id, type, entity_id, data, date, created_at)
-    VALUES (?, ?, ?, ?, ?, ?)
+    (id, type, entity_id, data, date, created_at, retry_count, last_error, next_retry_at, status)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `, [
         id,
         change.type,
@@ -122,6 +122,10 @@ export async function addPendingChange(change) {
         change.data ? JSON.stringify(change.data) : null,
         change.date || null,
         new Date().toISOString(),
+        typeof change.retryCount === 'number' ? change.retryCount : 0,
+        change.lastError || null,
+        change.nextRetryAt || null,
+        change.status || 'pending',
     ]);
 
     return id;
@@ -141,8 +145,8 @@ export async function addPendingChanges(changes) {
             const id = change.id || generateId();
             await db.runAsync(`
         INSERT INTO pending_changes 
-        (id, type, entity_id, data, date, created_at)
-        VALUES (?, ?, ?, ?, ?, ?)
+        (id, type, entity_id, data, date, created_at, retry_count, last_error, next_retry_at, status)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `, [
                 id,
                 change.type,
@@ -150,9 +154,113 @@ export async function addPendingChanges(changes) {
                 change.data ? JSON.stringify(change.data) : null,
                 change.date || null,
                 new Date().toISOString(),
+                typeof change.retryCount === 'number' ? change.retryCount : 0,
+                change.lastError || null,
+                change.nextRetryAt || null,
+                change.status || 'pending',
             ]);
         }
     });
+}
+
+/**
+ * Pending Change를 재시도 상태로 마킹
+ *
+ * @param {string} id
+ * @param {Object} options
+ * @param {string|null} [options.lastError]
+ * @param {string|null} [options.nextRetryAt] - ISO 문자열
+ * @param {boolean} [options.incrementRetryCount=true]
+ * @returns {Promise<void>}
+ */
+export async function markPendingRetry(id, options = {}) {
+    const db = getDatabase();
+    const {
+        lastError = null,
+        nextRetryAt = null,
+        incrementRetryCount = true,
+    } = options;
+
+    if (incrementRetryCount) {
+        await db.runAsync(
+            `UPDATE pending_changes
+             SET retry_count = COALESCE(retry_count, 0) + 1,
+                 last_error = ?,
+                 next_retry_at = ?,
+                 status = 'failed'
+             WHERE id = ?`,
+            [lastError, nextRetryAt, id]
+        );
+        return;
+    }
+
+    await db.runAsync(
+        `UPDATE pending_changes
+         SET last_error = ?,
+             next_retry_at = ?,
+             status = 'failed'
+         WHERE id = ?`,
+        [lastError, nextRetryAt, id]
+    );
+}
+
+/**
+ * Pending Change의 오류 정보만 업데이트
+ *
+ * @param {string} id
+ * @param {string|null} lastError
+ * @returns {Promise<void>}
+ */
+export async function updatePendingError(id, lastError) {
+    const db = getDatabase();
+    await db.runAsync(
+        'UPDATE pending_changes SET last_error = ? WHERE id = ?',
+        [lastError, id]
+    );
+}
+
+/**
+ * Pending Change를 Dead Letter로 마킹
+ *
+ * @param {string} id
+ * @param {Object} options
+ * @param {string|null} [options.lastError]
+ * @returns {Promise<void>}
+ */
+export async function markPendingDeadLetter(id, options = {}) {
+    const db = getDatabase();
+    const { lastError = null } = options;
+
+    await db.runAsync(
+        `UPDATE pending_changes
+         SET status = 'dead_letter',
+             last_error = ?,
+             next_retry_at = NULL
+         WHERE id = ?`,
+        [lastError, id]
+    );
+}
+
+/**
+ * 현재 시각 기준으로 처리 가능한 Pending Changes 조회
+ * - status: pending 또는 failed
+ * - next_retry_at이 없거나 now 이하
+ *
+ * @param {string} [now] - ISO 문자열, 기본값: 현재 시각
+ * @returns {Promise<Array>}
+ */
+export async function getPendingReady(now = new Date().toISOString()) {
+    const db = getDatabase();
+
+    const result = await db.getAllAsync(
+        `SELECT * FROM pending_changes
+         WHERE status IN ('pending', 'failed')
+           AND (next_retry_at IS NULL OR next_retry_at <= ?)
+         ORDER BY created_at ASC`,
+        [now]
+    );
+
+    return result.map(deserializePendingChange);
 }
 
 /**
@@ -306,6 +414,10 @@ function deserializePendingChange(row) {
         data: row.data ? JSON.parse(row.data) : null,
         date: row.date,
         createdAt: row.created_at,
+        retryCount: typeof row.retry_count === 'number' ? row.retry_count : 0,
+        lastError: row.last_error || null,
+        nextRetryAt: row.next_retry_at || null,
+        status: row.status || 'pending',
         // 호환성 (기존 코드에서 timestamp 사용)
         timestamp: row.created_at,
     };

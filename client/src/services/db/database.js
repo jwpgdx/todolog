@@ -16,7 +16,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 let db = null;
 
 // 현재 마이그레이션 버전
-const MIGRATION_VERSION = 4;
+const MIGRATION_VERSION = 5;
 
 // ============================================================
 // 스키마 정의
@@ -82,7 +82,11 @@ CREATE TABLE IF NOT EXISTS pending_changes (
   entity_id TEXT,
   data TEXT,
   date TEXT,
-  created_at TEXT NOT NULL
+  created_at TEXT NOT NULL,
+  retry_count INTEGER NOT NULL DEFAULT 0,
+  last_error TEXT,
+  next_retry_at TEXT,
+  status TEXT NOT NULL DEFAULT 'pending'
 );
 
 CREATE INDEX IF NOT EXISTS idx_pending_created ON pending_changes(created_at);
@@ -164,6 +168,11 @@ export async function initDatabase() {
                 // v4: todos에 recurrence_end_date 컬럼 추가 + 반복 종료일 백필
                 if (currentVersion < 4) {
                     await migrateV4AddRecurrenceEndDate();
+                }
+
+                // v5: pending_changes에 retry/backoff 상태 컬럼 추가
+                if (currentVersion < 5) {
+                    await migrateV5AddPendingRetryColumns();
                 }
 
                 await setMetadata('migration_version', String(MIGRATION_VERSION));
@@ -359,13 +368,16 @@ export async function migrateFromAsyncStorage() {
 
             // Completions
             if (oldCompletions) {
+                const { generateId } = require('../../utils/idGenerator');
                 const completions = JSON.parse(oldCompletions);
                 for (const [key, comp] of Object.entries(completions)) {
+                    const completionId = comp._id || generateId();
                     await db.runAsync(`
             INSERT OR REPLACE INTO completions 
-            (key, todo_id, date, completed_at)
-            VALUES (?, ?, ?, ?)
+            (_id, key, todo_id, date, completed_at)
+            VALUES (?, ?, ?, ?, ?)
           `, [
+                        completionId,
                         key,
                         comp.todoId,
                         comp.date,
@@ -378,20 +390,26 @@ export async function migrateFromAsyncStorage() {
 
             // Pending Changes
             if (oldPending) {
+                const { generateId } = require('../../utils/idGenerator');
                 const pending = JSON.parse(oldPending);
                 for (const p of pending) {
+                    const pendingId = p.id || generateId();
+                    const entityId = p.entityId || p.todoId || p.tempId || null;
                     await db.runAsync(`
             INSERT OR REPLACE INTO pending_changes 
-            (id, type, todo_id, data, date, temp_id, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            (id, type, entity_id, data, date, created_at, retry_count, last_error, next_retry_at, status)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           `, [
-                        p.id,
+                        pendingId,
                         p.type,
-                        p.todoId,
+                        entityId,
                         p.data ? JSON.stringify(p.data) : null,
                         p.date,
-                        p.tempId,
                         p.createdAt || new Date().toISOString(),
+                        p.retryCount || 0,
+                        p.lastError || null,
+                        p.nextRetryAt || null,
+                        p.status || 'pending',
                     ]);
                     stats.pending++;
                 }
@@ -615,6 +633,53 @@ async function migrateV4AddRecurrenceEndDate() {
         console.log(`✅ [Migration v4] Backfill completed: updated=${updated}, skipped=${skipped}`);
     } catch (error) {
         console.error('❌ [Migration v4] Failed:', error);
+        throw error;
+    }
+}
+
+/**
+ * v5 마이그레이션: pending_changes에 retry/backoff 상태 컬럼 추가
+ */
+async function migrateV5AddPendingRetryColumns() {
+    console.log('🔄 [Migration v5] Adding retry/backoff columns to pending_changes...');
+
+    try {
+        const tableInfo = await db.getAllAsync("PRAGMA table_info(pending_changes)");
+        const hasRetryCount = tableInfo.some(col => col.name === 'retry_count');
+        const hasLastError = tableInfo.some(col => col.name === 'last_error');
+        const hasNextRetryAt = tableInfo.some(col => col.name === 'next_retry_at');
+        const hasStatus = tableInfo.some(col => col.name === 'status');
+
+        if (!hasRetryCount) {
+            await db.runAsync('ALTER TABLE pending_changes ADD COLUMN retry_count INTEGER NOT NULL DEFAULT 0');
+            console.log('✅ [Migration v5] Added retry_count column');
+        }
+
+        if (!hasLastError) {
+            await db.runAsync('ALTER TABLE pending_changes ADD COLUMN last_error TEXT');
+            console.log('✅ [Migration v5] Added last_error column');
+        }
+
+        if (!hasNextRetryAt) {
+            await db.runAsync('ALTER TABLE pending_changes ADD COLUMN next_retry_at TEXT');
+            console.log('✅ [Migration v5] Added next_retry_at column');
+        }
+
+        if (!hasStatus) {
+            await db.runAsync("ALTER TABLE pending_changes ADD COLUMN status TEXT NOT NULL DEFAULT 'pending'");
+            console.log('✅ [Migration v5] Added status column');
+        }
+
+        // 기존 행 보정: null/empty status 및 retry_count 보정
+        await db.runAsync("UPDATE pending_changes SET retry_count = 0 WHERE retry_count IS NULL");
+        await db.runAsync("UPDATE pending_changes SET status = 'pending' WHERE status IS NULL OR TRIM(status) = ''");
+
+        await db.runAsync('CREATE INDEX IF NOT EXISTS idx_pending_status_retry ON pending_changes(status, next_retry_at)');
+        console.log('✅ [Migration v5] Created idx_pending_status_retry index');
+
+        console.log('✅ [Migration v5] Completed successfully');
+    } catch (error) {
+        console.error('❌ [Migration v5] Failed:', error);
         throw error;
     }
 }
