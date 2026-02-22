@@ -1,7 +1,7 @@
 # Todolog Project Context
 
 Last Updated: 2026-02-20
-Status: Sync hardening complete (Pending Push -> Delta Pull), strip-calendar stabilization in progress, Phase 3 not started
+Status: Sync hardening complete (Pending Push -> Delta Pull), Phase 3 Step 1 recurrence engine complete/validated, strip-calendar stabilization and Phase 3 Step 2-3 pending
 
 ## 1. Purpose
 
@@ -35,8 +35,10 @@ Server:
 - Phase 1-2 calendar integration: complete
 - Phase 2.5 data normalization: complete
 - Sync hardening (`Pending Push -> Delta Pull`): complete
+- Phase 3 recurrence engine core (Step 1): complete and validated
+- Phase 3 common query/aggregation layer (Step 2): not started
+- Phase 3 strip-calendar integration (Step 3): not started
 - Strip-calendar foundation (weekly/monthly shell + anchor sync + debug instrumentation): in progress
-- Phase 3 recurrence engine: planned, not implemented
 
 ## 3. Non-Negotiable Architecture Commitments
 
@@ -244,6 +246,24 @@ Behavior:
    - odd/even month uses subtle background tint difference at day-cell level
    - tint is subordinate to selected-circle, today-text, and dot indicators
 
+### 6.6 Recurrence engine flow (Phase 3 Step 1)
+
+1. Engine core is implemented in `client/src/utils/recurrenceEngine.js`.
+2. Core API:
+   - `normalizeRecurrence(rawRecurrence, recurrenceEndDate?, options?)`
+   - `occursOnDateNormalized(normalizedRule, targetDate)`
+   - `expandOccurrencesInRange(normalizedRule, rangeStart, rangeEnd)`
+3. Engine guardrails:
+   - date-only normalization (`YYYY-MM-DD`) for recurrence-critical paths
+   - fail-soft behavior for invalid recurrence inputs
+   - bounded expansion guard (`MAX_EXPANSION_DAYS = 366`)
+4. DB contract alignment for recurrence:
+   - `todos.recurrence_end_date` column
+   - `idx_todos_recurrence_window(start_date, recurrence_end_date)` index
+5. Runtime integration status:
+   - `recurrenceUtils` already delegates recurrence predicate to engine core
+   - common query/aggregation path-level unification (TodoScreen/TodoCalendar/StripCalendar) is pending Step 2
+
 ## 7. Key Files by Responsibility
 
 ### 7.1 Client
@@ -304,6 +324,12 @@ Date state and timezone helpers:
 - `client/App.js`
 - `client/src/screens/TodoScreen.js`
 
+Recurrence engine:
+
+- `client/src/utils/recurrenceEngine.js`
+- `client/src/utils/recurrenceUtils.js` (compatibility wrapper + legacy helper area)
+- `client/src/test/RecurrenceEngineTestScreen.js`
+
 Calendar today-marker path:
 
 - `client/src/features/todo-calendar/ui/CalendarList.js`
@@ -338,6 +364,16 @@ Reference documents:
 
 - `.kiro/specs/calendar-data-integration/tasks.md`
 - `.kiro/specs/calendar-data-integration/log.md`
+
+## 9. Phase 3 Step 1 Completion Evidence
+
+Reference documents:
+
+- `.kiro/specs/phase3-recurrence-engine-core/ONE_PAGER.md`
+- `.kiro/specs/phase3-recurrence-engine-core/requirements.md`
+- `.kiro/specs/phase3-recurrence-engine-core/design.md`
+- `.kiro/specs/phase3-recurrence-engine-core/tasks.md`
+- `.kiro/specs/phase3-recurrence-engine-core/phase3_engine_review.md`
 
 Completed tasks:
 

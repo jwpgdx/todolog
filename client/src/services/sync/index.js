@@ -32,9 +32,42 @@ export const useSyncService = () => {
   
   const [isSyncing, setIsSyncing] = useState(false);
   const [error, setError] = useState(null);
+  const [lastSyncTime, setLastSyncTime] = useState(null);
   
   const isSyncingRef = useRef(false);
   const debounceTimerRef = useRef(null);
+
+  // 앱 시작 시 마지막 성공 커서 로드 (stale 메타 주입용)
+  useEffect(() => {
+    if (!isLoggedIn) {
+      setLastSyncTime(null);
+      return;
+    }
+
+    let cancelled = false;
+    const loadLastSyncCursor = async () => {
+      try {
+        await ensureDatabase();
+        const rawCursor = await getMetadata(SYNC_CURSOR_KEY);
+        if (!rawCursor) {
+          if (!cancelled) setLastSyncTime(null);
+          return;
+        }
+
+        const normalized = normalizeCursor(rawCursor);
+        if (!cancelled) {
+          setLastSyncTime(rawCursor === normalized ? normalized : null);
+        }
+      } catch {
+        if (!cancelled) setLastSyncTime(null);
+      }
+    };
+
+    loadLastSyncCursor();
+    return () => {
+      cancelled = true;
+    };
+  }, [isLoggedIn]);
   
   /**
    * 전체 동기화 실행
@@ -71,8 +104,12 @@ export const useSyncService = () => {
       const cursor = normalizeCursor(rawCursor);
       if (!rawCursor) {
         console.log(`🧭 [useSyncService] 커서 없음 → 기본값 사용 (${DEFAULT_SYNC_CURSOR})`);
+        setLastSyncTime(null);
       } else if (rawCursor !== cursor) {
         console.warn(`⚠️ [useSyncService] 커서 파싱 실패 → 기본값 사용 (${DEFAULT_SYNC_CURSOR})`);
+        setLastSyncTime(null);
+      } else {
+        setLastSyncTime(cursor);
       }
 
       // 1. Pending Push (실패 시 Pull 중단)
@@ -106,6 +143,7 @@ export const useSyncService = () => {
         return;
       }
       await setMetadata(SYNC_CURSOR_KEY, nextCursor);
+      setLastSyncTime(nextCursor);
       console.log('🧭 [useSyncService] Cursor commit 완료:', { from: cursor, to: nextCursor });
 
       // 4. React Query 캐시 무효화
@@ -208,5 +246,6 @@ export const useSyncService = () => {
     syncAll,
     isSyncing,
     error,
+    lastSyncTime,
   };
 };

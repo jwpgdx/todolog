@@ -5,8 +5,8 @@ import { addDays } from '../utils/stripCalendarDateUtils';
 import { buildEmptySummary } from '../services/stripCalendarSummaryService';
 import { logStripCalendar } from '../utils/stripCalendarDebug';
 
-// Phase 3 recurrence path 확정 전까지 strip-calendar의 일정 조회/표시 비활성화
-const ENABLE_STRIP_CALENDAR_SUMMARY = false;
+// 화면어댑터 경로 전환 완료: strip summary 활성화
+const ENABLE_STRIP_CALENDAR_SUMMARY = true;
 
 function getWeeklyRange(weekStart) {
   return {

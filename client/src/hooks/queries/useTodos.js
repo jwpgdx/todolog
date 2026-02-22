@@ -1,8 +1,9 @@
 import { useQuery } from '@tanstack/react-query';
-import { getTodosByDate } from '../../services/db/todoService';
-import { getCompletionsByDate } from '../../services/db/completionService';
 import { ensureDatabase } from '../../services/db/database';
 import { todoAPI } from '../../api/todos';
+import { runCommonQueryForDate } from '../../services/query-aggregation';
+import { adaptTodoScreenFromDateHandoff } from '../../services/query-aggregation/adapters';
+import { useSyncContext } from '../../providers/SyncProvider';
 
 /**
  * 날짜별 Todo 조회 Hook (SQLite 기반)
@@ -13,6 +14,7 @@ import { todoAPI } from '../../api/todos';
  * 3. 서버 동기화는 useSyncService가 담당
  */
 export const useTodos = (date) => {
+  const { isSyncing, error, lastSyncTime } = useSyncContext();
 
   return useQuery({
     queryKey: ['todos', date],
@@ -31,58 +33,31 @@ export const useTodos = (date) => {
         }
       }
 
-      // 2. SQLite에서 Todo + Completion 조회
+      // 2. 공통 조회/집계 레이어 실행 (SQLite-only)
       const startTime = performance.now();
-
-      const todoStart = performance.now();
-      const todos = await getTodosByDate(date);
-      const todoEnd = performance.now();
-      console.log(`  📝 [useTodos] getTodosByDate: ${todos.length}개 (${(todoEnd - todoStart).toFixed(2)}ms)`);
-
-      const compStart = performance.now();
-      const completions = await getCompletionsByDate(date);
-      const compEnd = performance.now();
-      console.log(`  ✅ [useTodos] getCompletionsByDate: ${Object.keys(completions).length}개 (${(compEnd - compStart).toFixed(2)}ms)`);
-
-      const mergeStart = performance.now();
-      // 3. 완료 상태 병합
-      console.log(`  🔍 [useTodos] Completion 상세:`, Object.keys(completions).map(key => ({
-        key,
-        date: completions[key].date,
-        todoId: completions[key].todoId.slice(-8)
-      })));
-
-      const todosWithCompletion = todos.map(todo => {
-        // 반복 vs 비반복으로만 구분
-        // - 반복 일정: 날짜별로 완료 추적 필요 (매일/매주 다른 완료 상태)
-        // - 비반복 일정 (단일/기간 모두): 한 번 완료하면 끝 → null 사용
-        const isRecurring = !!todo.recurrence;
-        const completionKey = isRecurring
-          ? `${todo._id}_${date}`  // 반복 일정: 해당 날짜
-          : `${todo._id}_null`;    // 비반복 일정: date=null
-
-        const hasCompletion = !!completions[completionKey];
-
-        console.log(`  📝 [useTodos] Todo 병합:`, {
-          id: todo._id.slice(-8),
-          title: todo.title,
-          isRecurring,
-          completionKey,
-          hasCompletion,
-          startDate: todo.startDate,
-          endDate: todo.endDate
-        });
-
-        return {
-          ...todo,
-          completed: hasCompletion
-        };
+      const result = await runCommonQueryForDate({
+        targetDate: date,
+        syncStatus: { isSyncing, error, lastSyncTime },
       });
-      const mergeEnd = performance.now();
-      console.log(`  🔀 [useTodos] 병합: (${(mergeEnd - mergeStart).toFixed(2)}ms)`);
+
+      if (!result.ok) {
+        console.warn(`⚠️ [useTodos] 공통 레이어 실패: ${result.error}`);
+        return [];
+      }
+
+      const adapted = adaptTodoScreenFromDateHandoff(result);
+      if (!adapted.ok) {
+        console.warn(`⚠️ [useTodos] TodoScreen adapter 실패: ${adapted.error}`);
+        return [];
+      }
+
+      const todosWithCompletion = adapted.items;
 
       const endTime = performance.now();
       console.log(`⚡ [useTodos] 전체: ${todosWithCompletion.length}개 (${(endTime - startTime).toFixed(2)}ms)`);
+      console.log(`  📊 [useTodos] stage: candidate=${result.stage.candidate}, decided=${result.stage.decided}, aggregated=${result.stage.aggregated}`);
+      console.log(`  ⏱️ [useTodos] elapsed(ms): total=${result.elapsed.totalMs}, candidate=${result.elapsed.candidateMs}, decision=${result.elapsed.decisionMs}, aggregation=${result.elapsed.aggregationMs}`);
+      console.log(`  🧭 [useTodos] stale: isStale=${result.meta.isStale}, reason=${result.meta.staleReason || 'none'}, lastSync=${result.meta.lastSyncTime || 'null'}`);
 
       return todosWithCompletion;
     },

@@ -5,7 +5,7 @@ import { useToggleCompletion } from '../hooks/queries/useToggleCompletion';
 import { useTodos } from '../hooks/queries/useTodos';
 import NetInfo from '@react-native-community/netinfo';
 // SQLite
-import { initDatabase, getDbStats, resetDatabase, getDatabase } from '../services/db/database';
+import { initDatabase, getDbStats, resetDatabase, getDatabase, getMetadata } from '../services/db/database';
 import {
   getTodosByDate as sqliteGetTodosByDate,
   getTodosByMonth as sqliteGetTodosByMonth,
@@ -26,21 +26,95 @@ import {
   getPendingReady,
 } from '../services/db/pendingService';
 import { runPendingPush } from '../services/sync/pendingPush';
+import { runCommonQueryForDate, runCommonQueryForRange } from '../services/query-aggregation';
+import {
+  adaptTodoScreenFromDateHandoff,
+  adaptTodoCalendarFromRangeHandoff,
+  adaptStripCalendarFromRangeHandoff,
+} from '../services/query-aggregation/adapters';
+import { addDaysDateOnly } from '../utils/recurrenceEngine';
 import {
   getAllCategories as sqliteGetAllCategories,
   getCategoryCount,
 } from '../services/db/categoryService';
+import { useSyncContext } from '../providers/SyncProvider';
+
+function getLocalDateString() {
+  const now = new Date();
+  const yyyy = now.getFullYear();
+  const mm = String(now.getMonth() + 1).padStart(2, '0');
+  const dd = String(now.getDate()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}`;
+}
 
 export default function DebugScreen({ navigation }) {
   const [logs, setLogs] = useState([]);
-  const [selectedDate, setSelectedDate] = useState('2026-02-01');
+  const [selectedDate, setSelectedDate] = useState(getLocalDateString());
+  const [validationSummary, setValidationSummary] = useState({
+    date: null,
+    range: null,
+    syncSmoke: null,
+    screenCompare: null,
+  });
   const queryClient = useQueryClient();
   const toggleCompletionMutation = useToggleCompletion();
   const { data: todos = [], refetch: refetchTodos } = useTodos(selectedDate);
+  const { syncAll, isSyncing, error: syncError, lastSyncTime } = useSyncContext();
 
   const addLog = (message) => {
     const timestamp = new Date().toLocaleTimeString();
     setLogs(prev => [`[${timestamp}] ${message}`, ...prev].slice(0, 100));
+  };
+
+  const recordValidation = (key, payload) => {
+    setValidationSummary(prev => ({
+      ...prev,
+      [key]: {
+        ...payload,
+        at: new Date().toISOString(),
+      },
+    }));
+  };
+
+  const printValidationSummary = () => {
+    const rows = [
+      { key: 'date', label: 'common-date', value: validationSummary.date },
+      { key: 'range', label: 'common-range', value: validationSummary.range },
+      { key: 'syncSmoke', label: 'sync-smoke', value: validationSummary.syncSmoke },
+      { key: 'screenCompare', label: 'screen-compare', value: validationSummary.screenCompare },
+    ];
+
+    const executed = rows.filter(row => !!row.value);
+    const passed = rows.filter(row => row.value?.ok).length;
+    const failed = rows.filter(row => row.value && !row.value.ok).length;
+
+    addLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    addLog('📄 공통 레이어 PASS/FAIL 요약');
+    addLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    addLog(`총 실행: ${executed.length} | PASS: ${passed} | FAIL: ${failed}`);
+
+    rows.forEach((row) => {
+      if (!row.value) {
+        addLog(`- ${row.label}: 미실행`);
+        return;
+      }
+
+      const stamp = row.value.at ? new Date(row.value.at).toLocaleTimeString() : 'n/a';
+      const stage = row.value.stage || { candidate: 0, decided: 0, aggregated: 0 };
+      const stale = row.value.meta?.isStale ? 'stale' : 'fresh';
+      const reason = row.value.meta?.staleReason || 'none';
+      const statusText = row.value.ok ? 'PASS' : 'FAIL';
+      addLog(`- ${row.label}: ${statusText} @ ${stamp}`);
+      addLog(`  stage(c=${stage.candidate}, d=${stage.decided}, a=${stage.aggregated}) | ${stale}/${reason}`);
+
+      if (row.value.error) {
+        addLog(`  errorSample: ${row.value.error}`);
+      }
+    });
+
+    const overallPass = executed.length > 0 && failed === 0;
+    addLog(overallPass ? '✅ OVERALL PASS' : '❌ OVERALL FAIL');
+    addLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
   };
 
   const checkAndRepairIndexes = async () => {
@@ -451,6 +525,305 @@ export default function DebugScreen({ navigation }) {
   const runPendingPushOnce = async () => runPendingPushWithLimit(200, '200');
   const runPendingPushOne = async () => runPendingPushWithLimit(1, '1');
   const runPendingPushThree = async () => runPendingPushWithLimit(3, '3');
+
+  const runCommonLayerDate = async () => {
+    addLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    addLog(`🧩 공통 레이어 실행(date): ${selectedDate}`);
+    addLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+
+    try {
+      const result = await runCommonQueryForDate({
+        targetDate: selectedDate,
+        syncStatus: { isSyncing, error: syncError, lastSyncTime },
+      });
+
+      if (!result.ok) {
+        addLog(`❌ FAIL [common-date]: ${result.error}`);
+        addLog(`stage: candidate=${result.stage.candidate}, decided=${result.stage.decided}, aggregated=${result.stage.aggregated}`);
+        recordValidation('date', {
+          ok: false,
+          stage: result.stage,
+          elapsed: result.elapsed,
+          meta: result.meta,
+          error: result.error,
+        });
+        return;
+      }
+
+      addLog('✅ PASS [common-date]');
+      addLog(`stage: candidate=${result.stage.candidate}, decided=${result.stage.decided}, aggregated=${result.stage.aggregated}`);
+      addLog(`elapsed: total=${result.elapsed.totalMs}ms | candidate=${result.elapsed.candidateMs}ms | decision=${result.elapsed.decisionMs}ms | aggregation=${result.elapsed.aggregationMs}ms`);
+      addLog(`stale: isStale=${result.meta.isStale}, reason=${result.meta.staleReason || 'none'}, lastSync=${result.meta.lastSyncTime || 'null'}`);
+      addLog(`diag: completionCandidates=${result.diagnostics.completionCandidates}, invalidRecurrence=${result.diagnostics.invalidRecurrenceCount}`);
+      recordValidation('date', {
+        ok: true,
+        stage: result.stage,
+        elapsed: result.elapsed,
+        meta: result.meta,
+        error: null,
+      });
+
+      const preview = result.items.slice(0, 5);
+      preview.forEach((item, index) => {
+        addLog(`  [${index + 1}] ${item.title} | completed=${item.completed ? 'Y' : 'N'} | key=${item.completionKey}`);
+      });
+    } catch (error) {
+      addLog(`❌ 예외: ${error.message}`);
+      recordValidation('date', {
+        ok: false,
+        stage: { candidate: 0, decided: 0, aggregated: 0 },
+        elapsed: { totalMs: 0, candidateMs: 0, decisionMs: 0, aggregationMs: 0 },
+        meta: { isStale: true, staleReason: 'sync_failed', lastSyncTime: lastSyncTime || null },
+        error: error.message,
+      });
+    } finally {
+      addLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    }
+  };
+
+  const runCommonLayerRange = async () => {
+    const endDate = addDaysDateOnly(selectedDate, 6) || selectedDate;
+
+    addLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    addLog(`🧩 공통 레이어 실행(range): ${selectedDate} ~ ${endDate}`);
+    addLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+
+    try {
+      const result = await runCommonQueryForRange({
+        startDate: selectedDate,
+        endDate,
+        syncStatus: { isSyncing, error: syncError, lastSyncTime },
+      });
+
+      if (!result.ok) {
+        addLog(`❌ FAIL [common-range]: ${result.error}`);
+        addLog(`stage: candidate=${result.stage.candidate}, decided=${result.stage.decided}, aggregated=${result.stage.aggregated}`);
+        recordValidation('range', {
+          ok: false,
+          stage: result.stage,
+          elapsed: result.elapsed,
+          meta: result.meta,
+          error: result.error,
+        });
+        return;
+      }
+
+      const dateCount = Object.keys(result.itemsByDate).length;
+      addLog('✅ PASS [common-range]');
+      addLog(`stage: candidate=${result.stage.candidate}, decided=${result.stage.decided}, aggregated=${result.stage.aggregated}`);
+      addLog(`rangeDates=${dateCount}`);
+      addLog(`elapsed: total=${result.elapsed.totalMs}ms | candidate=${result.elapsed.candidateMs}ms | decision=${result.elapsed.decisionMs}ms | aggregation=${result.elapsed.aggregationMs}ms`);
+      addLog(`stale: isStale=${result.meta.isStale}, reason=${result.meta.staleReason || 'none'}, lastSync=${result.meta.lastSyncTime || 'null'}`);
+      addLog(`diag: completionCandidates=${result.diagnostics.completionCandidates}, invalidRecurrence=${result.diagnostics.invalidRecurrenceCount}`);
+      recordValidation('range', {
+        ok: true,
+        stage: result.stage,
+        elapsed: result.elapsed,
+        meta: result.meta,
+        error: null,
+      });
+    } catch (error) {
+      addLog(`❌ 예외: ${error.message}`);
+      recordValidation('range', {
+        ok: false,
+        stage: { candidate: 0, decided: 0, aggregated: 0 },
+        elapsed: { totalMs: 0, candidateMs: 0, decisionMs: 0, aggregationMs: 0 },
+        meta: { isStale: true, staleReason: 'sync_failed', lastSyncTime: lastSyncTime || null },
+        error: error.message,
+      });
+    } finally {
+      addLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    }
+  };
+
+  const runSyncCoupledSmoke = async () => {
+    addLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    addLog('🧪 Sync 결합 스모크 시작');
+    addLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+
+    try {
+      const before = await runCommonQueryForDate({
+        targetDate: selectedDate,
+        syncStatus: { isSyncing, error: syncError, lastSyncTime },
+      });
+
+      await syncAll();
+      addLog('🔄 syncAll 호출 완료');
+      const latestCursor = await getMetadata('sync.last_success_at');
+
+      const after = await runCommonQueryForDate({
+        targetDate: selectedDate,
+        syncStatus: { isSyncing, error: syncError, lastSyncTime: latestCursor || lastSyncTime },
+      });
+
+      if (!after.ok) {
+        addLog(`❌ FAIL [sync-smoke]: ${after.error}`);
+        addLog(`stage: candidate=${after.stage.candidate}, decided=${after.stage.decided}, aggregated=${after.stage.aggregated}`);
+        recordValidation('syncSmoke', {
+          ok: false,
+          stage: after.stage,
+          elapsed: after.elapsed,
+          meta: after.meta,
+          error: after.error,
+        });
+      } else {
+        addLog(`✅ PASS [sync-smoke]: stage(c=${after.stage.candidate}, d=${after.stage.decided}, a=${after.stage.aggregated})`);
+        if (before.ok) {
+          addLog(`staleTransition: ${before.meta.isStale} -> ${after.meta.isStale}`);
+        }
+        addLog(`stale: isStale=${after.meta.isStale}, reason=${after.meta.staleReason || 'none'}`);
+        recordValidation('syncSmoke', {
+          ok: true,
+          stage: after.stage,
+          elapsed: after.elapsed,
+          meta: after.meta,
+          error: null,
+        });
+      }
+    } catch (error) {
+      addLog(`❌ 예외: ${error.message}`);
+      recordValidation('syncSmoke', {
+        ok: false,
+        stage: { candidate: 0, decided: 0, aggregated: 0 },
+        elapsed: { totalMs: 0, candidateMs: 0, decisionMs: 0, aggregationMs: 0 },
+        meta: { isStale: true, staleReason: 'sync_failed', lastSyncTime: lastSyncTime || null },
+        error: error.message,
+      });
+    } finally {
+      addLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    }
+  };
+
+  const toCompletionKeySet = (items, targetDate) => {
+    const list = Array.isArray(items) ? items : [];
+    const set = new Set();
+    list.forEach((item) => {
+      const fallbackKey = `${item?.todoId || item?._id || 'unknown'}_${targetDate}`;
+      set.add(item?.completionKey || fallbackKey);
+    });
+    return set;
+  };
+
+  const sampleDiff = (leftSet, rightSet, max = 5) => {
+    const diff = [];
+    for (const key of leftSet) {
+      if (!rightSet.has(key)) diff.push(key);
+      if (diff.length >= max) break;
+    }
+    return diff;
+  };
+
+  const diffCount = (leftSet, rightSet) => {
+    let count = 0;
+    for (const key of leftSet) {
+      if (!rightSet.has(key)) count += 1;
+    }
+    return count;
+  };
+
+  const runScreenAdapterCompare = async () => {
+    const endDate = addDaysDateOnly(selectedDate, 6) || selectedDate;
+
+    addLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    addLog(`🧪 화면 결과 비교: ${selectedDate} (range ~ ${endDate})`);
+    addLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+
+    try {
+      const syncStatus = { isSyncing, error: syncError, lastSyncTime };
+      const [dateResult, rangeResult] = await Promise.all([
+        runCommonQueryForDate({ targetDate: selectedDate, syncStatus }),
+        runCommonQueryForRange({ startDate: selectedDate, endDate, syncStatus }),
+      ]);
+
+      if (!dateResult.ok || !rangeResult.ok) {
+        const error = dateResult.ok ? rangeResult.error : dateResult.error;
+        addLog(`❌ FAIL [screen-compare]: common-layer 실패 (${error})`);
+        recordValidation('screenCompare', {
+          ok: false,
+          stage: { candidate: 0, decided: 0, aggregated: 0 },
+          elapsed: { totalMs: 0, candidateMs: 0, decisionMs: 0, aggregationMs: 0 },
+          meta: { isStale: true, staleReason: 'sync_failed', lastSyncTime: lastSyncTime || null },
+          error,
+        });
+        return;
+      }
+
+      const todoScreen = adaptTodoScreenFromDateHandoff(dateResult);
+      const todoCalendar = adaptTodoCalendarFromRangeHandoff(rangeResult, {
+        monthRanges: [{ id: 'compare-range', startDate: selectedDate, endDate }],
+        visibleLimit: 3,
+      });
+      const stripCalendar = adaptStripCalendarFromRangeHandoff(rangeResult, { maxDots: 3 });
+
+      if (!todoScreen.ok || !todoCalendar.ok || !stripCalendar.ok) {
+        const error = todoScreen.error || todoCalendar.error || stripCalendar.error || 'adapter failed';
+        addLog(`❌ FAIL [screen-compare]: adapter 실패 (${error})`);
+        recordValidation('screenCompare', {
+          ok: false,
+          stage: rangeResult.stage,
+          elapsed: rangeResult.elapsed,
+          meta: rangeResult.meta,
+          error,
+        });
+        return;
+      }
+
+      const todoScreenItems = todoScreen.items || [];
+      const calendarDateItems = todoCalendar.itemsByDate?.[selectedDate] || [];
+      const stripSummary = stripCalendar.summariesByDate?.[selectedDate] || {
+        date: selectedDate,
+        hasTodo: false,
+        uniqueCategoryColors: [],
+        dotCount: 0,
+        overflowCount: 0,
+      };
+
+      const todoScreenKeys = toCompletionKeySet(todoScreenItems, selectedDate);
+      const todoCalendarKeys = toCompletionKeySet(calendarDateItems, selectedDate);
+      const onlyTodoScreenCount = diffCount(todoScreenKeys, todoCalendarKeys);
+      const onlyTodoCalendarCount = diffCount(todoCalendarKeys, todoScreenKeys);
+      const onlyTodoScreen = sampleDiff(todoScreenKeys, todoCalendarKeys);
+      const onlyTodoCalendar = sampleDiff(todoCalendarKeys, todoScreenKeys);
+      const parity = onlyTodoScreenCount === 0 && onlyTodoCalendarCount === 0;
+
+      addLog(`TodoScreen: count=${todoScreenItems.length}`);
+      addLog(`TodoCalendar(date): count=${calendarDateItems.length}`);
+      addLog(
+        `StripCalendar(date): hasTodo=${stripSummary.hasTodo ? 'Y' : 'N'}, ` +
+        `dotCount=${stripSummary.dotCount}, overflow=${stripSummary.overflowCount || 0}`
+      );
+      addLog(`Strip colors: ${stripSummary.uniqueCategoryColors.join(', ') || '(none)'}`);
+      addLog(
+        `ID diff: onlyTodoScreen=${onlyTodoScreenCount}, ` +
+        `onlyTodoCalendar=${onlyTodoCalendarCount}`
+      );
+
+      if (!parity) {
+        if (onlyTodoScreen.length > 0) addLog(`  sample onlyTodoScreen: ${onlyTodoScreen.join(', ')}`);
+        if (onlyTodoCalendar.length > 0) addLog(`  sample onlyTodoCalendar: ${onlyTodoCalendar.join(', ')}`);
+      }
+
+      addLog(parity ? '✅ PASS [screen-compare]' : '⚠️ WARN [screen-compare]: ID diff 존재');
+      recordValidation('screenCompare', {
+        ok: parity,
+        stage: rangeResult.stage,
+        elapsed: rangeResult.elapsed,
+        meta: rangeResult.meta,
+        error: parity ? null : 'todo-screen vs todo-calendar id diff',
+      });
+    } catch (error) {
+      addLog(`❌ 예외: ${error.message}`);
+      recordValidation('screenCompare', {
+        ok: false,
+        stage: { candidate: 0, decided: 0, aggregated: 0 },
+        elapsed: { totalMs: 0, candidateMs: 0, decisionMs: 0, aggregationMs: 0 },
+        meta: { isStale: true, staleReason: 'sync_failed', lastSyncTime: lastSyncTime || null },
+        error: error.message,
+      });
+    } finally {
+      addLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    }
+  };
 
   // ========== SQLite 조회 테스트 ==========
 
@@ -868,7 +1241,9 @@ export default function DebugScreen({ navigation }) {
         <TouchableOpacity
           style={styles.dateButton}
           onPress={() => {
-            const dates = ['2026-02-01', '2026-02-05', '2026-02-06', '2026-02-07'];
+            const dates = Array.from(
+              new Set(['2026-02-01', '2026-02-05', '2026-02-06', '2026-02-07', getLocalDateString()])
+            );
             const currentIndex = dates.indexOf(selectedDate);
             const nextIndex = (currentIndex + 1) % dates.length;
             setSelectedDate(dates[nextIndex]);
@@ -974,6 +1349,41 @@ export default function DebugScreen({ navigation }) {
         <View style={styles.divider} />
 
         <Text style={styles.sectionTitle}>🧪 통합 테스트</Text>
+
+        <TouchableOpacity
+          style={[styles.button, styles.testButton]}
+          onPress={runCommonLayerDate}
+        >
+          <Text style={styles.buttonText}>🧩 공통 레이어 실행 (date)</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.button, styles.testButton]}
+          onPress={runCommonLayerRange}
+        >
+          <Text style={styles.buttonText}>🧩 공통 레이어 실행 (range)</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.button, styles.actionButton]}
+          onPress={runSyncCoupledSmoke}
+        >
+          <Text style={styles.buttonText}>🧪 Sync 결합 스모크</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.button, styles.actionButton]}
+          onPress={runScreenAdapterCompare}
+        >
+          <Text style={styles.buttonText}>🧪 화면 결과 비교</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.button, styles.primaryButton]}
+          onPress={printValidationSummary}
+        >
+          <Text style={styles.buttonText}>📄 PASS/FAIL 요약 출력</Text>
+        </TouchableOpacity>
 
         <TouchableOpacity
           style={[styles.button, styles.testButton]}

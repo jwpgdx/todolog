@@ -15,6 +15,7 @@ export const useSyncContext = () => {
             syncAll: () => { },
             isSyncing: false,
             error: null,
+            lastSyncTime: null,
         };
     }
     return context;

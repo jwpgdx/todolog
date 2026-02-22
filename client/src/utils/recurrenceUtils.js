@@ -2,8 +2,6 @@
  * 클라이언트용 반복 규칙 유틸리티 (RRULE 기반)
  */
 
-import { normalizeRecurrence, occursOnDateNormalized } from './recurrenceEngine';
-
 /**
  * 할일 입력 데이터를 RRULE 기반 API 형식으로 변환
  * @param {Object} formData - 폼에서 입력받은 데이터
@@ -305,76 +303,6 @@ export function getRecurrenceDescription(recurrence) {
     default:
       return '반복';
   }
-}
-
-/**
- * 할일이 특정 날짜에 발생하는지 체크 (서버 로직과 동일)
- * @param {Object} todo - 할일 객체
- * @param {string} targetDate - 확인할 날짜 (YYYY-MM-DD)
- * @returns {boolean} 발생 여부
- */
-export function occursOnDate(todo, targetDate) {
-  // 하루종일 할일인 경우
-  if (todo.isAllDay) {
-    // 반복 할일인 경우
-    if (todo.recurrence) {
-      return checkRecurrenceOnDate(
-        todo.recurrence,
-        todo.startDate,
-        targetDate,
-        todo.recurrenceEndDate
-      );
-    } else {
-      // 단일 날짜 또는 기간 할일
-      const startDateStr = todo.startDate;
-      const endDateStr = todo.endDate || todo.startDate;
-      return targetDate >= startDateStr && targetDate <= endDateStr;
-    }
-  } else {
-    // 시간 지정 할일인 경우
-    if (!todo.startDateTime) return false;
-    
-    const startDate = new Date(todo.startDateTime);
-    const startDateStr = formatDate(startDate);
-
-    // 반복이 없는 경우
-    if (!todo.recurrence) {
-      // 기간 할일인 경우
-      if (todo.endDateTime) {
-        const endDate = new Date(todo.endDateTime);
-        const endDateStr = formatDate(endDate);
-        return targetDate >= startDateStr && targetDate <= endDateStr;
-      }
-      // 단일 날짜 할일
-      return targetDate === startDateStr;
-    }
-
-    // 반복 할일
-    return checkRecurrenceOnDate(
-      todo.recurrence,
-      startDateStr,
-      targetDate,
-      todo.recurrenceEndDate
-    );
-  }
-}
-
-/**
- * RRULE 문자열을 기반으로 특정 날짜에 발생하는지 체크
- * @param {string} rruleString - RRULE 문자열 (예: "RRULE:FREQ=DAILY")
- * @param {string} startDate - 시작 날짜 (YYYY-MM-DD)
- * @param {string} targetDate - 확인할 날짜 (YYYY-MM-DD)
- * @param {string} recurrenceEndDate - 반복 종료 날짜 (YYYY-MM-DD)
- * @returns {boolean} 발생 여부
- */
-function checkRecurrenceOnDate(rruleString, startDate, targetDate, recurrenceEndDate) {
-  if (!rruleString) return false;
-
-  const normalized = normalizeRecurrence(rruleString, recurrenceEndDate, {
-    startDate,
-  });
-
-  return occursOnDateNormalized(normalized, targetDate);
 }
 
 /**
