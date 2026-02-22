@@ -10,19 +10,23 @@ Todolog is designed to work fully offline, then sync safely to server and Google
 - SQLite as local source of truth for core entities
 - UUID v4 IDs generated client-side
 - Calendar module with month-batch fetch and cache
-- Strip-calendar module with separate weekly/monthly list architecture (stabilization in progress)
+- Common query/aggregation layer (SQLite-only candidate -> decision -> aggregation)
+- Screen adapter layer for TodoScreen/TodoCalendar/StripCalendar handoff conversion
+- Strip-calendar module with separate weekly/monthly list architecture + summary adapter integration
 - Google Calendar integration with strict schedule type handling
 - Timezone-aware selected-date state (`currentDate`) based on `user.settings.timeZone`
 
 ## Current Status
 
-As of 2026-02-20:
+As of 2026-02-22:
 
 - Phase 1-2 calendar integration: complete
 - Phase 2.5 data normalization (floating date/time string contract): complete
 - Sync hardening (`Pending Push -> Delta Pull`): complete
-- Strip-calendar stabilization/debugging: in progress
-- Phase 3 recurrence engine: planned
+- Phase 3 recurrence engine core (Step 1): complete and validated
+- Phase 3 common query/aggregation layer (Step 2): complete and validated
+- Phase 3 screen-adapter layer (Step 3): complete and validated
+- Strip-calendar stabilization/debugging: ongoing hardening (adapter path already active)
 
 See `ROADMAP.md` for dated milestones and next steps.
 
@@ -184,9 +188,13 @@ Client:
 - SQLite init/migrations: `client/src/services/db/database.js`
 - Todo persistence: `client/src/services/db/todoService.js`
 - Sync orchestration: `client/src/services/sync/index.js`
+- Common query/aggregation: `client/src/services/query-aggregation/index.js`
+- Screen adapters: `client/src/services/query-aggregation/adapters/index.js`
 - Calendar data hook: `client/src/features/todo-calendar/hooks/useTodoCalendarData.js`
+- Calendar bridge service: `client/src/features/todo-calendar/services/calendarTodoService.js`
 - Strip-calendar shell: `client/src/features/strip-calendar/ui/StripCalendarShell.js`
 - Strip-calendar weekly/monthly lists: `client/src/features/strip-calendar/ui/WeeklyStripList.js`, `client/src/features/strip-calendar/ui/MonthlyStripList.js`
+- Strip-calendar summary service: `client/src/features/strip-calendar/services/stripCalendarSummaryService.js`
 - Todo form logic: `client/src/features/todo/form/useTodoFormLogic.js`
 
 Server:

@@ -1,7 +1,7 @@
 # Todolog Project Context
 
-Last Updated: 2026-02-20
-Status: Sync hardening complete (Pending Push -> Delta Pull), Phase 3 Step 1 recurrence engine complete/validated, strip-calendar stabilization and Phase 3 Step 2-3 pending
+Last Updated: 2026-02-22
+Status: Sync hardening complete (Pending Push -> Delta Pull), Phase 3 Step 1 recurrence engine complete/validated, Phase 3 Step 2 common query/aggregation complete/validated, Phase 3 Step 3 screen-adapter layer complete/validated
 
 ## 1. Purpose
 
@@ -36,9 +36,9 @@ Server:
 - Phase 2.5 data normalization: complete
 - Sync hardening (`Pending Push -> Delta Pull`): complete
 - Phase 3 recurrence engine core (Step 1): complete and validated
-- Phase 3 common query/aggregation layer (Step 2): not started
-- Phase 3 strip-calendar integration (Step 3): not started
-- Strip-calendar foundation (weekly/monthly shell + anchor sync + debug instrumentation): in progress
+- Phase 3 common query/aggregation layer (Step 2): complete and validated
+- Phase 3 screen-adapter layer (Step 3): complete and validated
+- Strip-calendar foundation (weekly/monthly shell + anchor sync + debug instrumentation): active and integrated via adapter path
 
 ## 3. Non-Negotiable Architecture Commitments
 
@@ -187,11 +187,16 @@ Behavior:
 
 ### 6.2 Calendar read flow
 
-1. Calendar visible month range changes.
-2. `useTodoCalendarData` requests month batches.
-3. `calendarTodoService` performs batch SQL reads.
-4. `todoCalendarStore` caches by month.
-5. UI components subscribe by month/date selectors.
+1. Screen/hook requests date or range data (`TodoScreen`, `TodoCalendar`, `StripCalendar`).
+2. Common query/aggregation layer runs on SQLite-only path:
+   - candidate query (`Todo/Completion/Category`)
+   - occurrence decision (non-recurring + recurring via `recurrenceEngine`)
+   - aggregation (`todo + completion + category`)
+3. Screen adapters transform handoff DTO into screen-specific shapes.
+4. Screen stores cache adapter outputs when needed:
+   - `todoCalendarStore` (`todosByMonth`/`completionsByMonth`)
+   - `stripCalendarStore` (`summariesByDate`)
+5. UI components render from adapted shape and cache selectors.
 
 ### 6.3 Selected date flow
 
@@ -223,9 +228,10 @@ Behavior:
    - vertical FlashList
    - `snapToInterval={WEEK_ROW_HEIGHT}` + `disableIntervalMomentum` + `decelerationRate="fast"`
    - settle path uses `onMomentumScrollEnd`, plus web idle settle fallback (`onScroll` timer) with guards/cooldowns/re-arm thresholds
-5. Data summary path is intentionally disabled at runtime:
-   - `ENABLE_STRIP_CALENDAR_SUMMARY = false`
-   - dot rendering currently uses empty summary payloads only
+5. Data summary path is enabled at runtime:
+   - `ENABLE_STRIP_CALENDAR_SUMMARY = true`
+   - summary source is `runCommonQueryForRange` -> `adaptStripCalendarFromRangeHandoff`
+   - dot rendering uses category-color dedupe + overflow metadata
 6. Monthly -> Weekly target resolution policy:
    - stale weekly transition target is cleared in shell on monthly settle and before monthly->weekly toggle
    - transition target is resolved once at mode-switch time (no per-frame `onScroll` evaluation)
@@ -261,8 +267,9 @@ Behavior:
    - `todos.recurrence_end_date` column
    - `idx_todos_recurrence_window(start_date, recurrence_end_date)` index
 5. Runtime integration status:
-   - `recurrenceUtils` already delegates recurrence predicate to engine core
-   - common query/aggregation path-level unification (TodoScreen/TodoCalendar/StripCalendar) is pending Step 2
+   - `recurrenceUtils` delegates recurrence predicate to engine core
+   - common query/aggregation path-level unification (TodoScreen/TodoCalendar/StripCalendar) is complete
+   - screen adapters (TodoScreen/TodoCalendar/StripCalendar) are complete and wired to runtime read paths
 
 ## 7. Key Files by Responsibility
 
@@ -290,6 +297,21 @@ Sync:
 - `client/src/services/sync/todoSync.js` (legacy full-pull module)
 - `client/src/services/sync/categorySync.js` (legacy full-pull module)
 - `client/src/services/sync/completionSync.js` (legacy full-pull module)
+
+Common query/aggregation layer:
+
+- `client/src/services/query-aggregation/index.js`
+- `client/src/services/query-aggregation/candidateQueryService.js`
+- `client/src/services/query-aggregation/occurrenceDecisionService.js`
+- `client/src/services/query-aggregation/aggregationService.js`
+- `client/src/services/query-aggregation/types.js`
+
+Screen adapters:
+
+- `client/src/services/query-aggregation/adapters/todoScreenAdapter.js`
+- `client/src/services/query-aggregation/adapters/todoCalendarAdapter.js`
+- `client/src/services/query-aggregation/adapters/stripCalendarAdapter.js`
+- `client/src/services/query-aggregation/adapters/types.js`
 
 Calendar module:
 
@@ -387,27 +409,27 @@ Migration validation snapshot (from log):
 - Legacy schedule fields remaining: `0`
 - Date-typed schedule fields remaining: `0`
 
-## 9. Phase 3 Readiness Checklist
+## 10. Phase 3 Step 2-3 Completion Evidence
 
-Primary spec:
+Reference documents:
 
-- `.kiro/specs/calendar-data-integration/phase3_recurrence_technical_spec_v3.md`
+- `.kiro/specs/common-query-aggregation-layer/requirements.md`
+- `.kiro/specs/common-query-aggregation-layer/design.md`
+- `.kiro/specs/common-query-aggregation-layer/tasks.md`
+- `.kiro/specs/common-query-aggregation-layer/log.md`
+- `.kiro/specs/screen-adapter-layer/requirements.md`
+- `.kiro/specs/screen-adapter-layer/design.md`
+- `.kiro/specs/screen-adapter-layer/tasks.md`
 
-Before implementation:
+Validation snapshot:
 
-1. Verify terms and contracts against:
-   - `.kiro/specs/calendar-data-integration/requirements.md`
-   - `.kiro/specs/calendar-data-integration/design.md`
-   - `.kiro/specs/calendar-data-integration/tasks.md`
-2. Confirm no references to removed legacy fields.
-3. Define regression checklist for:
-   - todo CRUD
-   - sync pipeline
-   - Google adapter behavior
+- Common layer DebugScreen suite: PASS (`common-date`, `common-range`, `sync-smoke`)
+- Screen adapter comparison suite: PASS (`screen-compare`, ID diff 0)
+- Stage counters and stale-state metadata output contract verified in runtime logs
 
-## 10. Runbook
+## 11. Runbook
 
-### 10.1 Start services
+### 11.1 Start services
 
 ```bash
 # server
@@ -419,7 +441,7 @@ cd client
 npm start
 ```
 
-### 10.2 Environment variables (minimum)
+### 11.2 Environment variables (minimum)
 
 Client:
 
@@ -433,14 +455,14 @@ Server:
 - `GOOGLE_CLIENT_ID`
 - `GOOGLE_CLIENT_SECRET`
 
-### 10.3 Known local mismatch
+### 11.3 Known local mismatch
 
 - Server default port: `5000` (`server/src/index.js`)
 - Axios fallback URL: `http://localhost:5001/api` (`client/src/api/axios.js`)
 
 If requests fail locally, check `EXPO_PUBLIC_API_URL` first.
 
-## 11. Frequent Pitfalls
+## 12. Frequent Pitfalls
 
 1. Re-introducing legacy schedule fields.
 2. Violating the string date/time contract.
@@ -449,7 +471,7 @@ If requests fail locally, check `EXPO_PUBLIC_API_URL` first.
 5. Leaving verbose debug logs in production flows.
 6. Monthly strip web settle path currently mixes list snap physics and JS idle-settle correction logic; this area is still under tuning.
 
-## 12. Document Source of Truth
+## 13. Document Source of Truth
 
 Method and behavior rules:
 
@@ -471,3 +493,9 @@ Calendar integration focus docs:
 - `.kiro/specs/strip-calendar/requirements.md`
 - `.kiro/specs/strip-calendar/design.md`
 - `.kiro/specs/strip-calendar/tasks.md`
+- `.kiro/specs/common-query-aggregation-layer/requirements.md`
+- `.kiro/specs/common-query-aggregation-layer/design.md`
+- `.kiro/specs/common-query-aggregation-layer/tasks.md`
+- `.kiro/specs/screen-adapter-layer/requirements.md`
+- `.kiro/specs/screen-adapter-layer/design.md`
+- `.kiro/specs/screen-adapter-layer/tasks.md`

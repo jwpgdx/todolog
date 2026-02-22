@@ -1,6 +1,6 @@
 # Todolog Roadmap
 
-Last Updated: 2026-02-20
+Last Updated: 2026-02-22
 Owner: Product + Engineering
 
 ## 1. Purpose
@@ -20,14 +20,17 @@ Current state:
 
 - Phase 2.5 data normalization is complete
 - Sync hardening (`Pending Push -> Delta Pull`) is complete
-- Strip-calendar module is in stabilization/debugging phase
-- Phase 3 recurrence engine is the next major deliverable
+- Phase 3 recurrence engine core (Step 1) is complete/validated
+- Phase 3 common query/aggregation layer (Step 2) is complete/validated
+- Phase 3 screen-adapter layer (Step 3) is complete/validated
+- Strip-calendar module remains in stabilization/debugging phase (adapter path active)
 
 Immediate objective:
 
 - maintain sync operational stability (retry/dead-letter/throughput monitoring)
+- reduce runtime debug log noise after Phase 3 integration
 - stabilize strip-calendar weekly/monthly settle behavior and mode-anchor consistency
-- start Phase 3 recurrence engine kickoff
+- prepare next feature track on top of common layer + screen-adapter contracts
 
 ## 3. Dated Milestones (Completed)
 
@@ -177,25 +180,41 @@ Evidence:
 - `.kiro/specs/sync-service-pending-delta/tasks.md`
 - `.kiro/specs/sync-service-pending-delta/log.md`
 
+### 2026-02-21 to 2026-02-22
+
+- Phase 3 common query/aggregation layer completed and integrated
+  - SQLite-only candidate/decision/aggregation path unified
+  - stale-state metadata contract wired (`isStale`, `staleReason`, `lastSyncTime`)
+  - DebugScreen PASS suite validated (`common-date`, `common-range`, `sync-smoke`)
+- Phase 3 screen-adapter layer completed and integrated
+  - TodoScreen/TodoCalendar/StripCalendar adapter paths switched
+  - Strip summary path enabled (`ENABLE_STRIP_CALENDAR_SUMMARY = true`)
+  - DebugScreen screen comparison PASS (`screen-compare`, ID diff 0)
+
+Evidence:
+
+- `.kiro/specs/common-query-aggregation-layer/requirements.md`
+- `.kiro/specs/common-query-aggregation-layer/design.md`
+- `.kiro/specs/common-query-aggregation-layer/tasks.md`
+- `.kiro/specs/common-query-aggregation-layer/log.md`
+- `.kiro/specs/screen-adapter-layer/requirements.md`
+- `.kiro/specs/screen-adapter-layer/design.md`
+- `.kiro/specs/screen-adapter-layer/tasks.md`
+- `.kiro/specs/screen-adapter-layer/adapter_spec_review.md`
+
 ## 4. Next Milestones (Planned)
 
-## P0: Phase 3 Recurrence Engine
+## P0: Phase 3 Integration Hardening
 
 Target:
 
-- implement recurrence behavior on top of floating string contract
+- stabilize post-integration runtime on top of common query/aggregation + screen-adapter contracts
 
-Entry criteria:
+Priority checks:
 
-1. Spec consistency check across:
-   - `.kiro/specs/calendar-data-integration/requirements.md`
-   - `.kiro/specs/calendar-data-integration/design.md`
-   - `.kiro/specs/calendar-data-integration/tasks.md`
-   - `.kiro/specs/calendar-data-integration/phase3_recurrence_technical_spec_v3.md`
-2. Regression baseline for:
-   - todo CRUD
-   - sync pipeline
-   - Google adapter
+1. remove or gate verbose debug logs in runtime-critical paths
+2. keep 3-screen consistency checks (`TodoScreen`, `TodoCalendar`, `StripCalendar`) regression-safe
+3. ensure stale/fresh transition behavior remains deterministic after sync
 
 ## P1: Reliability and Operational Hardening
 
