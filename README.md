@@ -181,6 +181,24 @@ cd client
 npm start
 ```
 
+### 5) Web E2E (Playwright)
+
+Use web-only smoke checks first for fast validation.
+
+```bash
+cd client
+npm install
+npm run e2e:web:install
+npm run e2e:web
+```
+
+Optional (headed):
+
+```bash
+cd client
+npm run e2e:web:headed
+```
+
 ## Key Runtime Paths
 
 Client:

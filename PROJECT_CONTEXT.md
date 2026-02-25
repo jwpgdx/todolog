@@ -1,7 +1,7 @@
 # Todolog Project Context
 
-Last Updated: 2026-02-22
-Status: Sync hardening complete (Pending Push -> Delta Pull), Phase 3 Step 1 recurrence engine complete/validated, Phase 3 Step 2 common query/aggregation complete/validated, Phase 3 Step 3 screen-adapter layer complete/validated
+Last Updated: 2026-02-25
+Status: Sync hardening complete (Pending Push -> Delta Pull), Phase 3 Step 1 recurrence engine complete/validated, Phase 3 Step 2 common query/aggregation complete/validated, Phase 3 Step 3 screen-adapter layer complete/validated, cache-policy unification complete/validated
 
 ## 1. Purpose
 
@@ -38,6 +38,8 @@ Server:
 - Phase 3 recurrence engine core (Step 1): complete and validated
 - Phase 3 common query/aggregation layer (Step 2): complete and validated
 - Phase 3 screen-adapter layer (Step 3): complete and validated
+- Cache-policy unification (Option A -> Option B): complete and validated (shared range cache + sync invalidation unification)
+- Cache retention (memory control): enabled (shared range cache + calendar L1 caches pruned to anchor ±6 months)
 - Strip-calendar foundation (weekly/monthly shell + anchor sync + debug instrumentation): active and integrated via adapter path
 
 ## 3. Non-Negotiable Architecture Commitments
@@ -188,15 +190,26 @@ Behavior:
 ### 6.2 Calendar read flow
 
 1. Screen/hook requests date or range data (`TodoScreen`, `TodoCalendar`, `StripCalendar`).
-2. Common query/aggregation layer runs on SQLite-only path:
+2. For range reads (`TodoCalendar`, `StripCalendar`), the shared range cache is the first hop:
+   - cache hit: return cached handoff payload (`itemsByDate`)
+   - cache miss: load uncovered sub-ranges via common query/aggregation and merge into cache
+3. Common query/aggregation layer runs on SQLite-only path (direct for date reads, miss-only for range reads):
    - candidate query (`Todo/Completion/Category`)
    - occurrence decision (non-recurring + recurring via `recurrenceEngine`)
    - aggregation (`todo + completion + category`)
-3. Screen adapters transform handoff DTO into screen-specific shapes.
-4. Screen stores cache adapter outputs when needed:
+4. Screen adapters transform handoff DTO into screen-specific shapes.
+5. Screen stores cache adapter outputs when needed:
    - `todoCalendarStore` (`todosByMonth`/`completionsByMonth`)
    - `stripCalendarStore` (`summariesByDate`)
-5. UI components render from adapted shape and cache selectors.
+6. UI components render from adapted shape and cache selectors.
+
+Shared range cache implementation:
+
+- `client/src/services/query-aggregation/cache/rangeCacheService.js`
+  - cache: `itemsByDate` (pre-adapter raw handoff payload)
+  - supports overlap/adjacent merge, in-flight dedupe, invalidate, and retention prune
+- `client/src/services/query-aggregation/cache/cacheInvalidationService.js`
+  - unified invalidate entrypoint (called by sync) + TodoScreen React Query co-fire
 
 ### 6.3 Selected date flow
 
@@ -228,9 +241,10 @@ Behavior:
    - vertical FlashList
    - `snapToInterval={WEEK_ROW_HEIGHT}` + `disableIntervalMomentum` + `decelerationRate="fast"`
    - settle path uses `onMomentumScrollEnd`, plus web idle settle fallback (`onScroll` timer) with guards/cooldowns/re-arm thresholds
+   - layout normalize nudge: on monthly enter, if FlashList layout looks discontinuous (estimated-height artifacts), nudge width by 1px to force relayout and prevent "1 week only visible" viewport
 5. Data summary path is enabled at runtime:
    - `ENABLE_STRIP_CALENDAR_SUMMARY = true`
-   - summary source is `runCommonQueryForRange` -> `adaptStripCalendarFromRangeHandoff`
+   - summary source is shared range cache miss -> `runCommonQueryForRange` -> shared range cache upsert -> `adaptStripCalendarFromRangeHandoff`
    - dot rendering uses category-color dedupe + overflow metadata
 6. Monthly -> Weekly target resolution policy:
    - stale weekly transition target is cleared in shell on monthly settle and before monthly->weekly toggle
@@ -305,6 +319,9 @@ Common query/aggregation layer:
 - `client/src/services/query-aggregation/occurrenceDecisionService.js`
 - `client/src/services/query-aggregation/aggregationService.js`
 - `client/src/services/query-aggregation/types.js`
+- `client/src/services/query-aggregation/cache/rangeCacheService.js`
+- `client/src/services/query-aggregation/cache/cacheInvalidationService.js`
+- `client/src/services/query-aggregation/cache/index.js`
 
 Screen adapters:
 

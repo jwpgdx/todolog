@@ -1,6 +1,6 @@
 # 문서 업데이트 가이드 (빠른 체크용)
 
-마지막 업데이트: 2026-02-20
+마지막 업데이트: 2026-02-22
 
 ## 1) 기본 원칙
 
@@ -75,3 +75,58 @@
 - [ ] 기능 변경이면 해당 spec 3종 문서를 갱신했는가?
 - [ ] 공통 AI 규칙 변경 시 `AI_COMMON_RULES.md`를 기준으로 반영했는가?
 - [ ] 날짜 로직 변경 시 `currentDate`(selected) / `todayDate`(derived) 분리가 문서에 명시되었는가?
+- [ ] 외부 AI 검토를 사용했다면 finding을 `must-fix / optional / reject`로 분류하고, 근거와 처리결과를 리뷰 문서에 기록했는가?
+
+## 5) AI 검토 프롬프트 운영 규칙
+
+1. "공통 운영 원칙"은 `AI_COMMON_RULES.md`에 저장한다.
+2. "복붙용 프롬프트 템플릿"은 이 문서(`DOCUMENT_UPDATE_GUIDE.md`)에 저장한다.
+3. `AGENTS.md`에는 긴 프롬프트 템플릿을 넣지 않는다. (시작 규칙만 유지)
+4. 검토 결과 파일은 해당 스펙 폴더(`.kiro/specs/<feature>/`)에 저장한다.
+5. 검토 후 구현 착수 전 `must-fix / optional / reject` triage를 수행하고, `must-fix` 처리 여부를 명시한다.
+
+## 6) 부록: 엄격 스펙 검토 프롬프트 템플릿 (EN)
+
+아래 템플릿에서 경로/범위만 바꿔 사용한다.
+
+```text
+Role:
+You are a senior React Native offline-first architecture reviewer.
+Your goal is strict spec-quality validation only. Do NOT propose implementation code.
+
+Context (hard constraints):
+1) TO-BE-first principle
+2) Current phase status and target scope
+
+Primary docs to review:
+1. <requirements.md path>
+2. <design.md path>
+3. <tasks.md path>
+
+Reference docs:
+1. <related upstream/downstream spec path>
+2. <ROADMAP / PROJECT_CONTEXT path>
+3. <pre-spec baseline path>
+
+Review criteria:
+A) Principle compliance
+B) Architectural correctness
+C) Test/operational safety
+D) Overdesign vs underdesign
+
+Output format (must follow exactly):
+1) Findings first, ordered by severity
+- [Critical]/[High]/[Medium]/[Low]
+- include file + section/sentence evidence
+- why problem + risk + 1-2 line fix direction
+2) Open Questions (must-decide only)
+3) Patch Proposal (copy-pastable add/replace/delete text)
+4) Final Verdict: "Ready to implement" / "Conditionally ready" / "Needs rewrite"
+
+Hard rules:
+1) No evidence-free claims.
+2) No vague statements.
+3) If gap exists, provide exact replacement/addition wording.
+4) Focus on defects/risks/corrections.
+5) No unrelated large-scope feature proposals.
+```

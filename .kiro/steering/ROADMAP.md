@@ -1,7 +1,7 @@
 # Phase 3 Sync + Recurrence ROADMAP (임시)
 
 작성일: 2026-02-18  
-업데이트: 2026-02-22  
+업데이트: 2026-02-23  
 목적: 오프라인 퍼스트 최종 구조 기준으로 완료 상태를 고정하고, 다음 우선순위를 명확히 유지한다.
 
 현재 상태:
@@ -10,6 +10,7 @@
 - ✅ 반복 엔진(Phase 3 Step 1) 완료
 - ✅ 공통 조회/집계 레이어(Phase 3 Step 2) 완료
 - ✅ 화면어댑터 레이어(Phase 3 Step 3) 완료
+- ✅ 캐시 정책 통합(Option A -> Option B) 완료
 
 ## 1. 동기화 서비스 선결 블로커 (가장 먼저)
 
@@ -100,6 +101,13 @@
 - [x] 동일 입력 데이터에서 3화면 결과 일치 검증이 PASS다.
 - [x] 레거시 판정 경로 정리가 게이트 조건 충족 후 완료된다.
 
+### 4-6. 캐시 정책 통합 (Option A -> Option B)
+
+- [x] Option A(3개월 monthly + prefetch) 적용 및 정량 검증 PASS(62.3% elapsed 개선)
+- [x] Option B(shared range cache + invalidation 단일화) 적용 완료
+- [x] 일반/반복/시간포함 반복 시나리오 회귀 검증 PASS
+- [x] 디버그 검증 도구(shared/L1 clear, range-hit-smoke, policy toggle, benchmark) 반영
+
 
 ## 최종 목표 흐름 (오프라인 퍼스트)
 
@@ -115,7 +123,7 @@
   - 반복 일정: recurrenceEngine 호출로 최종 판정
 - 4-3. 판정 통과 대상 기준으로 `일정 + 완료 + 카테고리` 병합/집계
 5. 화면어댑터가 화면별 형태로 변환 [x]
-6. todo-screen / todo-calendar / strip-calendar 렌더 [x] (strip는 현재 Test 탭 경로 중심)
+6. todo-screen / todo-calendar / strip-calendar 렌더 [x]
 
 동시에 뒤에서:
 

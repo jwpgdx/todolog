@@ -1,6 +1,6 @@
 # Todolog Roadmap
 
-Last Updated: 2026-02-22
+Last Updated: 2026-02-25
 Owner: Product + Engineering
 
 ## 1. Purpose
@@ -23,7 +23,8 @@ Current state:
 - Phase 3 recurrence engine core (Step 1) is complete/validated
 - Phase 3 common query/aggregation layer (Step 2) is complete/validated
 - Phase 3 screen-adapter layer (Step 3) is complete/validated
-- Strip-calendar module remains in stabilization/debugging phase (adapter path active)
+- Cache-policy unification (Option A -> Option B) is complete/validated
+- Strip-calendar module remains in stabilization/debugging phase (runtime tuning only)
 
 Immediate objective:
 
@@ -201,6 +202,41 @@ Evidence:
 - `.kiro/specs/screen-adapter-layer/design.md`
 - `.kiro/specs/screen-adapter-layer/tasks.md`
 - `.kiro/specs/screen-adapter-layer/adapter_spec_review.md`
+
+### 2026-02-23
+
+- Cache-policy unification completed (`Option A -> Option B`)
+  - Option A: strip monthly 3-month policy + prefetch + benchmark PASS (elapsed 62.3% improvement)
+  - Option B: shared range cache adoption in TodoCalendar/StripCalendar + sync invalidation unification
+  - Regression: general/recurrence/time-based sets PASS (`screen-compare` diff 0, `sync-smoke` stale=false)
+  - Debug controls added for cache-policy validation (`shared clear`, `strip L1 clear`, `range-hit-smoke`, policy toggle, benchmark)
+
+Evidence:
+
+- `.kiro/specs/cache-policy-unification/requirements.md`
+- `.kiro/specs/cache-policy-unification/design.md`
+- `.kiro/specs/cache-policy-unification/tasks.md`
+- `.kiro/specs/cache-policy-unification/log.md`
+
+### 2026-02-25
+
+- Strip-calendar monthly 1-row-only visible issue mitigated
+  - FlashList initial estimated-layout artifacts could leave y-coordinate discontinuities (only 1 week visible until scroll/layout)
+  - Added layout normalize nudge (1px width/padding bump) on monthly enter when discontinuity is detected
+- Long-scroll memory growth bounded with retention window (anchor ±6 months)
+  - Shared range cache: date-window prune (`pruneOutsideDateRange`)
+  - TodoCalendar L1: month-window prune (`pruneToMonthWindow`)
+  - StripCalendar L1: date-window prune (`pruneToDateRange`)
+
+Evidence:
+
+- `client/src/features/strip-calendar/ui/MonthlyStripList.js`
+- `client/src/services/query-aggregation/cache/rangeCacheService.js`
+- `client/src/features/strip-calendar/hooks/useStripCalendarDataRange.js`
+- `client/src/features/strip-calendar/store/stripCalendarStore.js`
+- `client/src/features/todo-calendar/hooks/useTodoCalendarData.js`
+- `client/src/features/todo-calendar/store/todoCalendarStore.js`
+- `.kiro/specs/common-query-aggregation-layer/todo-calendar-first-entry-lag-postmortem-2026-02-24.md`
 
 ## 4. Next Milestones (Planned)
 

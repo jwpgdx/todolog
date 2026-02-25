@@ -4,6 +4,10 @@
 
 본 계획은 `공통 조회/집계 레이어` 범위만 구현 가능한 작업 단위로 분해한 문서다.
 
+관련 회고 문서:
+
+1. `.kiro/specs/common-query-aggregation-layer/todo-calendar-first-entry-lag-postmortem-2026-02-24.md`
+
 구현 원칙:
 
 1. TO-BE 계약 우선
@@ -93,6 +97,25 @@
   - 공통 레이어 문서와 화면어댑터 문서의 경계 중복 제거
   - _Requirements: R12_
 
+- [x] 15. 성능 계측 프로브 고정 (Perf Probe)
+  - `date(1일)` / `range(3개월)` 시나리오를 `cold/hot` 모드로 분리 계측
+  - stage elapsed(`candidate/decision/aggregation/total`) p50/p95 로그 수집
+  - 측정 조건(sync fresh, cache clear 조건, 반복 횟수) 고정 및 `log.md` 기록
+  - _Requirements: R9, R13_
+
+- [x] 16. SQL/인덱스 튜닝 (Candidate Query 중심)
+  - 후보 조회 SQL에 대해 `EXPLAIN QUERY PLAN` 기반 병목 구간 식별
+  - range/date 조건, soft-delete 조건, completion join 경로의 인덱스 적용성 점검
+  - 필요한 인덱스/쿼리 리라이트 적용 후 회귀 위험(정합성) 점검
+  - _Requirements: R4, R9, R13_
+
+- [ ] 17. 재계측 및 완료 판정
+  - Task 15와 동일 조건으로 재계측(최소 5회 반복)
+  - DoD 충족 여부(`cold/hot`, p95, 개선율) PASS/FAIL 판정
+  - 결과를 `.kiro/specs/common-query-aggregation-layer/log.md`에 baseline 비교 형태로 기록
+  - sync-coupled 회귀: sync 성공 후 동일 데이터셋에서 3화면 inclusion diff=0 확인
+  - _Requirements: R9, R13_
+
 ## Checkpoints
 
 - [x] Checkpoint A: 공통 조회/판정/병합 동작
@@ -111,6 +134,10 @@
   - Task 14 완료
   - adapter 스펙과 handoff DTO 계약 일치 확인
 
+- [ ] Checkpoint E: 공통 레이어 성능 튜닝 완료
+  - Tasks 15~17 완료
+  - Requirement 13 DoD 충족 및 log.md 증빙 확보
+
 ## Validation Scenarios (필수)
 
 1. 동일 데이터셋에서 date/range 판정 결과 일관성
@@ -124,15 +151,16 @@
 - R1: Tasks 1
 - R2: Tasks 3, 7
 - R3: Tasks 6, 12
-- R4: Task 3
+- R4: Tasks 3, 16
 - R5: Task 4
 - R6: Tasks 1, 5
 - R7: Tasks 8, 9, 10
 - R8: Task 7
-- R9: Task 12
+- R9: Tasks 12, 15, 16, 17
 - R10: Tasks 2, 11, 13
 - R11: Tasks 2, 11, 13
 - R12: Task 14
+- R13: Tasks 15, 16, 17
 
 ## Out of Scope
 

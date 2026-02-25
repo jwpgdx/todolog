@@ -17,6 +17,7 @@
 3. `.kiro/specs/common-query-aggregation-layer/tasks.md`
 4. `.kiro/specs/common-query-aggregation-layer/log.md`
 5. `.kiro/steering/ROADMAP.md`
+6. `.kiro/specs/screen-adapter-layer/cache-policy-unification.md` (조회/캐시 정책 통합 검토 노트)
 
 ## Requirements
 

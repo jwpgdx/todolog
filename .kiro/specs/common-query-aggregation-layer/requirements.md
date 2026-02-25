@@ -161,6 +161,27 @@
 2. Screen-specific formatting/grouping/limit rules SHALL be specified in `.kiro/specs/screen-adapter-layer/` docs.
 3. The common-layer spec SHALL link to screen-adapter spec as downstream dependency.
 
+### Requirement 13: 성능 튜닝 DoD (Cold/Hot 계측 기준 고정)
+
+**User Story:** 개발자로서, 공통 레이어 성능 튜닝 완료 여부를 재현 가능한 기준으로 판단하고 싶다.
+
+#### Acceptance Criteria
+
+1. THE system SHALL define two performance modes for validation:
+   - `cold`: shared range cache + screen L1 cache clear 후 첫 실행
+   - `hot`: 동일 range를 invalidation 없이 즉시 재실행
+2. THE system SHALL record stage-wise elapsed for each run (`candidate`, `decision`, `aggregation`, `total`).
+3. WHEN running `date` mode (`1일`) under `cold`, THEN `total` p95 SHALL be `<= 120ms`.
+4. WHEN running `range` mode (`3개월`) under `cold`, THEN `candidate` p95 임계치는 Task 15 baseline 확정 후 최종 고정한다. 잠정 기준: small dataset(`<= 50 todos`) `<= 80ms`, large dataset(`>= 200 todos`) `<= 300ms` OR baseline 대비 `>= 30%` 개선.
+5. WHEN running same `range` under `hot`, THEN cache-hit path SHALL complete within `<= 20ms` and SHALL NOT trigger additional SQLite candidate query.
+6. Measurement conditions SHALL be fixed and logged:
+   - sync 완료 상태(`isStale=false`)
+   - 동일 테스트 데이터셋(일반/반복/시간포함 반복 포함)
+   - 테스트 데이터셋 최소 구성: `todos >= 20`, 유형(단일/기간/daily/weekly/monthly/time-based 반복), `completions >= 5`(date+null 혼합)
+   - 데이터셋 ID 목록은 Task 15에서 고정하고 `log.md`에 기록
+   - 시나리오별 최소 5회 반복 후 p50/p95 기록
+7. THE validation result SHALL be appended to `.kiro/specs/common-query-aggregation-layer/log.md` with PASS/FAIL summary.
+
 ## Scope
 
 ### In Scope

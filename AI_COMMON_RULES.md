@@ -1,6 +1,6 @@
 # Todolog AI Common Rules
 
-Last Updated: 2026-02-13
+Last Updated: 2026-02-22
 Scope: Shared rules for all AI tools used in this repository.
 
 ## 1. Purpose
@@ -104,3 +104,28 @@ Rule of thumb:
 - Run available tests/checks for changed areas.
 - If tests are not run, state this explicitly.
 - For contract changes, include payload-level verification in report.
+
+## 9. External AI Spec Review Protocol
+
+When validating spec/architecture documents with external AI tools (e.g. Opus, Gemini):
+
+1. Use evidence-based review prompts with strict output format.
+2. Require file/section citations for every finding.
+3. Require copy-pastable patch proposals (not abstract advice).
+4. Start implementation only after review verdict is at least "Conditionally ready" and Critical/High items are addressed.
+
+Prompt storage rule:
+
+1. Keep reusable prompt templates in `DOCUMENT_UPDATE_GUIDE.md`.
+2. Do not store long prompt templates in `AGENTS.md` or tool entry docs.
+
+Review log rule:
+
+1. Save review outputs under the related spec folder (e.g. `*_review*.md`).
+2. Record model name/date/verdict and whether each finding was accepted or rejected.
+
+Review triage rule:
+
+1. Classify findings into `must-fix`, `optional`, or `reject`.
+2. Every classification must include file/section evidence and a short reason.
+3. Before implementation, resolve all `must-fix` items or explicitly defer them with risk notes.
