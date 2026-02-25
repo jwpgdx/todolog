@@ -3,11 +3,16 @@
   "version": "1.0.0",
   "main": "index.js",
   "scripts": {
+    "dev": "expo start --dev-client -c",
     "start": "expo start",
     "android": "expo run:android",
     "ios": "expo run:ios",
     "web": "expo start --web",
-    "check-ip": "ipconfig getifaddr en0"
+    "check-ip": "ipconfig getifaddr en0",
+    "e2e:web": "playwright test",
+    "e2e:web:headed": "playwright test --headed",
+    "e2e:web:ui": "playwright test --ui",
+    "e2e:web:install": "playwright install chromium"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
@@ -62,6 +67,7 @@
     "react-native-safe-area-context": "~5.6.0"
   },
   "devDependencies": {
+    "@playwright/test": "^1.49.0",
     "@react-native-picker/picker": "2.11.1",
     "typescript": "^5.3.3"
   }

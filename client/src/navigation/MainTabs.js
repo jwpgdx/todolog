@@ -18,6 +18,7 @@ export default function MainTabs() {
     <Tab.Navigator
       screenOptions={{
         headerShown: false,
+        freezeOnBlur: true,
         tabBarActiveTintColor: '#3b82f6',
         tabBarInactiveTintColor: '#9ca3af',
       }}
@@ -59,6 +60,16 @@ export default function MainTabs() {
           tabBarLabel: '테스트',
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="flask-outline" size={size} color={color} />
+          ),
+        }}
+      />
+      <Tab.Screen
+        name="Debug"
+        component={DebugScreen}
+        options={{
+          tabBarLabel: '디버그',
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="bug-outline" size={size} color={color} />
           ),
         }}
       />

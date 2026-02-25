@@ -1,5 +1,17 @@
 import React, { useMemo } from 'react';
 import { PanResponder, StyleSheet, Text, View } from 'react-native';
+import { STRIP_CALENDAR_PERF_LOG_ENABLED } from '../utils/stripCalendarConstants';
+
+function nowPerfMs() {
+  if (typeof globalThis?.performance?.now === 'function') {
+    return globalThis.performance.now();
+  }
+  return Date.now();
+}
+
+function formatMs(value) {
+  return Number((value || 0).toFixed(2));
+}
 
 export default function ModeToggleBar({ mode, onSwipeUp, onSwipeDown }) {
   const panResponder = useMemo(
@@ -7,12 +19,21 @@ export default function ModeToggleBar({ mode, onSwipeUp, onSwipeDown }) {
       PanResponder.create({
         onMoveShouldSetPanResponder: (_, gestureState) => Math.abs(gestureState.dy) > 8,
         onPanResponderRelease: (_, gestureState) => {
-          if (gestureState.dy < -20) {
+          const dy = gestureState.dy;
+          const action = dy < -20 ? 'swipeUp' : dy > 20 ? 'swipeDown' : 'none';
+          if (STRIP_CALENDAR_PERF_LOG_ENABLED) {
+            console.log(
+              `[strip-calendar:ui] modeToggle release mode=${mode} dy=${formatMs(dy)} ` +
+                `action=${action} t=${formatMs(nowPerfMs())}ms`
+            );
+          }
+
+          if (action === 'swipeUp') {
             onSwipeUp();
             return;
           }
 
-          if (gestureState.dy > 20) {
+          if (action === 'swipeDown') {
             onSwipeDown();
           }
         },

@@ -3,15 +3,20 @@ import { View, Text, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import Toast from 'react-native-toast-message';
 import { useAuthStore } from '../store/authStore';
+import { authAPI } from '../api/auth';
+
+const DEV_AUTO_LOGIN_EMAIL = 'admin2321@gmail.com';
+const DEV_AUTO_LOGIN_PASSWORD = '123456';
 
 export default function WelcomeScreen() {
   const navigation = useNavigation();
-  const { loginAsGuest } = useAuthStore();
-  const [isLoading, setIsLoading] = useState(false);
+  const { loginAsGuest, setAuth } = useAuthStore();
+  const [loadingType, setLoadingType] = useState(null);
+  const isLoading = loadingType !== null;
 
   const handleGetStarted = async () => {
     try {
-      setIsLoading(true);
+      setLoadingType('guest');
       await loginAsGuest();
       // 게스트 로그인 성공 시 자동으로 Home으로 이동 (Navigation에서 처리)
     } catch (error) {
@@ -24,7 +29,7 @@ export default function WelcomeScreen() {
           text1: '네트워크 오류',
           text2: '인터넷 연결을 확인하고 다시 시도해주세요',
         });
-        setIsLoading(false);
+        setLoadingType(null);
         return;
       }
 
@@ -35,7 +40,7 @@ export default function WelcomeScreen() {
           text1: '요청 시간 초과',
           text2: '네트워크 상태를 확인하고 다시 시도해주세요',
         });
-        setIsLoading(false);
+        setLoadingType(null);
         return;
       }
 
@@ -54,7 +59,35 @@ export default function WelcomeScreen() {
           text2: '잠시 후 다시 시도해주세요',
         });
       }
-      setIsLoading(false);
+      setLoadingType(null);
+    }
+  };
+
+  const handleDevAutoLogin = async () => {
+    try {
+      setLoadingType('dev');
+
+      const response = await authAPI.login({
+        email: DEV_AUTO_LOGIN_EMAIL,
+        password: DEV_AUTO_LOGIN_PASSWORD,
+      });
+
+      const token = response?.data?.token || response?.data?.accessToken;
+      const user = response?.data?.user;
+
+      if (!token || !user) {
+        throw new Error('로그인 응답이 올바르지 않습니다.');
+      }
+
+      await setAuth(token, user);
+    } catch (error) {
+      console.error('Dev auto login error:', error);
+      Toast.show({
+        type: 'error',
+        text1: '자동 로그인 실패',
+        text2: error.response?.data?.message || error.message || '잠시 후 다시 시도해주세요',
+      });
+      setLoadingType(null);
     }
   };
 
@@ -79,11 +112,25 @@ export default function WelcomeScreen() {
         onPress={handleGetStarted}
         disabled={isLoading}
       >
-        {isLoading ? (
+        {loadingType === 'guest' ? (
           <ActivityIndicator color="white" />
         ) : (
           <Text className="text-white text-center font-bold text-lg">
             시작하기
+          </Text>
+        )}
+      </TouchableOpacity>
+
+      <TouchableOpacity
+        className={`w-full rounded-xl py-3 mb-3 border ${isLoading ? 'bg-gray-100 border-gray-300' : 'bg-white border-blue-300 active:bg-blue-50'}`}
+        onPress={handleDevAutoLogin}
+        disabled={isLoading}
+      >
+        {loadingType === 'dev' ? (
+          <ActivityIndicator color="#2563EB" />
+        ) : (
+          <Text className="text-blue-600 text-center font-semibold">
+            개발자 자동 로그인 (admin2321@gmail.com)
           </Text>
         )}
       </TouchableOpacity>

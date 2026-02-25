@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Platform } from 'react-native';
+import dayjs from 'dayjs';
 import { useQueryClient } from '@tanstack/react-query';
 import { useToggleCompletion } from '../hooks/queries/useToggleCompletion';
 import { useTodos } from '../hooks/queries/useTodos';
@@ -32,6 +33,14 @@ import {
   adaptTodoCalendarFromRangeHandoff,
   adaptStripCalendarFromRangeHandoff,
 } from '../services/query-aggregation/adapters';
+import {
+  getOrLoadRange,
+  getRangeCacheDebugStats,
+  invalidateAllRangeCache,
+  invalidateAllScreenCaches,
+} from '../services/query-aggregation/cache';
+import { useStripCalendarStore } from '../features/strip-calendar/store/stripCalendarStore';
+import { useTodoCalendarStore } from '../features/todo-calendar/store/todoCalendarStore';
 import { addDaysDateOnly } from '../utils/recurrenceEngine';
 import {
   getAllCategories as sqliteGetAllCategories,
@@ -47,6 +56,17 @@ function getLocalDateString() {
   return `${yyyy}-${mm}-${dd}`;
 }
 
+const PERF_DATASET_ID = 'PERF_DS_V1';
+const PERF_REPEAT = 5;
+
+function percentile(values, p) {
+  if (!Array.isArray(values) || values.length === 0) return 0;
+  const sorted = [...values].sort((a, b) => a - b);
+  const rank = Math.ceil((p / 100) * sorted.length) - 1;
+  const index = Math.min(Math.max(rank, 0), sorted.length - 1);
+  return Number(sorted[index].toFixed(2));
+}
+
 export default function DebugScreen({ navigation }) {
   const [logs, setLogs] = useState([]);
   const [selectedDate, setSelectedDate] = useState(getLocalDateString());
@@ -55,6 +75,7 @@ export default function DebugScreen({ navigation }) {
     range: null,
     syncSmoke: null,
     screenCompare: null,
+    perfProbe: null,
   });
   const queryClient = useQueryClient();
   const toggleCompletionMutation = useToggleCompletion();
@@ -64,6 +85,67 @@ export default function DebugScreen({ navigation }) {
   const addLog = (message) => {
     const timestamp = new Date().toLocaleTimeString();
     setLogs(prev => [`[${timestamp}] ${message}`, ...prev].slice(0, 100));
+  };
+
+  const setDebugDate = (dateValue) => {
+    const parsed = dayjs(dateValue);
+    if (!parsed.isValid()) {
+      addLog(`❌ 날짜 형식 오류: ${dateValue}`);
+      return;
+    }
+    const normalized = parsed.format('YYYY-MM-DD');
+    setSelectedDate(normalized);
+    addLog(`📅 날짜 변경: ${normalized}`);
+  };
+
+  const shiftDebugDate = (days) => {
+    const nextDate = addDaysDateOnly(selectedDate, days) || dayjs(selectedDate).add(days, 'day').format('YYYY-MM-DD');
+    setDebugDate(nextDate);
+  };
+
+  const setDebugDateToday = () => {
+    setDebugDate(getLocalDateString());
+  };
+
+  const promptDebugDate = () => {
+    if (Platform.OS !== 'web' || typeof window === 'undefined' || typeof window.prompt !== 'function') {
+      addLog('⚠️ 직접 입력은 웹에서만 지원됩니다. ±1/±7 버튼을 사용하세요.');
+      return;
+    }
+
+    const input = window.prompt('테스트 날짜 입력 (YYYY-MM-DD)', selectedDate);
+    if (input == null) return;
+
+    const trimmed = input.trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+      addLog(`❌ 날짜 형식 오류: ${trimmed}`);
+      return;
+    }
+
+    setDebugDate(trimmed);
+  };
+
+  const clearLogs = () => {
+    setLogs([]);
+  };
+
+  const copyLogs = async () => {
+    if (logs.length === 0) {
+      addLog('⚠️ 복사할 로그가 없습니다');
+      return;
+    }
+
+    const text = logs.join('\n');
+    try {
+      if (Platform.OS === 'web' && typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text);
+        addLog(`✅ 로그 ${logs.length}줄 복사 완료`);
+      } else {
+        addLog('⚠️ 현재 플랫폼은 자동 로그 복사를 지원하지 않습니다');
+      }
+    } catch (error) {
+      addLog(`❌ 로그 복사 실패: ${error.message}`);
+    }
   };
 
   const recordValidation = (key, payload) => {
@@ -82,6 +164,7 @@ export default function DebugScreen({ navigation }) {
       { key: 'range', label: 'common-range', value: validationSummary.range },
       { key: 'syncSmoke', label: 'sync-smoke', value: validationSummary.syncSmoke },
       { key: 'screenCompare', label: 'screen-compare', value: validationSummary.screenCompare },
+      { key: 'perfProbe', label: 'perf-probe', value: validationSummary.perfProbe },
     ];
 
     const executed = rows.filter(row => !!row.value);
@@ -115,6 +198,290 @@ export default function DebugScreen({ navigation }) {
     const overallPass = executed.length > 0 && failed === 0;
     addLog(overallPass ? '✅ OVERALL PASS' : '❌ OVERALL FAIL');
     addLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+  };
+
+  const printRangeCacheStats = () => {
+    const stats = getRangeCacheDebugStats();
+
+    addLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    addLog('🧠 Range Cache 상태');
+    addLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    addLog(
+      `hit=${stats.hit}, miss=${stats.miss}, inFlightDeduped=${stats.inFlightDeduped}, loads=${stats.loads}`
+    );
+    addLog(`invalidateAll=${stats.invalidateAll}, invalidateRange=${stats.invalidateRange}`);
+    addLog(`entries=${stats.loadedRanges.length}, inFlight=${stats.inFlightRanges.length}`);
+
+    if (stats.loadedRanges.length > 0) {
+      addLog('📦 loadedRanges:');
+      stats.loadedRanges.forEach((range, index) => {
+        addLog(
+          `  [${index + 1}] ${range.startDate} ~ ${range.endDate} | source=${range.sourceTag}`
+        );
+      });
+    }
+
+    if (stats.inFlightRanges.length > 0) {
+      addLog('⏳ inFlightRanges:');
+      stats.inFlightRanges.forEach((range, index) => {
+        addLog(
+          `  [${index + 1}] ${range.startDate} ~ ${range.endDate} | source=${range.sourceTag}`
+        );
+      });
+    }
+
+    addLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+  };
+
+  const printStripL1CacheStats = () => {
+    const stripState = useStripCalendarStore.getState();
+    const summaryDates = Object.keys(stripState.summariesByDate || {});
+    const sortedSummaryDates = [...summaryDates].sort();
+
+    addLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    addLog('🧩 Strip L1 Cache 상태');
+    addLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    addLog(`loadedRanges=${stripState.loadedRanges.length}, summariesByDate=${sortedSummaryDates.length}`);
+
+    if (stripState.loadedRanges.length > 0) {
+      addLog('📦 strip loadedRanges:');
+      stripState.loadedRanges.forEach((range, index) => {
+        addLog(`  [${index + 1}] ${range.startDate} ~ ${range.endDate}`);
+      });
+    }
+
+    if (sortedSummaryDates.length > 0) {
+      const firstDate = sortedSummaryDates[0];
+      const lastDate = sortedSummaryDates[sortedSummaryDates.length - 1];
+      addLog(`🗓️ summaryDate 범위(키 기준): ${firstDate} ~ ${lastDate}`);
+    }
+
+    addLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+  };
+
+  const printTodoCalendarL1CacheStats = () => {
+    const state = useTodoCalendarStore.getState();
+    const todoMonthIds = Object.keys(state.todosByMonth || {}).sort();
+    const completionMonthIds = Object.keys(state.completionsByMonth || {}).sort();
+    const unionMonthIds = Array.from(new Set([...todoMonthIds, ...completionMonthIds])).sort();
+
+    let totalTodos = 0;
+    for (const monthId of todoMonthIds) {
+      const list = state.todosByMonth?.[monthId];
+      if (Array.isArray(list)) totalTodos += list.length;
+    }
+
+    let totalCompletions = 0;
+    for (const monthId of completionMonthIds) {
+      const map = state.completionsByMonth?.[monthId];
+      if (map && typeof map === 'object') totalCompletions += Object.keys(map).length;
+    }
+
+    addLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    addLog('📅 TodoCalendar L1 Cache 상태');
+    addLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    addLog(
+      `todosByMonth=${todoMonthIds.length}, completionsByMonth=${completionMonthIds.length}, union=${unionMonthIds.length}`
+    );
+    addLog(`items(total): todos=${totalTodos}, completions=${totalCompletions}`);
+
+    if (unionMonthIds.length > 0) {
+      addLog(`🗓️ month 범위(키 기준): ${unionMonthIds[0]} ~ ${unionMonthIds[unionMonthIds.length - 1]}`);
+    }
+
+    // Keep output readable when users scroll a lot.
+    if (unionMonthIds.length > 0) {
+      const head = unionMonthIds.slice(0, 8);
+      const tail = unionMonthIds.length > 12 ? unionMonthIds.slice(-4) : [];
+      const sample = tail.length > 0 ? [...head, '...', ...tail] : head;
+      addLog(`📦 cached months(sample): ${sample.join(', ')}`);
+    }
+
+    addLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+  };
+
+  const clearSharedRangeCacheOnly = () => {
+    const result = invalidateAllRangeCache({ reason: 'debug:manual-clear-shared-range-cache' });
+    addLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    addLog('🧠 Shared Range Cache만 클리어');
+    addLog(`ok=${result.ok}, removedEntries=${result.removedEntries}, reason=${result.reason}`);
+    addLog('ℹ️ Strip/TodoCalendar L1 store는 유지됩니다');
+    addLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+  };
+
+  const setStripMonthlyPolicyLegacy = () => {
+    useStripCalendarStore.getState().setMonthlyRangePolicy('legacy_9week');
+    addLog('⚙️ Strip 월간 정책 변경: legacy_9week (-14 ~ +48일)');
+  };
+
+  const setStripMonthlyPolicyThreeMonth = () => {
+    useStripCalendarStore.getState().setMonthlyRangePolicy('three_month');
+    addLog('⚙️ Strip 월간 정책 변경: three_month (월 기준 -1M ~ +1M)');
+  };
+
+  const printStripMonthlyPolicy = () => {
+    const policy = useStripCalendarStore.getState().monthlyRangePolicy;
+    addLog(`ℹ️ Strip 월간 정책 현재값: ${policy}`);
+  };
+
+  const buildMonthlyRangeByPolicy = (anchorDate, policy) => {
+    if (policy === 'legacy_9week') {
+      return {
+        startDate: dayjs(anchorDate).subtract(14, 'day').format('YYYY-MM-DD'),
+        endDate: dayjs(anchorDate).add(48, 'day').format('YYYY-MM-DD'),
+      };
+    }
+    return {
+      startDate: dayjs(anchorDate).startOf('month').subtract(1, 'month').format('YYYY-MM-DD'),
+      endDate: dayjs(anchorDate).endOf('month').add(1, 'month').format('YYYY-MM-DD'),
+    };
+  };
+
+  const buildMonthlyAnchorSequence = (baseDate, count = 6) => {
+    const normalized = dayjs(baseDate).startOf('month');
+    return Array.from({ length: count }, (_, index) =>
+      normalized.add(index, 'month').format('YYYY-MM-DD')
+    );
+  };
+
+  const runOptionABenchmark = async () => {
+    const syncStatus = { isSyncing, error: syncError, lastSyncTime };
+    const anchors = buildMonthlyAnchorSequence(selectedDate, 6);
+
+    const benchmarkPolicy = async (policy) => {
+      invalidateAllRangeCache({ reason: `debug:option-a-benchmark:${policy}` });
+      useStripCalendarStore.getState().clearRangeCache();
+      const before = getRangeCacheDebugStats();
+      const startedAt = performance.now();
+
+      for (const anchor of anchors) {
+        const range = buildMonthlyRangeByPolicy(anchor, policy);
+        const result = await getOrLoadRange({
+          startDate: range.startDate,
+          endDate: range.endDate,
+          sourceTag: `option-a-benchmark:${policy}`,
+          syncStatus,
+        });
+
+        if (!result.ok) {
+          throw new Error(`${policy} load failed @ ${anchor}: ${result.error || 'unknown'}`);
+        }
+      }
+
+      const after = getRangeCacheDebugStats();
+      const elapsedMs = Number((performance.now() - startedAt).toFixed(2));
+      return {
+        policy,
+        elapsedMs,
+        missDelta: after.miss - before.miss,
+        hitDelta: after.hit - before.hit,
+        loadsDelta: after.loads - before.loads,
+      };
+    };
+
+    addLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    addLog(`🧪 Option A 정량 벤치마크 시작 (base=${selectedDate}, months=${anchors.length})`);
+    addLog(`anchors=${anchors.join(', ')}`);
+    addLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+
+    try {
+      const legacy = await benchmarkPolicy('legacy_9week');
+      const threeMonth = await benchmarkPolicy('three_month');
+
+      const elapsedImprovement =
+        legacy.elapsedMs > 0 ? ((legacy.elapsedMs - threeMonth.elapsedMs) / legacy.elapsedMs) * 100 : 0;
+      const missImprovement =
+        legacy.missDelta > 0 ? ((legacy.missDelta - threeMonth.missDelta) / legacy.missDelta) * 100 : 0;
+
+      addLog(
+        `legacy_9week: elapsed=${legacy.elapsedMs}ms, missΔ=${legacy.missDelta}, hitΔ=${legacy.hitDelta}, loadsΔ=${legacy.loadsDelta}`
+      );
+      addLog(
+        `three_month: elapsed=${threeMonth.elapsedMs}ms, missΔ=${threeMonth.missDelta}, hitΔ=${threeMonth.hitDelta}, loadsΔ=${threeMonth.loadsDelta}`
+      );
+      addLog(`improvement(elapsed)=${elapsedImprovement.toFixed(1)}%`);
+      addLog(`improvement(miss)=${missImprovement.toFixed(1)}%`);
+
+      if (elapsedImprovement >= 30 || missImprovement >= 30) {
+        addLog('✅ PASS [option-a-benchmark]: 30%+ 개선 충족');
+      } else {
+        addLog('❌ FAIL [option-a-benchmark]: 30% 개선 미달');
+      }
+    } catch (error) {
+      addLog(`❌ 예외 [option-a-benchmark]: ${error.message}`);
+    } finally {
+      // benchmark 종료 후 기본 정책 복구
+      useStripCalendarStore.getState().setMonthlyRangePolicy('three_month');
+      addLog('ℹ️ Strip 월간 정책 자동 복구: three_month');
+      addLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    }
+  };
+
+  const runRangeCacheHitSmoke = async () => {
+    const endDate = addDaysDateOnly(selectedDate, 6) || selectedDate;
+    const syncStatus = { isSyncing, error: syncError, lastSyncTime };
+
+    addLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    addLog(`🧪 Range Cache hit 스모크: ${selectedDate} ~ ${endDate}`);
+    addLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+
+    try {
+      const before = getRangeCacheDebugStats();
+
+      // 1차: forceRefresh로 miss를 강제 발생시켜 baseline을 고정
+      const first = await getOrLoadRange({
+        startDate: selectedDate,
+        endDate,
+        sourceTag: 'debug-range-smoke',
+        forceRefresh: true,
+        syncStatus,
+      });
+
+      if (!first.ok) {
+        addLog(`❌ FAIL [range-hit-smoke]: 1차 로드 실패 (${first.error || 'unknown'})`);
+        return;
+      }
+
+      const afterFirst = getRangeCacheDebugStats();
+
+      // 2차: 동일 range 재요청, hit 증가 기대
+      const second = await getOrLoadRange({
+        startDate: selectedDate,
+        endDate,
+        sourceTag: 'debug-range-smoke',
+        syncStatus,
+      });
+
+      if (!second.ok) {
+        addLog(`❌ FAIL [range-hit-smoke]: 2차 로드 실패 (${second.error || 'unknown'})`);
+        return;
+      }
+
+      const afterSecond = getRangeCacheDebugStats();
+
+      const firstMissDelta = afterFirst.miss - before.miss;
+      const firstHitDelta = afterFirst.hit - before.hit;
+      const secondMissDelta = afterSecond.miss - afterFirst.miss;
+      const secondHitDelta = afterSecond.hit - afterFirst.hit;
+
+      addLog(`1차(forceRefresh): missΔ=${firstMissDelta}, hitΔ=${firstHitDelta}`);
+      addLog(`2차(same-range): missΔ=${secondMissDelta}, hitΔ=${secondHitDelta}`);
+
+      const passed = firstMissDelta >= 1 && secondHitDelta >= 1 && secondMissDelta === 0;
+      if (passed) {
+        addLog('✅ PASS [range-hit-smoke]: 1차 miss, 2차 hit 확인');
+      } else {
+        addLog('❌ FAIL [range-hit-smoke]: 기대 카운터 패턴 불일치');
+      }
+
+      addLog(
+        `stats: hit=${afterSecond.hit}, miss=${afterSecond.miss}, loads=${afterSecond.loads}, inFlightDeduped=${afterSecond.inFlightDeduped}`
+      );
+    } catch (error) {
+      addLog(`❌ 예외 [range-hit-smoke]: ${error.message}`);
+    } finally {
+      addLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    }
   };
 
   const checkAndRepairIndexes = async () => {
@@ -526,6 +893,477 @@ export default function DebugScreen({ navigation }) {
   const runPendingPushOne = async () => runPendingPushWithLimit(1, '1');
   const runPendingPushThree = async () => runPendingPushWithLimit(3, '3');
 
+  const logCandidateProfile = (profile, decisionProfile = null) => {
+    if (!profile) {
+      addLog('profile: ensure=0ms | todoQuery=0ms | todoDeserialize=0ms | completionQuery=0ms | completionDeserialize=0ms');
+      return;
+    }
+
+    addLog(
+      `profile: ensure=${profile.ensureMs || 0}ms | ` +
+      `ensurePath=${profile.ensurePath || 'unknown'} | ` +
+      `todoQuery=${profile.todoQueryMs || 0}ms | ` +
+      `todoDeserialize=${profile.todoDeserializeMs || 0}ms | ` +
+      `completionQuery=${profile.completionQueryMs || 0}ms | ` +
+      `completionDeserialize=${profile.completionDeserializeMs || 0}ms`
+    );
+
+    if (profile.ensureStateBefore || profile.ensureStateAfter) {
+      const before = profile.ensureStateBefore || {};
+      const after = profile.ensureStateAfter || {};
+      addLog(
+        `  ensureState: ` +
+        `before(phase=${before.phase || 'unknown'}, hasDb=${before.hasDb ? 'Y' : 'N'}, inFlight=${before.hasInitPromise ? 'Y' : 'N'}, elapsed=${before.elapsedSinceStartMs || 0}ms) -> ` +
+        `after(phase=${after.phase || 'unknown'}, hasDb=${after.hasDb ? 'Y' : 'N'}, inFlight=${after.hasInitPromise ? 'Y' : 'N'}, total=${after.totalMs || 0}ms)`
+      );
+    }
+
+    if (decisionProfile) {
+      addLog(
+        `  decisionProfile: ` +
+        `rec=${decisionProfile.recurringCount || 0}/${decisionProfile.recurringPassedCount || 0} ` +
+        `(${decisionProfile.recurringDecisionMs || 0}ms), ` +
+        `nonRec=${decisionProfile.nonRecurringCount || 0}/${decisionProfile.nonRecurringPassedCount || 0} ` +
+        `(${decisionProfile.nonRecurringDecisionMs || 0}ms)`
+      );
+    }
+  };
+
+  const logCandidateExplain = (label, explain) => {
+    if (!explain) {
+      addLog(`explain(${label}): 없음`);
+      return;
+    }
+
+    const todoPlan = Array.isArray(explain.todoPlan) ? explain.todoPlan : [];
+    const completionPlan = Array.isArray(explain.completionPlan) ? explain.completionPlan : [];
+    const maxRows = 8;
+
+    addLog(`explain(${label}): todoPlan=${todoPlan.length}, completionPlan=${completionPlan.length}`);
+    todoPlan.slice(0, maxRows).forEach((row, idx) => {
+      addLog(`  todo[${idx + 1}] ${row}`);
+    });
+    if (todoPlan.length > maxRows) {
+      addLog(`  ... todo ${todoPlan.length - maxRows} rows more`);
+    }
+
+    completionPlan.slice(0, maxRows).forEach((row, idx) => {
+      addLog(`  completion[${idx + 1}] ${row}`);
+    });
+    if (completionPlan.length > maxRows) {
+      addLog(`  ... completion ${completionPlan.length - maxRows} rows more`);
+    }
+  };
+
+  const runCandidateExplainProbe = async () => {
+    const rangeStart = dayjs(selectedDate).startOf('month').subtract(1, 'month').format('YYYY-MM-DD');
+    const rangeEnd = dayjs(selectedDate).endOf('month').add(1, 'month').format('YYYY-MM-DD');
+    const syncStatus = { isSyncing, error: syncError, lastSyncTime };
+
+    addLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    addLog(`🔍 Candidate EXPLAIN 시작: date=${selectedDate}, range=${rangeStart}~${rangeEnd}`);
+    addLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+
+    try {
+      const [dateResult, rangeResult] = await Promise.all([
+        runCommonQueryForDate({ targetDate: selectedDate, syncStatus, debugExplain: true }),
+        runCommonQueryForRange({ startDate: rangeStart, endDate: rangeEnd, syncStatus, debugExplain: true }),
+      ]);
+
+      if (!dateResult.ok || !rangeResult.ok) {
+        const error = dateResult.ok ? rangeResult.error : dateResult.error;
+        addLog(`❌ FAIL [candidate-explain]: ${error}`);
+        return;
+      }
+
+      addLog(
+        `date elapsed: total=${dateResult.elapsed.totalMs}ms | candidate=${dateResult.elapsed.candidateMs}ms | ` +
+        `decision=${dateResult.elapsed.decisionMs}ms | aggregation=${dateResult.elapsed.aggregationMs}ms`
+      );
+      logCandidateProfile(dateResult.diagnostics?.candidateProfile, dateResult.diagnostics?.decisionProfile);
+      logCandidateExplain('date', dateResult.diagnostics?.candidateExplain);
+
+      addLog(
+        `range elapsed: total=${rangeResult.elapsed.totalMs}ms | candidate=${rangeResult.elapsed.candidateMs}ms | ` +
+        `decision=${rangeResult.elapsed.decisionMs}ms | aggregation=${rangeResult.elapsed.aggregationMs}ms`
+      );
+      logCandidateProfile(rangeResult.diagnostics?.candidateProfile, rangeResult.diagnostics?.decisionProfile);
+      logCandidateExplain(`range:${rangeStart}~${rangeEnd}`, rangeResult.diagnostics?.candidateExplain);
+
+      addLog('✅ PASS [candidate-explain]');
+    } catch (error) {
+      addLog(`❌ 예외 [candidate-explain]: ${error.message}`);
+    } finally {
+      addLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    }
+  };
+
+  const buildPerfProbeRange = (anchorDate) => ({
+    startDate: dayjs(anchorDate).startOf('month').subtract(1, 'month').format('YYYY-MM-DD'),
+    endDate: dayjs(anchorDate).endOf('month').add(1, 'month').format('YYYY-MM-DD'),
+  });
+
+  const getRecurrenceText = (rawRecurrence) => {
+    if (!rawRecurrence) return '';
+    if (typeof rawRecurrence === 'string') return rawRecurrence.toUpperCase();
+    if (Array.isArray(rawRecurrence)) return rawRecurrence.map((item) => getRecurrenceText(item)).join(' ');
+    try {
+      return JSON.stringify(rawRecurrence).toUpperCase();
+    } catch {
+      return '';
+    }
+  };
+
+  const collectPerfDatasetMeta = async () => {
+    const db = getDatabase();
+    const [todoRows, completionRows] = await Promise.all([
+      db.getAllAsync(`
+        SELECT _id, date, start_date, end_date, recurrence, start_time
+        FROM todos
+        WHERE deleted_at IS NULL
+        ORDER BY _id ASC
+      `),
+      db.getAllAsync(`
+        SELECT key, todo_id, date
+        FROM completions
+        ORDER BY key ASC
+      `),
+    ]);
+
+    const typeCounts = {
+      single: 0,
+      period: 0,
+      recDaily: 0,
+      recWeekly: 0,
+      recMonthly: 0,
+      recTimeBased: 0,
+      recOther: 0,
+    };
+
+    todoRows.forEach((row) => {
+      if (!row.recurrence) {
+        const isPeriod = !!row.start_date && !!row.end_date && row.start_date !== row.end_date;
+        if (isPeriod) typeCounts.period += 1;
+        else typeCounts.single += 1;
+        return;
+      }
+
+      const recurrenceText = getRecurrenceText(row.recurrence);
+      if (recurrenceText.includes('DAILY')) typeCounts.recDaily += 1;
+      else if (recurrenceText.includes('WEEKLY')) typeCounts.recWeekly += 1;
+      else if (recurrenceText.includes('MONTHLY')) typeCounts.recMonthly += 1;
+      else typeCounts.recOther += 1;
+
+      if (row.start_time) typeCounts.recTimeBased += 1;
+    });
+
+    return {
+      datasetId: PERF_DATASET_ID,
+      todoCount: todoRows.length,
+      completionCount: completionRows.length,
+      typeCounts,
+      todoIds: todoRows.map((row) => row._id),
+      completionKeys: completionRows.map((row) => row.key),
+    };
+  };
+
+  const validatePerfDatasetMeta = (meta) => {
+    const issues = [];
+
+    if (meta.todoCount < 20) issues.push(`todos 부족: ${meta.todoCount} < 20`);
+    if (meta.completionCount < 5) issues.push(`completions 부족: ${meta.completionCount} < 5`);
+    if (meta.typeCounts.single < 1) issues.push('single todo 없음');
+    if (meta.typeCounts.period < 1) issues.push('period todo 없음');
+    if (meta.typeCounts.recDaily < 1) issues.push('daily recurrence 없음');
+    if (meta.typeCounts.recWeekly < 1) issues.push('weekly recurrence 없음');
+    if (meta.typeCounts.recMonthly < 1) issues.push('monthly recurrence 없음');
+    if (meta.typeCounts.recTimeBased < 1) issues.push('time-based recurrence 없음');
+
+    return {
+      ok: issues.length === 0,
+      issues,
+    };
+  };
+
+  const clearCachesForProbeCold = (reason) => {
+    invalidateAllScreenCaches({ queryClient, reason });
+  };
+
+  const logPerfProbeRow = (row) => {
+    const cacheText =
+      row.cacheHit == null
+        ? 'cache=-'
+        : `cache=${row.cacheHit ? 'hit' : 'miss'}(hitΔ=${row.hitDelta}, missΔ=${row.missDelta}, loadsΔ=${row.loadsDelta})`;
+
+    addLog(
+      `[${row.scenario}] run=${row.run} total=${row.totalMs}ms ` +
+      `candidate=${row.candidateMs}ms decision=${row.decisionMs}ms aggregation=${row.aggregationMs}ms ` +
+      `stage=${row.stage.candidate}/${row.stage.decided}/${row.stage.aggregated} ` +
+      `stale=${row.isStale} ${cacheText} note=${row.note || '-'}`
+    );
+  };
+
+  const summarizePerfProbeScenario = (rows) => {
+    const totalList = rows.map((row) => row.totalMs);
+    const candidateList = rows.map((row) => row.candidateMs);
+    const decisionList = rows.map((row) => row.decisionMs);
+    const aggregationList = rows.map((row) => row.aggregationMs);
+
+    return {
+      totalP50: percentile(totalList, 50),
+      totalP95: percentile(totalList, 95),
+      candidateP50: percentile(candidateList, 50),
+      candidateP95: percentile(candidateList, 95),
+      decisionP95: percentile(decisionList, 95),
+      aggregationP95: percentile(aggregationList, 95),
+    };
+  };
+
+  const runDatePerfScenario = async ({ scenario, mode, targetDate, syncStatus }) => {
+    const rows = [];
+
+    if (mode === 'hot') {
+      clearCachesForProbeCold(`perf-probe:${scenario}:warmup-reset`);
+      const warmup = await runCommonQueryForDate({ targetDate, syncStatus });
+      if (!warmup.ok) {
+        throw new Error(`[${scenario}] warmup 실패: ${warmup.error || 'unknown'}`);
+      }
+    }
+
+    for (let run = 1; run <= PERF_REPEAT; run += 1) {
+      if (mode === 'cold') {
+        clearCachesForProbeCold(`perf-probe:${scenario}:run-${run}:cold-reset`);
+      }
+
+      const result = await runCommonQueryForDate({ targetDate, syncStatus });
+      if (!result.ok) {
+        throw new Error(`[${scenario}] run ${run} 실패: ${result.error || 'unknown'}`);
+      }
+
+      const row = {
+        scenario,
+        run,
+        totalMs: Number((result.elapsed?.totalMs || 0).toFixed(2)),
+        candidateMs: Number((result.elapsed?.candidateMs || 0).toFixed(2)),
+        decisionMs: Number((result.elapsed?.decisionMs || 0).toFixed(2)),
+        aggregationMs: Number((result.elapsed?.aggregationMs || 0).toFixed(2)),
+        stage: result.stage || { candidate: 0, decided: 0, aggregated: 0 },
+        isStale: Boolean(result.meta?.isStale),
+        cacheHit: null,
+        hitDelta: 0,
+        missDelta: 0,
+        loadsDelta: 0,
+        note: mode === 'cold' ? 'cold-reset' : 'immediate-rerun',
+      };
+
+      rows.push(row);
+      logPerfProbeRow(row);
+    }
+
+    return rows;
+  };
+
+  const runRangePerfScenario = async ({ scenario, mode, range, syncStatus }) => {
+    const rows = [];
+
+    if (mode === 'hot') {
+      clearCachesForProbeCold(`perf-probe:${scenario}:warmup-reset`);
+      const warmup = await getOrLoadRange({
+        startDate: range.startDate,
+        endDate: range.endDate,
+        sourceTag: `perf-probe:${scenario}:warmup`,
+        forceRefresh: true,
+        syncStatus,
+      });
+      if (!warmup.ok) {
+        throw new Error(`[${scenario}] warmup 실패: ${warmup.error || 'unknown'}`);
+      }
+    }
+
+    for (let run = 1; run <= PERF_REPEAT; run += 1) {
+      if (mode === 'cold') {
+        clearCachesForProbeCold(`perf-probe:${scenario}:run-${run}:cold-reset`);
+      }
+
+      const beforeStats = getRangeCacheDebugStats();
+      const startedAt = performance.now();
+      const result = await getOrLoadRange({
+        startDate: range.startDate,
+        endDate: range.endDate,
+        sourceTag: `perf-probe:${scenario}:run-${run}`,
+        syncStatus,
+      });
+      const totalMs = Number((performance.now() - startedAt).toFixed(2));
+      const afterStats = getRangeCacheDebugStats();
+
+      if (!result.ok) {
+        throw new Error(`[${scenario}] run ${run} 실패: ${result.error || 'unknown'}`);
+      }
+
+      const cacheHit = Boolean(result.cacheInfo?.hit);
+      const fromCache = mode === 'hot' && cacheHit;
+
+      const row = {
+        scenario,
+        run,
+        totalMs,
+        candidateMs: Number((fromCache ? 0 : result.elapsed?.candidateMs || 0).toFixed(2)),
+        decisionMs: Number((fromCache ? 0 : result.elapsed?.decisionMs || 0).toFixed(2)),
+        aggregationMs: Number((fromCache ? 0 : result.elapsed?.aggregationMs || 0).toFixed(2)),
+        stage: result.stage || { candidate: 0, decided: 0, aggregated: 0 },
+        isStale: Boolean(result.meta?.isStale),
+        cacheHit,
+        hitDelta: afterStats.hit - beforeStats.hit,
+        missDelta: afterStats.miss - beforeStats.miss,
+        loadsDelta: afterStats.loads - beforeStats.loads,
+        note: cacheHit ? 'cache-hit' : 'cache-miss',
+      };
+
+      rows.push(row);
+      logPerfProbeRow(row);
+    }
+
+    return rows;
+  };
+
+  const runTask15PerfProbe = async () => {
+    const range = buildPerfProbeRange(selectedDate);
+    const syncStatus = { isSyncing, error: syncError, lastSyncTime };
+
+    addLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    addLog(`🚀 Task15 Perf Probe 시작 (repeat=${PERF_REPEAT}, dataset=${PERF_DATASET_ID})`);
+    addLog(`anchorDate=${selectedDate}, range(3개월)=${range.startDate}~${range.endDate}`);
+    addLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+
+    try {
+      if (isSyncing) {
+        throw new Error('sync 진행 중입니다. sync 완료 후 다시 실행하세요.');
+      }
+
+      const freshness = await runCommonQueryForDate({ targetDate: selectedDate, syncStatus });
+      if (!freshness.ok) {
+        throw new Error(`freshness 체크 실패: ${freshness.error || 'unknown'}`);
+      }
+      if (freshness.meta?.isStale) {
+        throw new Error(`freshness 실패: isStale=true (${freshness.meta?.staleReason || 'unknown'})`);
+      }
+
+      const datasetMeta = await collectPerfDatasetMeta();
+      const datasetValidation = validatePerfDatasetMeta(datasetMeta);
+
+      addLog(`dataset: id=${datasetMeta.datasetId}, todos=${datasetMeta.todoCount}, completions=${datasetMeta.completionCount}`);
+      addLog(
+        `dataset-types: single=${datasetMeta.typeCounts.single}, period=${datasetMeta.typeCounts.period}, ` +
+        `recDaily=${datasetMeta.typeCounts.recDaily}, recWeekly=${datasetMeta.typeCounts.recWeekly}, ` +
+        `recMonthly=${datasetMeta.typeCounts.recMonthly}, recTime=${datasetMeta.typeCounts.recTimeBased}, recOther=${datasetMeta.typeCounts.recOther}`
+      );
+      addLog(`dataset-todoIds(sample): ${datasetMeta.todoIds.slice(0, 20).join(', ') || '(none)'}`);
+      addLog(`dataset-completionKeys(sample): ${datasetMeta.completionKeys.slice(0, 20).join(', ') || '(none)'}`);
+
+      if (!datasetValidation.ok) {
+        datasetValidation.issues.forEach((issue) => addLog(`❌ dataset issue: ${issue}`));
+        throw new Error('Task15 최소 데이터셋 조건 미충족');
+      }
+
+      addLog('🧪 S1 date-cold 시작');
+      const s1Rows = await runDatePerfScenario({
+        scenario: 'S1',
+        mode: 'cold',
+        targetDate: selectedDate,
+        syncStatus,
+      });
+
+      addLog('🧪 S2 date-hot 시작');
+      const s2Rows = await runDatePerfScenario({
+        scenario: 'S2',
+        mode: 'hot',
+        targetDate: selectedDate,
+        syncStatus,
+      });
+
+      addLog('🧪 S3 range-cold 시작');
+      const s3Rows = await runRangePerfScenario({
+        scenario: 'S3',
+        mode: 'cold',
+        range,
+        syncStatus,
+      });
+
+      addLog('🧪 S4 range-hot 시작');
+      const s4Rows = await runRangePerfScenario({
+        scenario: 'S4',
+        mode: 'hot',
+        range,
+        syncStatus,
+      });
+
+      const summary = {
+        S1: summarizePerfProbeScenario(s1Rows),
+        S2: summarizePerfProbeScenario(s2Rows),
+        S3: summarizePerfProbeScenario(s3Rows),
+        S4: summarizePerfProbeScenario(s4Rows),
+      };
+
+      addLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      addLog('📊 Task15 요약 통계 (p50/p95)');
+      addLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      Object.entries(summary).forEach(([scenario, stats]) => {
+        addLog(
+          `${scenario}: total(p50=${stats.totalP50}, p95=${stats.totalP95}) ` +
+          `candidate(p50=${stats.candidateP50}, p95=${stats.candidateP95}) ` +
+          `decision(p95=${stats.decisionP95}) aggregation(p95=${stats.aggregationP95})`
+        );
+      });
+
+      const s4HotPass = s4Rows.every(
+        (row) => row.cacheHit === true && row.totalMs <= 20 && row.missDelta === 0 && row.loadsDelta === 0
+      );
+      const staleFreePass = [...s1Rows, ...s2Rows, ...s3Rows, ...s4Rows].every((row) => !row.isStale);
+      const repeatPass =
+        s1Rows.length === PERF_REPEAT &&
+        s2Rows.length === PERF_REPEAT &&
+        s3Rows.length === PERF_REPEAT &&
+        s4Rows.length === PERF_REPEAT;
+      const dateColdPass = summary.S1.totalP95 <= 120;
+
+      addLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      addLog('✅ DoD 체크');
+      addLog(`- date cold total p95 <= 120ms: ${dateColdPass ? 'PASS' : 'FAIL'} (${summary.S1.totalP95}ms)`);
+      addLog(`- range cold candidate baseline(고정값): ${summary.S3.candidateP95}ms`);
+      addLog(`- range hot <=20ms + cache-hit/no-miss: ${s4HotPass ? 'PASS' : 'FAIL'}`);
+      addLog(`- stale=false + repeat=5 고정: ${staleFreePass && repeatPass ? 'PASS' : 'FAIL'}`);
+      addLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+
+      const overallPass = dateColdPass && s4HotPass && staleFreePass && repeatPass;
+      addLog(overallPass ? '✅ PASS [task15-perf-probe]' : '❌ FAIL [task15-perf-probe]');
+
+      const lastStage = s4Rows[s4Rows.length - 1]?.stage || { candidate: 0, decided: 0, aggregated: 0 };
+      recordValidation('perfProbe', {
+        ok: overallPass,
+        stage: lastStage,
+        elapsed: {
+          totalMs: summary.S4.totalP95,
+          candidateMs: summary.S3.candidateP95,
+          decisionMs: summary.S4.decisionP95,
+          aggregationMs: summary.S4.aggregationP95,
+        },
+        meta: { isStale: !staleFreePass, staleReason: staleFreePass ? null : 'sync_failed', lastSyncTime: lastSyncTime || null },
+        error: overallPass ? null : 'task15 probe did not satisfy DoD',
+      });
+    } catch (error) {
+      addLog(`❌ 예외 [task15-perf-probe]: ${error.message}`);
+      recordValidation('perfProbe', {
+        ok: false,
+        stage: { candidate: 0, decided: 0, aggregated: 0 },
+        elapsed: { totalMs: 0, candidateMs: 0, decisionMs: 0, aggregationMs: 0 },
+        meta: { isStale: true, staleReason: 'sync_failed', lastSyncTime: lastSyncTime || null },
+        error: error.message,
+      });
+    } finally {
+      addLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    }
+  };
+
   const runCommonLayerDate = async () => {
     addLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
     addLog(`🧩 공통 레이어 실행(date): ${selectedDate}`);
@@ -540,6 +1378,7 @@ export default function DebugScreen({ navigation }) {
       if (!result.ok) {
         addLog(`❌ FAIL [common-date]: ${result.error}`);
         addLog(`stage: candidate=${result.stage.candidate}, decided=${result.stage.decided}, aggregated=${result.stage.aggregated}`);
+        logCandidateProfile(result.diagnostics?.candidateProfile, result.diagnostics?.decisionProfile);
         recordValidation('date', {
           ok: false,
           stage: result.stage,
@@ -555,6 +1394,7 @@ export default function DebugScreen({ navigation }) {
       addLog(`elapsed: total=${result.elapsed.totalMs}ms | candidate=${result.elapsed.candidateMs}ms | decision=${result.elapsed.decisionMs}ms | aggregation=${result.elapsed.aggregationMs}ms`);
       addLog(`stale: isStale=${result.meta.isStale}, reason=${result.meta.staleReason || 'none'}, lastSync=${result.meta.lastSyncTime || 'null'}`);
       addLog(`diag: completionCandidates=${result.diagnostics.completionCandidates}, invalidRecurrence=${result.diagnostics.invalidRecurrenceCount}`);
+      logCandidateProfile(result.diagnostics?.candidateProfile, result.diagnostics?.decisionProfile);
       recordValidation('date', {
         ok: true,
         stage: result.stage,
@@ -598,6 +1438,7 @@ export default function DebugScreen({ navigation }) {
       if (!result.ok) {
         addLog(`❌ FAIL [common-range]: ${result.error}`);
         addLog(`stage: candidate=${result.stage.candidate}, decided=${result.stage.decided}, aggregated=${result.stage.aggregated}`);
+        logCandidateProfile(result.diagnostics?.candidateProfile, result.diagnostics?.decisionProfile);
         recordValidation('range', {
           ok: false,
           stage: result.stage,
@@ -615,6 +1456,7 @@ export default function DebugScreen({ navigation }) {
       addLog(`elapsed: total=${result.elapsed.totalMs}ms | candidate=${result.elapsed.candidateMs}ms | decision=${result.elapsed.decisionMs}ms | aggregation=${result.elapsed.aggregationMs}ms`);
       addLog(`stale: isStale=${result.meta.isStale}, reason=${result.meta.staleReason || 'none'}, lastSync=${result.meta.lastSyncTime || 'null'}`);
       addLog(`diag: completionCandidates=${result.diagnostics.completionCandidates}, invalidRecurrence=${result.diagnostics.invalidRecurrenceCount}`);
+      logCandidateProfile(result.diagnostics?.candidateProfile, result.diagnostics?.decisionProfile);
       recordValidation('range', {
         ok: true,
         stage: result.stage,
@@ -938,6 +1780,15 @@ export default function DebugScreen({ navigation }) {
     addLog(`💡 앱을 재시작하여 초기 로딩 테스트`);
   };
 
+  const clearStripL1CacheOnly = () => {
+    useStripCalendarStore.getState().clearRangeCache();
+    addLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    addLog('🧹 Strip L1 캐시만 클리어');
+    addLog('✅ stripCalendarStore loadedRanges/summariesByDate 초기화 완료');
+    addLog('ℹ️ shared range cache(hit/miss/loadedRanges)는 유지됩니다');
+    addLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+  };
+
   const clearPending = async () => {
     const confirmClear = () => {
       return new Promise((resolve) => {
@@ -1238,19 +2089,26 @@ export default function DebugScreen({ navigation }) {
 
       <View style={styles.dateSelector}>
         <Text style={styles.dateLabel}>테스트 날짜:</Text>
+        <TouchableOpacity style={styles.dateStepButton} onPress={() => shiftDebugDate(-7)}>
+          <Text style={styles.dateStepButtonText}>-7</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.dateStepButton} onPress={() => shiftDebugDate(-1)}>
+          <Text style={styles.dateStepButtonText}>-1</Text>
+        </TouchableOpacity>
         <TouchableOpacity
           style={styles.dateButton}
-          onPress={() => {
-            const dates = Array.from(
-              new Set(['2026-02-01', '2026-02-05', '2026-02-06', '2026-02-07', getLocalDateString()])
-            );
-            const currentIndex = dates.indexOf(selectedDate);
-            const nextIndex = (currentIndex + 1) % dates.length;
-            setSelectedDate(dates[nextIndex]);
-            addLog(`📅 날짜 변경: ${dates[nextIndex]}`);
-          }}
+          onPress={promptDebugDate}
         >
           <Text style={styles.dateButtonText}>{selectedDate}</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.dateStepButton} onPress={() => shiftDebugDate(1)}>
+          <Text style={styles.dateStepButtonText}>+1</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.dateStepButton} onPress={() => shiftDebugDate(7)}>
+          <Text style={styles.dateStepButtonText}>+7</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.dateTodayButton} onPress={setDebugDateToday}>
+          <Text style={styles.dateTodayButtonText}>오늘</Text>
         </TouchableOpacity>
         <Text style={styles.todoCount}>({todos.length}개)</Text>
       </View>
@@ -1330,6 +2188,14 @@ export default function DebugScreen({ navigation }) {
           <Text style={styles.buttonText}>🗑️ 캐시 클리어</Text>
         </TouchableOpacity>
 
+        <TouchableOpacity style={[styles.button, styles.warningButton]} onPress={clearSharedRangeCacheOnly}>
+          <Text style={styles.buttonText}>🧠 Shared Range 캐시만 클리어</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity style={[styles.button, styles.warningButton]} onPress={clearStripL1CacheOnly}>
+          <Text style={styles.buttonText}>🧹 Strip L1 캐시만 클리어</Text>
+        </TouchableOpacity>
+
         <TouchableOpacity style={[styles.button, styles.warningButton]} onPress={clearPending}>
           <Text style={styles.buttonText}>🗑️ Pending 삭제</Text>
         </TouchableOpacity>
@@ -1366,6 +2232,20 @@ export default function DebugScreen({ navigation }) {
 
         <TouchableOpacity
           style={[styles.button, styles.actionButton]}
+          onPress={runCandidateExplainProbe}
+        >
+          <Text style={styles.buttonText}>🔍 Candidate EXPLAIN (date + 3개월)</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.button, styles.actionButton]}
+          onPress={runTask15PerfProbe}
+        >
+          <Text style={styles.buttonText}>🚀 Task15 Perf Probe (S1~S4)</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.button, styles.actionButton]}
           onPress={runSyncCoupledSmoke}
         >
           <Text style={styles.buttonText}>🧪 Sync 결합 스모크</Text>
@@ -1383,6 +2263,62 @@ export default function DebugScreen({ navigation }) {
           onPress={printValidationSummary}
         >
           <Text style={styles.buttonText}>📄 PASS/FAIL 요약 출력</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.button, styles.primaryButton]}
+          onPress={printRangeCacheStats}
+        >
+          <Text style={styles.buttonText}>🧠 Range Cache 상태 출력</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.button, styles.primaryButton]}
+          onPress={printStripL1CacheStats}
+        >
+          <Text style={styles.buttonText}>🧩 Strip L1 상태 출력</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.button, styles.primaryButton]}
+          onPress={printTodoCalendarL1CacheStats}
+        >
+          <Text style={styles.buttonText}>📅 TodoCalendar L1 상태 출력</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.button, styles.primaryButton]}
+          onPress={printStripMonthlyPolicy}
+        >
+          <Text style={styles.buttonText}>ℹ️ Strip 월간 정책 상태</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.button, styles.warningButton]}
+          onPress={setStripMonthlyPolicyLegacy}
+        >
+          <Text style={styles.buttonText}>⚙️ Strip 월간 정책: legacy 9주</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.button, styles.actionButton]}
+          onPress={setStripMonthlyPolicyThreeMonth}
+        >
+          <Text style={styles.buttonText}>⚙️ Strip 월간 정책: 3개월</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.button, styles.actionButton]}
+          onPress={runRangeCacheHitSmoke}
+        >
+          <Text style={styles.buttonText}>🧪 Range Cache hit 스모크</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.button, styles.actionButton]}
+          onPress={runOptionABenchmark}
+        >
+          <Text style={styles.buttonText}>🧪 Option A 정량 벤치마크</Text>
         </TouchableOpacity>
 
         <TouchableOpacity
@@ -1408,7 +2344,17 @@ export default function DebugScreen({ navigation }) {
       </ScrollView>
 
       <View style={styles.logContainer}>
-        <Text style={styles.logTitle}>📋 로그</Text>
+        <View style={styles.logHeader}>
+          <Text style={styles.logTitle}>📋 로그</Text>
+          <View style={styles.logActions}>
+            <TouchableOpacity style={styles.logSmallButton} onPress={copyLogs}>
+              <Text style={styles.logSmallButtonText}>복사</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={[styles.logSmallButton, styles.logSmallButtonSpacing]} onPress={clearLogs}>
+              <Text style={styles.logSmallButtonText}>초기화</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
         <ScrollView style={styles.logScroll}>
           {logs.map((log, index) => (
             <Text key={index} style={styles.logText}>{log}</Text>
@@ -1433,6 +2379,7 @@ const styles = StyleSheet.create({
   },
   dateSelector: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 16,
@@ -1450,16 +2397,41 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 8,
     borderRadius: 6,
-    marginRight: 8,
+    marginHorizontal: 4,
   },
   dateButtonText: {
     color: '#fff',
     fontSize: 14,
     fontWeight: '600',
   },
+  dateStepButton: {
+    backgroundColor: '#e5e7eb',
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    borderRadius: 6,
+    marginHorizontal: 2,
+  },
+  dateStepButtonText: {
+    color: '#374151',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  dateTodayButton: {
+    backgroundColor: '#10b981',
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    borderRadius: 6,
+    marginLeft: 4,
+  },
+  dateTodayButtonText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '600',
+  },
   todoCount: {
     fontSize: 14,
     color: '#6b7280',
+    marginLeft: 6,
   },
   sectionTitle: {
     fontSize: 16,
@@ -1512,11 +2484,35 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     padding: 12,
   },
+  logHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
   logTitle: {
     color: '#f3f4f6',
     fontSize: 16,
     fontWeight: 'bold',
-    marginBottom: 8,
+  },
+  logActions: {
+    flexDirection: 'row',
+  },
+  logSmallButton: {
+    backgroundColor: '#374151',
+    borderWidth: 1,
+    borderColor: '#4b5563',
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  logSmallButtonSpacing: {
+    marginLeft: 6,
+  },
+  logSmallButtonText: {
+    color: '#e5e7eb',
+    fontSize: 11,
+    fontWeight: '600',
   },
   logScroll: {
     flex: 1,

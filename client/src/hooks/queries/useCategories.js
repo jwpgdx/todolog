@@ -8,6 +8,7 @@ import {
   deleteCategory as deleteCategoryFromDB,
 } from '../../services/db/categoryService';
 import { ensureDatabase } from '../../services/db/database';
+import { invalidateAllScreenCaches } from '../../services/query-aggregation/cache';
 
 /**
  * 카테고리 목록 조회 (SQLite 기반)
@@ -60,7 +61,10 @@ export const useCreateCategory = () => {
     onSuccess: async (newCategory) => {
       await ensureDatabase();
       await upsertCategory(newCategory);
-      queryClient.invalidateQueries({ queryKey: ['categories'] });
+      invalidateAllScreenCaches({
+        queryClient,
+        reason: 'category:create',
+      });
     },
   });
 };
@@ -76,7 +80,10 @@ export const useUpdateCategory = () => {
     onSuccess: async (updatedCategory) => {
       await ensureDatabase();
       await upsertCategory(updatedCategory);
-      queryClient.invalidateQueries({ queryKey: ['categories'] });
+      invalidateAllScreenCaches({
+        queryClient,
+        reason: 'category:update',
+      });
     },
   });
 };
@@ -92,8 +99,10 @@ export const useDeleteCategory = () => {
     onSuccess: async (_, deletedId) => {
       await ensureDatabase();
       await deleteCategoryFromDB(deletedId);
-      queryClient.invalidateQueries({ queryKey: ['categories'] });
-      queryClient.invalidateQueries({ queryKey: ['todos'] });
+      invalidateAllScreenCaches({
+        queryClient,
+        reason: 'category:delete',
+      });
     },
   });
 };

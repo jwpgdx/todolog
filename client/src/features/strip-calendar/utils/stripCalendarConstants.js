@@ -26,9 +26,10 @@ export const WEEKDAY_COUNT = 7;
  * - 요약 한 줄 로그 외 상세 객체 로그를 추가 출력.
  * - 로그량이 많이 늘어나므로 필요 시에만 true 권장.
  */
-export const DEBUG_STRIP_CALENDAR = true;
+export const DEBUG_STRIP_CALENDAR = false;
 export const DEBUG_STRIP_CALENDAR_WEEK_BANDING = false;
 export const STRIP_CALENDAR_DETAIL_LOG_ENABLED = false;
+export const STRIP_CALENDAR_PERF_LOG_ENABLED = true;
 
 /**
  * Weekly strip 튜닝값

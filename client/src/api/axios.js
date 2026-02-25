@@ -10,13 +10,13 @@ import { Platform } from 'react-native';
  * 네트워크 바뀔 때 .env의 IP 주소를 수동으로 업데이트해야 함
  */
 const getBaseUrl = () => {
-  // 웹: localhost 사용
-  if (Platform.OS === 'web') {
-    return 'http://localhost:5001/api';
+  // 플랫폼 공통: 환경 변수가 있으면 최우선 사용
+  if (process.env.EXPO_PUBLIC_API_URL) {
+    return process.env.EXPO_PUBLIC_API_URL;
   }
 
-  // 네이티브: 환경 변수 사용
-  return process.env.EXPO_PUBLIC_API_URL || 'http://localhost:5001/api';
+  // 웹/네이티브 공통 fallback
+  return 'http://localhost:5001/api';
 };
 
 const API_URL = getBaseUrl();

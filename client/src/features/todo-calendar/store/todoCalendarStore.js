@@ -51,6 +51,51 @@ export const useTodoCalendarStore = create((set, get) => ({
   },
 
   /**
+   * Retention helper: keep only month caches within [startMonthId, endMonthId].
+   * This is for memory control only; callers must be able to re-fetch on cache miss.
+   *
+   * @param {string} startMonthId - 'YYYY-MM'
+   * @param {string} endMonthId - 'YYYY-MM'
+   */
+  pruneToMonthWindow: (startMonthId, endMonthId) => {
+    if (!startMonthId || !endMonthId || startMonthId > endMonthId) return;
+
+    set((state) => {
+      const beforeTodos = Object.keys(state.todosByMonth || {}).length;
+      const beforeComps = Object.keys(state.completionsByMonth || {}).length;
+
+      const nextTodosByMonth = {};
+      for (const [monthId, todos] of Object.entries(state.todosByMonth || {})) {
+        if (monthId < startMonthId || monthId > endMonthId) continue;
+        nextTodosByMonth[monthId] = todos;
+      }
+
+      const nextCompletionsByMonth = {};
+      for (const [monthId, completions] of Object.entries(state.completionsByMonth || {})) {
+        if (monthId < startMonthId || monthId > endMonthId) continue;
+        nextCompletionsByMonth[monthId] = completions;
+      }
+
+      const afterTodos = Object.keys(nextTodosByMonth).length;
+      const afterComps = Object.keys(nextCompletionsByMonth).length;
+
+      if (beforeTodos === afterTodos && beforeComps === afterComps) {
+        return state;
+      }
+
+      console.log(
+        `[TodoCalendarStore] pruneToMonthWindow keep=${startMonthId}~${endMonthId} ` +
+          `todos=${beforeTodos}->${afterTodos} completions=${beforeComps}->${afterComps}`
+      );
+
+      return {
+        todosByMonth: nextTodosByMonth,
+        completionsByMonth: nextCompletionsByMonth,
+      };
+    });
+  },
+
+  /**
    * Invalidate (remove) cached data for a single month
    * Validates: Requirements 2.4
    * 

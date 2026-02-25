@@ -4,6 +4,7 @@ import { updateCategory as apiUpdateCategory } from '../../api/categories';
 import { upsertCategory, getCategoryById } from '../../services/db/categoryService';
 import { addPendingChange } from '../../services/db/pendingService';
 import { ensureDatabase } from '../../services/db/database';
+import { invalidateAllScreenCaches } from '../../services/query-aggregation/cache';
 
 export const useUpdateCategory = () => {
     const queryClient = useQueryClient();
@@ -58,7 +59,10 @@ export const useUpdateCategory = () => {
             }
         },
         onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: ['categories'] });
+            invalidateAllScreenCaches({
+                queryClient,
+                reason: 'category:update',
+            });
         },
     });
 };

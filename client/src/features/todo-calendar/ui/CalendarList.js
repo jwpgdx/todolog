@@ -46,6 +46,7 @@ export default function CalendarList() {
   } = useInfiniteCalendar();
 
   const flashListRef = useRef(null);
+  const hasHandledInitialViewabilityRef = useRef(false);
   const [currentMonth, setCurrentMonth] = useState(
     months[initialScrollIndex] || months[0]
   );
@@ -107,6 +108,9 @@ export default function CalendarList() {
       return;
     }
 
+    const isInitialViewability = !hasHandledInitialViewabilityRef.current;
+    hasHandledInitialViewabilityRef.current = true;
+
     const firstIdx = viewableItems[0].index;
 
     // Update current visible month for header
@@ -114,9 +118,14 @@ export default function CalendarList() {
       setCurrentMonth(viewableItems[0].item);
     }
 
-    // Trigger prepend when user reaches top 3 months
-    if (firstIdx !== undefined && firstIdx <= 3) {
-      handleStartReached();
+    // Trigger prepend only when user actually scrolls close to the top.
+    // (Current month is index=2 initially, so <=3 would cause an immediate prepend and jank.)
+    if (firstIdx !== undefined && firstIdx <= 1) {
+      if (isInitialViewability) {
+        console.log('[CalendarList] Skip initial handleStartReached (avoid first-enter jank)');
+      } else {
+        handleStartReached();
+      }
     }
 
     // Phase 2: Trigger todo data fetch for visible months

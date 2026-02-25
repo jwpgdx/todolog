@@ -5,6 +5,7 @@ import { upsertCategory } from '../../services/db/categoryService';
 import { addPendingChange } from '../../services/db/pendingService';
 import { ensureDatabase } from '../../services/db/database';
 import { generateId } from '../../utils/idGenerator';
+import { invalidateAllScreenCaches } from '../../services/query-aggregation/cache';
 
 export const useCreateCategory = () => {
   const queryClient = useQueryClient();
@@ -60,7 +61,10 @@ export const useCreateCategory = () => {
       }
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['categories'] });
+      invalidateAllScreenCaches({
+        queryClient,
+        reason: 'category:create',
+      });
     },
   });
 };

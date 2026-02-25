@@ -174,6 +174,12 @@ export function decideForDate(candidates, targetDate) {
         decidedCount: 0,
         excludedCount: todoCandidates.length,
         invalidRecurrenceCount: 0,
+        recurringCount: 0,
+        nonRecurringCount: 0,
+        recurringPassedCount: 0,
+        nonRecurringPassedCount: 0,
+        recurringDecisionMs: 0,
+        nonRecurringDecisionMs: 0,
         elapsedMs: 0,
       },
       error: `invalid targetDate: ${targetDate}`,
@@ -185,20 +191,41 @@ export function decideForDate(candidates, targetDate) {
   const reasonsByTodoId = {};
   let excludedCount = 0;
   let invalidRecurrenceCount = 0;
+  let recurringCount = 0;
+  let nonRecurringCount = 0;
+  let recurringPassedCount = 0;
+  let nonRecurringPassedCount = 0;
+  let recurringDecisionMs = 0;
+  let nonRecurringDecisionMs = 0;
 
   for (const todo of todoCandidates) {
     if (!todo?._id) continue;
 
     const isRecurring = Boolean(todo.recurrence);
+    const branchStart = performance.now();
     const decision = isRecurring
       ? decideRecurringForDate(todo, normalizedTargetDate)
       : decideNonRecurringForDate(todo, normalizedTargetDate);
+    const branchElapsed = performance.now() - branchStart;
+
+    if (isRecurring) {
+      recurringCount += 1;
+      recurringDecisionMs += branchElapsed;
+    } else {
+      nonRecurringCount += 1;
+      nonRecurringDecisionMs += branchElapsed;
+    }
 
     reasonsByTodoId[todo._id] = decision.reason;
     if (decision.invalidRecurrence) invalidRecurrenceCount += 1;
 
-    if (decision.pass) passedTodoIds.push(todo._id);
-    else excludedCount += 1;
+    if (decision.pass) {
+      passedTodoIds.push(todo._id);
+      if (isRecurring) recurringPassedCount += 1;
+      else nonRecurringPassedCount += 1;
+    } else {
+      excludedCount += 1;
+    }
   }
 
   const endAt = performance.now();
@@ -213,6 +240,12 @@ export function decideForDate(candidates, targetDate) {
       decidedCount: passedTodoIds.length,
       excludedCount,
       invalidRecurrenceCount,
+      recurringCount,
+      nonRecurringCount,
+      recurringPassedCount,
+      nonRecurringPassedCount,
+      recurringDecisionMs: Number(recurringDecisionMs.toFixed(2)),
+      nonRecurringDecisionMs: Number(nonRecurringDecisionMs.toFixed(2)),
       elapsedMs: Number((endAt - startAt).toFixed(2)),
     },
     error: null,
@@ -237,6 +270,12 @@ export function decideForRange(candidates, rangeStart, rangeEnd) {
         decidedCount: 0,
         excludedCount: todoCandidates.length,
         invalidRecurrenceCount: 0,
+        recurringCount: 0,
+        nonRecurringCount: 0,
+        recurringPassedCount: 0,
+        nonRecurringPassedCount: 0,
+        recurringDecisionMs: 0,
+        nonRecurringDecisionMs: 0,
         elapsedMs: 0,
       },
       error: `invalid range: ${rangeStart} ~ ${rangeEnd}`,
@@ -249,14 +288,30 @@ export function decideForRange(candidates, rangeStart, rangeEnd) {
   const occurrencesByTodoId = {};
   let excludedCount = 0;
   let invalidRecurrenceCount = 0;
+  let recurringCount = 0;
+  let nonRecurringCount = 0;
+  let recurringPassedCount = 0;
+  let nonRecurringPassedCount = 0;
+  let recurringDecisionMs = 0;
+  let nonRecurringDecisionMs = 0;
 
   for (const todo of todoCandidates) {
     if (!todo?._id) continue;
 
     const isRecurring = Boolean(todo.recurrence);
+    const branchStart = performance.now();
     const decision = isRecurring
       ? decideRecurringForRange(todo, normalizedRangeStart, normalizedRangeEnd)
       : decideNonRecurringForRange(todo, normalizedRangeStart, normalizedRangeEnd);
+    const branchElapsed = performance.now() - branchStart;
+
+    if (isRecurring) {
+      recurringCount += 1;
+      recurringDecisionMs += branchElapsed;
+    } else {
+      nonRecurringCount += 1;
+      nonRecurringDecisionMs += branchElapsed;
+    }
 
     reasonsByTodoId[todo._id] = decision.reason;
     if (decision.invalidRecurrence) invalidRecurrenceCount += 1;
@@ -264,6 +319,8 @@ export function decideForRange(candidates, rangeStart, rangeEnd) {
     if (decision.pass) {
       passedTodoIds.push(todo._id);
       occurrencesByTodoId[todo._id] = decision.occurrences;
+      if (isRecurring) recurringPassedCount += 1;
+      else nonRecurringPassedCount += 1;
     } else {
       excludedCount += 1;
     }
@@ -282,9 +339,14 @@ export function decideForRange(candidates, rangeStart, rangeEnd) {
       decidedCount: passedTodoIds.length,
       excludedCount,
       invalidRecurrenceCount,
+      recurringCount,
+      nonRecurringCount,
+      recurringPassedCount,
+      nonRecurringPassedCount,
+      recurringDecisionMs: Number(recurringDecisionMs.toFixed(2)),
+      nonRecurringDecisionMs: Number(nonRecurringDecisionMs.toFixed(2)),
       elapsedMs: Number((endAt - startAt).toFixed(2)),
     },
     error: null,
   };
 }
-

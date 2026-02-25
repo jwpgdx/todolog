@@ -24,10 +24,14 @@ function buildFailureResult(mode, message, meta, stage = {}) {
   };
 }
 
-export async function runCommonQueryForDate({ targetDate, syncStatus } = {}) {
+export async function runCommonQueryForDate({ targetDate, syncStatus, debugExplain = false, traceId = null } = {}) {
   const totalStart = performance.now();
 
-  const candidateResult = await queryCandidatesForDate(targetDate, { syncStatus });
+  const candidateResult = await queryCandidatesForDate(targetDate, {
+    syncStatus,
+    debugExplain,
+    traceId,
+  });
   if (!candidateResult.ok) {
     return buildFailureResult(
       'date',
@@ -86,15 +90,44 @@ export async function runCommonQueryForDate({ targetDate, syncStatus } = {}) {
     diagnostics: {
       completionCandidates: candidateResult.metrics.completionCandidates,
       invalidRecurrenceCount: decisionResult.metrics.invalidRecurrenceCount,
+      candidateProfile: {
+        ensureMs: candidateResult.metrics.ensureMs || 0,
+        ensurePath: candidateResult.metrics.ensurePath || 'unknown',
+        todoQueryMs: candidateResult.metrics.todoQueryMs || 0,
+        todoDeserializeMs: candidateResult.metrics.todoDeserializeMs || 0,
+        completionQueryMs: candidateResult.metrics.completionQueryMs || 0,
+        completionDeserializeMs: candidateResult.metrics.completionDeserializeMs || 0,
+        ensureStateBefore: candidateResult.metrics.ensureStateBefore || null,
+        ensureStateAfter: candidateResult.metrics.ensureStateAfter || null,
+      },
+      decisionProfile: {
+        recurringCount: decisionResult.metrics.recurringCount || 0,
+        nonRecurringCount: decisionResult.metrics.nonRecurringCount || 0,
+        recurringPassedCount: decisionResult.metrics.recurringPassedCount || 0,
+        nonRecurringPassedCount: decisionResult.metrics.nonRecurringPassedCount || 0,
+        recurringDecisionMs: decisionResult.metrics.recurringDecisionMs || 0,
+        nonRecurringDecisionMs: decisionResult.metrics.nonRecurringDecisionMs || 0,
+      },
+      candidateExplain: candidateResult.metrics.explain || null,
     },
     error: null,
   };
 }
 
-export async function runCommonQueryForRange({ startDate, endDate, syncStatus } = {}) {
+export async function runCommonQueryForRange({
+  startDate,
+  endDate,
+  syncStatus,
+  debugExplain = false,
+  traceId = null,
+} = {}) {
   const totalStart = performance.now();
 
-  const candidateResult = await queryCandidatesForRange(startDate, endDate, { syncStatus });
+  const candidateResult = await queryCandidatesForRange(startDate, endDate, {
+    syncStatus,
+    debugExplain,
+    traceId,
+  });
   if (!candidateResult.ok) {
     return buildFailureResult(
       'range',
@@ -157,8 +190,26 @@ export async function runCommonQueryForRange({ startDate, endDate, syncStatus } 
     diagnostics: {
       completionCandidates: candidateResult.metrics.completionCandidates,
       invalidRecurrenceCount: decisionResult.metrics.invalidRecurrenceCount,
+      candidateProfile: {
+        ensureMs: candidateResult.metrics.ensureMs || 0,
+        ensurePath: candidateResult.metrics.ensurePath || 'unknown',
+        todoQueryMs: candidateResult.metrics.todoQueryMs || 0,
+        todoDeserializeMs: candidateResult.metrics.todoDeserializeMs || 0,
+        completionQueryMs: candidateResult.metrics.completionQueryMs || 0,
+        completionDeserializeMs: candidateResult.metrics.completionDeserializeMs || 0,
+        ensureStateBefore: candidateResult.metrics.ensureStateBefore || null,
+        ensureStateAfter: candidateResult.metrics.ensureStateAfter || null,
+      },
+      decisionProfile: {
+        recurringCount: decisionResult.metrics.recurringCount || 0,
+        nonRecurringCount: decisionResult.metrics.nonRecurringCount || 0,
+        recurringPassedCount: decisionResult.metrics.recurringPassedCount || 0,
+        nonRecurringPassedCount: decisionResult.metrics.nonRecurringPassedCount || 0,
+        recurringDecisionMs: decisionResult.metrics.recurringDecisionMs || 0,
+        nonRecurringDecisionMs: decisionResult.metrics.nonRecurringDecisionMs || 0,
+      },
+      candidateExplain: candidateResult.metrics.explain || null,
     },
     error: null,
   };
 }
-

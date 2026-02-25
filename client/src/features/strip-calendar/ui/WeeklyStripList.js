@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Dimensions, PanResponder, Platform, StyleSheet, View } from 'react-native';
+import { Dimensions, PanResponder, StyleSheet, View } from 'react-native';
 import { FlashList } from '@shopify/flash-list';
 import WeekRow from './WeekRow';
 import { addWeeks, getWeekDates } from '../utils/stripCalendarDateUtils';
@@ -24,7 +24,6 @@ export default function WeeklyStripList({
   todayDate,
   currentDate,
   language,
-  getSummaryByDate,
   onDayPress,
   onWeekSettled,
   onSwipePrevWeek,
@@ -34,6 +33,7 @@ export default function WeeklyStripList({
   const listRef = useRef(null);
   const lastSyncedTargetRef = useRef(null);
   const lastSyncedWidthRef = useRef(null);
+  const lastSyncedWindowKeyRef = useRef(null);
   const lastEmittedSettledRef = useRef(null);
   const hasInitializedSyncRef = useRef(false);
   const [viewportWidth, setViewportWidth] = useState(0);
@@ -86,7 +86,6 @@ export default function WeeklyStripList({
           <WeekRow
             weekStart={item}
             weekDays={weekDays}
-            getSummaryByDate={getSummaryByDate}
             onDayPress={onDayPress}
           />
         </View>
@@ -94,7 +93,6 @@ export default function WeeklyStripList({
     },
     [
       currentDate,
-      getSummaryByDate,
       language,
       onDayPress,
       targetNextWeekStart,
@@ -180,6 +178,11 @@ export default function WeeklyStripList({
       setIsInitialAligned(true);
     }
   }, [targetIndex]);
+
+  const weekWindowKey = useMemo(() => {
+    if (!weekStarts.length) return 'empty';
+    return `${weekStarts[0]}|${weekStarts[weekStarts.length - 1]}`;
+  }, [weekStarts]);
 
   useEffect(() => {
     logStripCalendar('WeeklyStripList', 'mount', {
@@ -270,8 +273,13 @@ export default function WeeklyStripList({
     const isInitialSync = !hasInitializedSyncRef.current;
     hasInitializedSyncRef.current = true;
 
+    const windowChanged =
+      lastSyncedWindowKeyRef.current != null &&
+      lastSyncedWindowKeyRef.current !== weekWindowKey;
+
     if (
       !isInitialSync &&
+      !windowChanged &&
       lastSyncedTargetRef.current === targetWeekStart &&
       lastSyncedWidthRef.current === viewportWidth
     ) {
@@ -279,20 +287,34 @@ export default function WeeklyStripList({
         targetWeekStart,
         index,
         width: viewportWidth,
+        weekWindowKey,
       });
       return;
     }
 
-    const animated = isInitialSync ? false : scrollAnimated;
+    if (windowChanged) {
+      setIsInitialAligned(false);
+      logStripCalendar('WeeklyStripList', 'sync:windowChanged', {
+        targetWeekStart,
+        index,
+        weekWindowKey,
+        lastSyncedWindowKey: lastSyncedWindowKeyRef.current,
+      });
+    }
+
+    const animated = isInitialSync || windowChanged ? false : scrollAnimated;
 
     logStripCalendar('WeeklyStripList', 'sync:scrollToIndex', {
       targetWeekStart,
       index,
       scrollAnimated: animated,
       isInitialSync,
+      windowChanged,
       lastSyncedTarget: lastSyncedTargetRef.current,
       lastSyncedWidth: lastSyncedWidthRef.current,
       width: viewportWidth,
+      weekWindowKey,
+      lastSyncedWindowKey: lastSyncedWindowKeyRef.current,
     });
 
     requestAnimationFrame(() => {
@@ -300,20 +322,24 @@ export default function WeeklyStripList({
     });
     lastSyncedTargetRef.current = targetWeekStart;
     lastSyncedWidthRef.current = viewportWidth;
+    lastSyncedWindowKeyRef.current = weekWindowKey;
 
-    if (isInitialSync) {
+    if (isInitialSync || windowChanged) {
       const timeoutId = setTimeout(() => {
         setIsInitialAligned(true);
         logStripCalendar('WeeklyStripList', 'sync:initialAlignmentDone', {
           targetWeekStart,
           index,
           width: viewportWidth,
+          reason: isInitialSync ? 'initialSync' : 'windowResync',
         });
       }, 0);
       return () => clearTimeout(timeoutId);
     }
 
-    if (!isInitialSync && Platform.OS === 'web') {
+    // Fallback settle in case momentum events don't fire after programmatic scroll.
+    // Safe cross-platform because settle is deduped by weekStart.
+    if (!isInitialSync) {
       const timeoutId = setTimeout(() => {
         logStripCalendar('WeeklyStripList', 'settle:fallbackWebProgrammatic', {
           targetWeekStart,
@@ -326,7 +352,7 @@ export default function WeeklyStripList({
     }
 
     return undefined;
-  }, [scrollAnimated, scrollToWeekIndex, settleByOffset, targetIndex, targetWeekStart, viewportWidth]);
+  }, [scrollAnimated, scrollToWeekIndex, settleByOffset, targetIndex, targetWeekStart, viewportWidth, weekWindowKey]);
 
   return (
     <View
@@ -360,11 +386,15 @@ export default function WeeklyStripList({
           estimatedItemSize={viewportWidth}
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={styles.contentContainer}
-          onScroll={DEBUG_STRIP_CALENDAR ? onScroll : undefined}
-          scrollEventThrottle={DEBUG_STRIP_CALENDAR ? 16 : undefined}
           onMomentumScrollEnd={onMomentumScrollEnd}
-          onViewableItemsChanged={DEBUG_STRIP_CALENDAR ? onViewableItemsChangedRef.current : undefined}
-          viewabilityConfig={DEBUG_STRIP_CALENDAR ? viewabilityConfigRef.current : undefined}
+          {...(DEBUG_STRIP_CALENDAR
+            ? {
+                onScroll,
+                scrollEventThrottle: 16,
+                onViewableItemsChanged: onViewableItemsChangedRef.current,
+                viewabilityConfig: viewabilityConfigRef.current,
+              }
+            : {})}
           getItemType={() => 'week'}
         />
       ) : null}

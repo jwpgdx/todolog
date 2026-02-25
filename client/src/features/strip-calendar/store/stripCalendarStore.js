@@ -32,6 +32,7 @@ export const useStripCalendarStore = create((set, get) => ({
   anchorWeekStart: null,
   weeklyVisibleWeekStart: null,
   monthlyTopWeekStart: null,
+  monthlyRangePolicy: 'three_month',
   showTodayJumpButton: false,
   summariesByDate: {},
   loadedRanges: [],
@@ -40,6 +41,10 @@ export const useStripCalendarStore = create((set, get) => ({
   setAnchorWeekStart: (anchorWeekStart) => set({ anchorWeekStart }),
   setWeeklyVisibleWeekStart: (weeklyVisibleWeekStart) => set({ weeklyVisibleWeekStart }),
   setMonthlyTopWeekStart: (monthlyTopWeekStart) => set({ monthlyTopWeekStart }),
+  setMonthlyRangePolicy: (monthlyRangePolicy) =>
+    set({
+      monthlyRangePolicy: monthlyRangePolicy === 'legacy_9week' ? 'legacy_9week' : 'three_month',
+    }),
   setShowTodayJumpButton: (showTodayJumpButton) => set({ showTodayJumpButton }),
 
   upsertSummaries: (summaryMap) => {
@@ -56,12 +61,68 @@ export const useStripCalendarStore = create((set, get) => ({
 
   clearRangeCache: () => set({ loadedRanges: [], summariesByDate: {} }),
 
+  /**
+   * Retention helper: keep only summaries/loadedRanges within [startDate, endDate].
+   * This is for memory control only; callers must be able to re-fetch on cache miss.
+   */
+  pruneToDateRange: (startDate, endDate) => {
+    if (!startDate || !endDate || startDate > endDate) return;
+
+    set((state) => {
+      const beforeSummaryCount = Object.keys(state.summariesByDate || {}).length;
+      const beforeRangeCount = state.loadedRanges.length;
+
+      const nextSummariesByDate = {};
+      for (const [dateKey, summary] of Object.entries(state.summariesByDate || {})) {
+        if (dateKey < startDate || dateKey > endDate) continue;
+        nextSummariesByDate[dateKey] = summary;
+      }
+
+      const clippedRanges = [];
+      for (const range of state.loadedRanges) {
+        const overlap = !(range.endDate < startDate || range.startDate > endDate);
+        if (!overlap) continue;
+
+        const clippedStart = range.startDate < startDate ? startDate : range.startDate;
+        const clippedEnd = range.endDate > endDate ? endDate : range.endDate;
+        if (clippedStart > clippedEnd) continue;
+        clippedRanges.push({ startDate: clippedStart, endDate: clippedEnd });
+      }
+
+      const nextLoadedRanges = mergeRanges(clippedRanges);
+      const afterSummaryCount = Object.keys(nextSummariesByDate).length;
+      const afterRangeCount = nextLoadedRanges.length;
+
+      if (
+        beforeSummaryCount === afterSummaryCount &&
+        beforeRangeCount === afterRangeCount &&
+        state.loadedRanges.every((r, i) => {
+          const next = nextLoadedRanges[i];
+          return next && r.startDate === next.startDate && r.endDate === next.endDate;
+        })
+      ) {
+        return state;
+      }
+
+      console.log(
+        `[strip-calendar] pruneToDateRange keep=${startDate}~${endDate} ` +
+          `summaries=${beforeSummaryCount}->${afterSummaryCount} ranges=${beforeRangeCount}->${afterRangeCount}`
+      );
+
+      return {
+        summariesByDate: nextSummariesByDate,
+        loadedRanges: nextLoadedRanges,
+      };
+    });
+  },
+
   resetNavigationState: () =>
     set({
       mode: 'weekly',
       anchorWeekStart: null,
       weeklyVisibleWeekStart: null,
       monthlyTopWeekStart: null,
+      monthlyRangePolicy: 'three_month',
       showTodayJumpButton: false,
     }),
 }));

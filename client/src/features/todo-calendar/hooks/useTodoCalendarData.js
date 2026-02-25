@@ -16,6 +16,48 @@ import { useTodoCalendarStore } from '../store/todoCalendarStore';
 import { fetchCalendarDataForMonths } from '../services/calendarTodoService';
 import { createMonthMetadata } from '../utils/calendarHelpers';
 import dayjs from 'dayjs';
+import { pruneRangeCacheOutsideDateRange } from '../../../services/query-aggregation/cache';
+
+const PREFETCH_BUFFER_MONTHS = 2;
+const RETENTION_MONTHS_BEFORE = 6;
+const RETENTION_MONTHS_AFTER = 6;
+// By default, fetch all uncached months in the prefetch window.
+// Keep this as a finite number only for experiments.
+const MAX_FETCH_MONTHS_PER_REQUEST = Number.POSITIVE_INFINITY;
+
+function describeVisibleRange(viewableItems = []) {
+  if (!Array.isArray(viewableItems) || viewableItems.length === 0) {
+    return 'empty';
+  }
+
+  const first = viewableItems[0]?.item?.id || 'unknown';
+  const last = viewableItems[viewableItems.length - 1]?.item?.id || 'unknown';
+  return `${first}~${last} (${viewableItems.length} items)`;
+}
+
+function createFetchTraceId() {
+  return `tc-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function computeRetentionWindowFromMonthMeta(monthMeta) {
+  const year = Number(monthMeta?.year);
+  const month = Number(monthMeta?.month);
+  if (!Number.isFinite(year) || !Number.isFinite(month)) return null;
+
+  const anchor = dayjs(`${year}-${String(month).padStart(2, '0')}-01`);
+  if (!anchor.isValid()) return null;
+
+  const startMonth = anchor.startOf('month').subtract(RETENTION_MONTHS_BEFORE, 'month');
+  const endMonth = anchor.startOf('month').add(RETENTION_MONTHS_AFTER, 'month');
+
+  return {
+    anchorMonthId: anchor.format('YYYY-MM'),
+    startMonthId: startMonth.format('YYYY-MM'),
+    endMonthId: endMonth.format('YYYY-MM'),
+    startDate: startMonth.startOf('month').format('YYYY-MM-DD'),
+    endDate: endMonth.endOf('month').format('YYYY-MM-DD'),
+  };
+}
 
 /**
  * Hook for fetching calendar todo data based on visible months
@@ -29,8 +71,28 @@ import dayjs from 'dayjs';
 export function useTodoCalendarData(startDayOfWeek = 0) {
   const isFetchingRef = useRef(false);
   const lastVisibleRef = useRef([]); // Store last visible items for refetch
+  const inFlightMetaRef = useRef(null);
+  const skippedWhileFetchingRef = useRef(0);
+  const lastRetentionMonthRef = useRef(null);
   const hasMonth = useTodoCalendarStore(state => state.hasMonth);
   const setBatchMonthData = useTodoCalendarStore(state => state.setBatchMonthData);
+  const pruneToMonthWindow = useTodoCalendarStore(state => state.pruneToMonthWindow);
+
+  const formatMs = (value) => Number((value || 0).toFixed(2));
+
+  const maybePruneRetention = useCallback((anchorMonthMeta) => {
+    const window = computeRetentionWindowFromMonthMeta(anchorMonthMeta);
+    if (!window) return;
+    if (lastRetentionMonthRef.current === window.anchorMonthId) return;
+    lastRetentionMonthRef.current = window.anchorMonthId;
+
+    pruneToMonthWindow(window.startMonthId, window.endMonthId);
+    pruneRangeCacheOutsideDateRange({
+      startDate: window.startDate,
+      endDate: window.endDate,
+      reason: `todo-calendar:retention:${window.anchorMonthId}`,
+    });
+  }, [pruneToMonthWindow]);
 
   /**
    * Core fetch logic: fetch uncached months from viewable items
@@ -40,22 +102,48 @@ export function useTodoCalendarData(startDayOfWeek = 0) {
    */
   const fetchUncachedMonths = useCallback(async (viewableItems) => {
     if (viewableItems.length === 0) return;
+
+    // Retention policy (Option A): keep only around the current visible month (±6 months).
+    // Do this even if we skip fetching due to in-flight work, so memory doesn't grow unbounded.
+    const anchorMonthMeta = viewableItems[0]?.item || null;
+    if (anchorMonthMeta?.id) {
+      maybePruneRetention(anchorMonthMeta);
+    }
+
     if (isFetchingRef.current) {
-      console.log('[useTodoCalendarData] Already fetching, skipping...');
+      skippedWhileFetchingRef.current += 1;
+      const inFlight = inFlightMetaRef.current;
+      const inFlightElapsedMs = inFlight?.startedAtMs != null
+        ? (performance.now() - inFlight.startedAtMs).toFixed(2)
+        : 'n/a';
+      console.log(
+        `[useTodoCalendarData] Already fetching, skipping... ` +
+          `incoming=${describeVisibleRange(viewableItems)} ` +
+          `inFlightVisible=${inFlight?.visibleRange || 'unknown'} ` +
+          `inFlightMonths=${inFlight?.monthIds?.join(', ') || 'none'} ` +
+          `inFlightElapsed=${inFlightElapsedMs}ms ` +
+          `skippedCount=${skippedWhileFetchingRef.current}`
+      );
       return;
     }
 
     // 1. Calculate visible month range
+    const startedAt = performance.now();
+    const visibleStartedAt = performance.now();
     const firstVisible = viewableItems[0].item;
     const lastVisible = viewableItems[viewableItems.length - 1].item;
 
-    console.log(`[useTodoCalendarData] Visible months: ${firstVisible.id} ~ ${lastVisible.id}`);
+    console.log(
+      `[useTodoCalendarData] Visible months: ${firstVisible.id} ~ ${lastVisible.id} ` +
+      `(${formatMs(performance.now() - visibleStartedAt)}ms)`
+    );
 
-    // 2. Expand range with ±2 month buffer for prefetch
+    // 2. Expand range with buffer for prefetch
+    const prefetchStartedAt = performance.now();
     const bufferStart = dayjs(`${firstVisible.year}-${String(firstVisible.month).padStart(2, '0')}-01`)
-      .subtract(2, 'month');
+      .subtract(PREFETCH_BUFFER_MONTHS, 'month');
     const bufferEnd = dayjs(`${lastVisible.year}-${String(lastVisible.month).padStart(2, '0')}-01`)
-      .add(2, 'month');
+      .add(PREFETCH_BUFFER_MONTHS, 'month');
 
     // 3. Generate all month metadata in range
     const allMonths = [];
@@ -65,40 +153,101 @@ export function useTodoCalendarData(startDayOfWeek = 0) {
       cursor = cursor.add(1, 'month');
     }
 
-    console.log(`[useTodoCalendarData] Prefetch range (±2): ${allMonths[0].id} ~ ${allMonths[allMonths.length - 1].id} (${allMonths.length} months)`);
+    console.log(
+      `[useTodoCalendarData] Prefetch range (±${PREFETCH_BUFFER_MONTHS}): ${allMonths[0].id} ~ ${allMonths[allMonths.length - 1].id} ` +
+      `(${allMonths.length} months, ${formatMs(performance.now() - prefetchStartedAt)}ms)`
+    );
 
-    // 4. Filter uncached months
-    const uncachedMonths = allMonths.filter(m => !hasMonth(m.id));
+    // 4. Filter uncached months (visible-first priority)
+    const filterStartedAt = performance.now();
+    const visibleMonths = [];
+    let visibleCursor = dayjs(`${firstVisible.year}-${String(firstVisible.month).padStart(2, '0')}-01`);
+    const visibleEnd = dayjs(`${lastVisible.year}-${String(lastVisible.month).padStart(2, '0')}-01`);
+    while (visibleCursor.isBefore(visibleEnd) || visibleCursor.isSame(visibleEnd, 'month')) {
+      visibleMonths.push(createMonthMetadata(visibleCursor.year(), visibleCursor.month() + 1));
+      visibleCursor = visibleCursor.add(1, 'month');
+    }
+
+    const visibleIds = new Set(visibleMonths.map(m => m.id));
+    const uncachedVisibleMonths = visibleMonths.filter(m => !hasMonth(m.id));
+    const uncachedBufferMonths = allMonths.filter(m => !visibleIds.has(m.id) && !hasMonth(m.id));
+    const uncachedMonths = [...uncachedVisibleMonths, ...uncachedBufferMonths];
+    const filterMs = formatMs(performance.now() - filterStartedAt);
 
     if (uncachedMonths.length === 0) {
-      console.log('[useTodoCalendarData] All months cached, no fetch needed');
+      console.log(`[useTodoCalendarData] All months cached, no fetch needed (${filterMs}ms)`);
       return;
     }
 
-    console.log(`[useTodoCalendarData] Cache miss: ${uncachedMonths.map(m => m.id).join(', ')} (${uncachedMonths.length} months)`);
+    const targetMonths = uncachedMonths.slice(0, MAX_FETCH_MONTHS_PER_REQUEST);
+    const droppedMonthIds = uncachedMonths
+      .slice(MAX_FETCH_MONTHS_PER_REQUEST)
+      .map(m => m.id);
+
+    console.log(
+      `[useTodoCalendarData] Cache miss: ${uncachedMonths.map(m => m.id).join(', ')} ` +
+      `(${uncachedMonths.length} months, ${filterMs}ms)`
+    );
+    if (droppedMonthIds.length > 0) {
+      console.log(
+        `[useTodoCalendarData] Fetch throttled: requesting ${targetMonths.length} month(s), ` +
+        `deferred=${droppedMonthIds.join(', ')}`
+      );
+    }
 
     // 5. Batch fetch
     isFetchingRef.current = true;
     try {
       const startTime = performance.now();
+      const traceId = createFetchTraceId();
+      inFlightMetaRef.current = {
+        startedAtMs: startTime,
+        visibleRange: describeVisibleRange(viewableItems),
+        monthIds: targetMonths.map(m => m.id),
+        traceId,
+      };
+      console.log(
+        `[useTodoCalendarData:trace] trace=${traceId} ` +
+        `start visible=${firstVisible.id}~${lastVisible.id} ` +
+        `months=${targetMonths.length}`
+      );
       const { todosMap, completionsMap } = await fetchCalendarDataForMonths(
-        uncachedMonths,
-        startDayOfWeek
+        targetMonths,
+        startDayOfWeek,
+        { traceId }
       );
       const endTime = performance.now();
       
-      console.log(`[useTodoCalendarData] Fetched ${uncachedMonths.length} months in ${(endTime - startTime).toFixed(2)}ms`);
+      console.log(
+        `[useTodoCalendarData] Fetched ${targetMonths.length} months in ${(endTime - startTime).toFixed(2)}ms ` +
+        `(trace=${traceId})`
+      );
       
       // 6. Update store
+      const storeStartedAt = performance.now();
       setBatchMonthData(todosMap, completionsMap);
+      const storeMs = formatMs(performance.now() - storeStartedAt);
       
-      console.log('[useTodoCalendarData] Store updated successfully');
+      console.log(
+        `[useTodoCalendarData] Store updated successfully ` +
+        `(store=${storeMs}ms, total=${formatMs(performance.now() - startedAt)}ms, ` +
+        `trace=${traceId})`
+      );
     } catch (error) {
       console.error('[useTodoCalendarData] Batch fetch failed:', error);
     } finally {
       isFetchingRef.current = false;
+      const skipped = skippedWhileFetchingRef.current;
+      if (skipped > 0) {
+        console.log(
+          `[useTodoCalendarData] Fetch finished with skipped incoming updates: ${skipped} ` +
+            `(consider queueing latest visible range)`
+        );
+      }
+      skippedWhileFetchingRef.current = 0;
+      inFlightMetaRef.current = null;
     }
-  }, [startDayOfWeek, hasMonth, setBatchMonthData]);
+  }, [startDayOfWeek, hasMonth, maybePruneRetention, setBatchMonthData]);
 
   /**
    * Callback for CalendarList's onViewableItemsChanged

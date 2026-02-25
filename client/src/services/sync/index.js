@@ -3,9 +3,7 @@ import { AppState } from 'react-native';
 import { useQueryClient } from '@tanstack/react-query';
 import NetInfo from '@react-native-community/netinfo';
 import { useAuthStore } from '../../store/authStore';
-import { useTodoCalendarStore } from '../../features/todo-calendar/store/todoCalendarStore';
-import { useStripCalendarStore } from '../../features/strip-calendar/store/stripCalendarStore';
-import { invalidateRanges } from '../../features/strip-calendar/services/stripCalendarDataAdapter';
+import { invalidateAllScreenCaches } from '../query-aggregation/cache';
 import { ensureDatabase, getMetadata, setMetadata } from '../db/database';
 import { runPendingPush } from './pendingPush';
 import { runDeltaPull } from './deltaPull';
@@ -146,15 +144,6 @@ export const useSyncService = () => {
       setLastSyncTime(nextCursor);
       console.log('🧭 [useSyncService] Cursor commit 완료:', { from: cursor, to: nextCursor });
 
-      // 4. React Query 캐시 무효화
-      console.log('🔄 [useSyncService] 캐시 무효화 시작');
-      queryClient.invalidateQueries({ queryKey: ['todos'] });
-      queryClient.invalidateQueries({ queryKey: ['categories'] });
-      
-      // Phase 2: 캘린더 캐시 클리어
-      useTodoCalendarStore.getState().clearAll();
-      console.log('📅 [useSyncService] 캘린더 캐시 클리어 완료');
-
       const hasDataChange =
         pushResult.succeeded > 0 ||
         pullResult.todos.updated > 0 ||
@@ -162,18 +151,19 @@ export const useSyncService = () => {
         pullResult.completions.updated > 0 ||
         pullResult.completions.deleted > 0;
 
+      console.log('🔄 [useSyncService] 캐시 무효화 시작');
       if (hasDataChange) {
-        const loadedRanges = useStripCalendarStore.getState().loadedRanges || [];
-        if (loadedRanges.length > 0) {
-          invalidateRanges(loadedRanges);
-          console.log(`🗓️ [useSyncService] strip-calendar summary 무효화: ${loadedRanges.length}개 range`);
-        } else {
-          console.log('🗓️ [useSyncService] strip-calendar summary 무효화 스킵: loaded range 없음');
-        }
+        invalidateAllScreenCaches({
+          queryClient,
+          reason: 'sync:data-changed',
+        });
+        console.log('🧹 [useSyncService] 공통 캐시/스토어 무효화 완료 (변경 있음)');
       } else {
-        console.log('🗓️ [useSyncService] strip-calendar summary 무효화 스킵: 동기화 변경 없음');
+        queryClient.invalidateQueries({ queryKey: ['todos'] });
+        queryClient.invalidateQueries({ queryKey: ['categories'] });
+        console.log('🧹 [useSyncService] React Query만 무효화 (데이터 변경 없음)');
       }
-      
+
       console.log('✅ [useSyncService] 캐시 무효화 완료');
       
       console.log('✅ [useSyncService] 전체 동기화 완료');

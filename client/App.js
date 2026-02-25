@@ -6,7 +6,7 @@ import './src/utils/i18n';
 import i18n from './src/utils/i18n';
 import * as Localization from 'expo-localization';
 import { useEffect, useRef } from 'react';
-import { Platform, View } from 'react-native';
+import { InteractionManager, Platform, View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { NavigationContainer } from '@react-navigation/native';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -27,11 +27,46 @@ import AuthStack from './src/navigation/AuthStack';
 import GlobalFormOverlay from './src/features/todo/form/GlobalFormOverlay';
 import { SyncProvider } from './src/providers/SyncProvider';
 import { ensureDatabase } from './src/services/db/database';
+import { runCommonQueryForRange } from './src/services/query-aggregation';
 import { getCurrentDateInTimeZone } from './src/utils/timeZoneDate';
 
 const queryClient = new QueryClient();
 
 setQueryClient(queryClient);
+
+let hasRunCommonRangePrewarm = false;
+
+function addDays(date, days) {
+  const next = new Date(date.getTime());
+  next.setDate(next.getDate() + days);
+  return next;
+}
+
+function formatDateOnly(date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function parseDateOnly(dateOnly) {
+  if (typeof dateOnly !== 'string') return null;
+  const match = dateOnly.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return null;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const parsed = new Date(year, month - 1, day);
+  if (Number.isNaN(parsed.getTime())) return null;
+  return parsed;
+}
+
+function buildPrewarmRange(anchorDateOnly) {
+  const anchorDate = parseDateOnly(anchorDateOnly) || new Date();
+  const startDate = formatDateOnly(addDays(anchorDate, -90));
+  const endDate = formatDateOnly(addDays(anchorDate, 90));
+  return { startDate, endDate };
+}
 
 export default function App() {
   const { user, isLoading, loadAuth } = useAuthStore();
@@ -43,6 +78,17 @@ export default function App() {
 
   // ⚡ SQLite 초기화 및 워밍업 완료 대기
   useEffect(() => {
+    let cancelled = false;
+    let prewarmTimerId = null;
+    let interactionTask = null;
+    const scheduleAfterInteractions =
+      typeof InteractionManager?.runAfterInteractions === 'function'
+        ? InteractionManager.runAfterInteractions.bind(InteractionManager)
+        : (task) => {
+            task?.();
+            return { cancel: () => {} };
+          };
+
     const initializeDatabase = async () => {
       const startTime = performance.now();
       console.log('🚀 [App] SQLite 초기화 시작 (워밍업 포함)...');
@@ -51,12 +97,71 @@ export default function App() {
         await ensureDatabase(); // 워밍업 완료까지 대기
         const endTime = performance.now();
         console.log(`✅ [App] SQLite 초기화 완료 (${(endTime - startTime).toFixed(2)}ms)`);
+
+        if (hasRunCommonRangePrewarm || cancelled) {
+          return;
+        }
+        hasRunCommonRangePrewarm = true;
+
+        interactionTask = scheduleAfterInteractions(() => {
+          prewarmTimerId = setTimeout(async () => {
+            if (cancelled) {
+              return;
+            }
+
+            const prewarmStart = performance.now();
+            const traceId = `app-prewarm-${Date.now().toString(36)}`;
+            const anchorDate = getCurrentDateInTimeZone();
+            const { startDate, endDate } = buildPrewarmRange(anchorDate);
+            console.log(
+              `[App] Common range prewarm start: ${startDate} ~ ${endDate} ` +
+              `(trace=${traceId}, anchor=${anchorDate})`
+            );
+
+            try {
+              const result = await runCommonQueryForRange({
+                startDate,
+                endDate,
+                syncStatus: {
+                  isSyncing: false,
+                  error: null,
+                  lastSyncTime: null,
+                },
+                traceId,
+              });
+              const elapsedMs = (performance.now() - prewarmStart).toFixed(2);
+              if (!result.ok) {
+                console.warn(
+                  `[App] Common range prewarm failed (${elapsedMs}ms, trace=${traceId}): ${result.error || 'unknown'}`
+                );
+                return;
+              }
+              console.log(
+                `[App] Common range prewarm done (${elapsedMs}ms, trace=${traceId}) ` +
+                `stage(c=${result.stage.candidate},d=${result.stage.decided},a=${result.stage.aggregated})`
+              );
+            } catch (prewarmError) {
+              console.warn(
+                `[App] Common range prewarm error (trace=${traceId}):`,
+                prewarmError?.message || prewarmError
+              );
+            }
+          }, 0);
+        });
       } catch (err) {
         console.error('❌ [App] DB 초기화 실패:', err);
       }
     };
 
     initializeDatabase();
+
+    return () => {
+      cancelled = true;
+      if (prewarmTimerId != null) {
+        clearTimeout(prewarmTimerId);
+      }
+      interactionTask?.cancel?.();
+    };
   }, []);
 
   useEffect(() => {

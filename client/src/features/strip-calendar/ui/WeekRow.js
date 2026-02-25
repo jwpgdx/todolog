@@ -12,14 +12,13 @@ function getWeekBandColor(weekStart) {
   return Math.abs(weekNumber) % 2 === 0 ? '#FFFFFF' : '#F3F4F6';
 }
 
-function WeekRow({ weekDays, getSummaryByDate, onDayPress, weekStart }) {
+function WeekRow({ weekDays, onDayPress, weekStart }) {
   return (
     <View style={[styles.row, { backgroundColor: getWeekBandColor(weekStart) }]}>
       {weekDays.map((day) => (
         <DayCell
           key={day.date}
           day={day}
-          summary={getSummaryByDate(day.date)}
           onPress={onDayPress}
         />
       ))}

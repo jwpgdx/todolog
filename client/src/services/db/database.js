@@ -14,9 +14,60 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // 싱글톤 DB 인스턴스
 let db = null;
+let initRunId = 0;
+
+const initDebugState = {
+    runId: 0,
+    phase: 'idle',
+    startedAtMs: 0,
+    endedAtMs: 0,
+    openMs: 0,
+    pragmaMs: 0,
+    schemaMs: 0,
+    migrationMs: 0,
+    warmupMs: 0,
+    totalMs: 0,
+    lastError: null,
+};
+
+function nowMs() {
+    if (typeof globalThis?.performance?.now === 'function') {
+        return globalThis.performance.now();
+    }
+    return Date.now();
+}
+
+function formatMs(value) {
+    return Number((value || 0).toFixed(2));
+}
+
+function snapshotInitDebugState() {
+    const now = nowMs();
+    const elapsedSinceStartMs = initDebugState.startedAtMs > 0
+        ? formatMs(now - initDebugState.startedAtMs)
+        : 0;
+
+    return {
+        hasDb: Boolean(db),
+        hasInitPromise: Boolean(initPromise),
+        runId: initDebugState.runId,
+        phase: initDebugState.phase,
+        startedAtMs: initDebugState.startedAtMs,
+        endedAtMs: initDebugState.endedAtMs,
+        elapsedSinceStartMs,
+        openMs: initDebugState.openMs,
+        pragmaMs: initDebugState.pragmaMs,
+        schemaMs: initDebugState.schemaMs,
+        migrationMs: initDebugState.migrationMs,
+        warmupMs: initDebugState.warmupMs,
+        totalMs: initDebugState.totalMs,
+        lastError: initDebugState.lastError,
+    };
+}
 
 // 현재 마이그레이션 버전
-const MIGRATION_VERSION = 5;
+const MIGRATION_VERSION = 6;
+const SYNC_CURSOR_METADATA_KEY = 'sync.last_success_at';
 
 // ============================================================
 // 스키마 정의
@@ -63,6 +114,11 @@ CREATE INDEX IF NOT EXISTS idx_todos_range ON todos(start_date, end_date);
 CREATE INDEX IF NOT EXISTS idx_todos_recurrence_window ON todos(start_date, recurrence_end_date);
 CREATE INDEX IF NOT EXISTS idx_todos_category ON todos(category_id);
 CREATE INDEX IF NOT EXISTS idx_todos_updated ON todos(updated_at);
+CREATE INDEX IF NOT EXISTS idx_todos_active_date ON todos(date) WHERE deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_todos_active_range ON todos(start_date, end_date) WHERE deleted_at IS NULL AND end_date IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_todos_active_start_open ON todos(start_date) WHERE deleted_at IS NULL AND end_date IS NULL;
+CREATE INDEX IF NOT EXISTS idx_todos_active_recur_window ON todos(start_date, recurrence_end_date) WHERE deleted_at IS NULL AND recurrence IS NOT NULL AND start_date IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_todos_active_recur_date_window ON todos(date, recurrence_end_date) WHERE deleted_at IS NULL AND recurrence IS NOT NULL AND start_date IS NULL;
 
 CREATE TABLE IF NOT EXISTS completions (
   _id TEXT PRIMARY KEY,
@@ -106,26 +162,48 @@ let initPromise = null;
 export async function initDatabase() {
     // 이미 초기화됨
     if (db) {
-        console.log('📦 [DB] Already initialized');
+        const snapshot = snapshotInitDebugState();
+        console.log(
+            `📦 [DB] Already initialized (phase=${snapshot.phase}, runId=${snapshot.runId}, hasInitPromise=${snapshot.hasInitPromise ? 'Y' : 'N'})`
+        );
         return db;
     }
 
     // 초기화 진행 중 - Promise 재사용
     if (initPromise) {
-        console.log('⏳ [DB] Initialization in progress, waiting...');
+        const snapshot = snapshotInitDebugState();
+        console.log(
+            `⏳ [DB] Initialization in progress, waiting... (phase=${snapshot.phase}, runId=${snapshot.runId}, elapsed=${snapshot.elapsedSinceStartMs}ms)`
+        );
         return initPromise;
     }
 
     console.log('🚀 [DB] Initializing database...');
+    initRunId += 1;
+    initDebugState.runId = initRunId;
+    initDebugState.phase = 'opening';
+    initDebugState.startedAtMs = nowMs();
+    initDebugState.endedAtMs = 0;
+    initDebugState.openMs = 0;
+    initDebugState.pragmaMs = 0;
+    initDebugState.schemaMs = 0;
+    initDebugState.migrationMs = 0;
+    initDebugState.warmupMs = 0;
+    initDebugState.totalMs = 0;
+    initDebugState.lastError = null;
 
     // Promise 락 설정
     initPromise = (async () => {
         try {
             // DB 열기
+            const openStart = nowMs();
             db = await SQLite.openDatabaseAsync('todos.db');
+            initDebugState.openMs = formatMs(nowMs() - openStart);
             console.log('✅ [DB] Database opened');
 
             // WAL 모드 활성화
+            initDebugState.phase = 'pragma';
+            const pragmaStart = nowMs();
             await db.execAsync('PRAGMA journal_mode = WAL');
             console.log('✅ [DB] WAL mode enabled');
 
@@ -134,13 +212,19 @@ export async function initDatabase() {
 
             // 외래키 제약 활성화
             await db.execAsync('PRAGMA foreign_keys = ON');
+            initDebugState.pragmaMs = formatMs(nowMs() - pragmaStart);
             console.log('✅ [DB] PRAGMA settings applied');
 
             // 스키마 생성
+            initDebugState.phase = 'schema';
+            const schemaStart = nowMs();
             await db.execAsync(SCHEMA_SQL);
+            initDebugState.schemaMs = formatMs(nowMs() - schemaStart);
             console.log('✅ [DB] Schema created');
 
             // 마이그레이션 체크
+            initDebugState.phase = 'migration';
+            const migrationStart = nowMs();
             const version = await getMetadata('migration_version');
             console.log(`📋 [DB] Current migration version: ${version || 'none'}`);
 
@@ -175,16 +259,24 @@ export async function initDatabase() {
                     await migrateV5AddPendingRetryColumns();
                 }
 
+                // v6: common query candidate SQL 튜닝용 인덱스 추가
+                if (currentVersion < 6) {
+                    await migrateV6CandidateQueryIndexes();
+                }
+
                 await setMetadata('migration_version', String(MIGRATION_VERSION));
             } else {
                 console.log('✅ [DB] No migration needed');
             }
+            initDebugState.migrationMs = formatMs(nowMs() - migrationStart);
 
             console.log('✅ [DB] Database initialized successfully');
 
             // ⚡ 테이블 워밍업 (WASM 콜드 스타트 방지)
             // 실제 데이터 페이지를 메모리에 로드하여 첫 쿼리 성능 개선
             try {
+                initDebugState.phase = 'warmup';
+                const warmupStageStart = nowMs();
                 const warmupStart = performance.now();
                 console.log('🔥 [DB] 테이블 워밍업 시작...');
                 
@@ -211,14 +303,23 @@ export async function initDatabase() {
                 
                 const warmupEnd = performance.now();
                 console.log(`🔥 [DB] 테이블 워밍업 완료 (${(warmupEnd - warmupStart).toFixed(2)}ms)`);
+                initDebugState.warmupMs = formatMs(nowMs() - warmupStageStart);
             } catch (warmupError) {
                 console.warn('⚠️ [DB] 워밍업 실패 (무시 가능):', warmupError.message);
             }
+
+            initDebugState.phase = 'ready';
+            initDebugState.endedAtMs = nowMs();
+            initDebugState.totalMs = formatMs(initDebugState.endedAtMs - initDebugState.startedAtMs);
 
             return db;
 
         } catch (error) {
             console.error('❌ [DB] Initialization failed:', error);
+            initDebugState.phase = 'failed';
+            initDebugState.lastError = error?.message || String(error);
+            initDebugState.endedAtMs = nowMs();
+            initDebugState.totalMs = formatMs(initDebugState.endedAtMs - initDebugState.startedAtMs);
             db = null;
             initPromise = null; // 실패 시 재시도 가능하도록
             throw error;
@@ -244,6 +345,10 @@ export function getDatabase() {
  */
 export async function ensureDatabase() {
     return initDatabase();
+}
+
+export function getDatabaseInitDebugState() {
+    return snapshotInitDebugState();
 }
 
 // ============================================================
@@ -685,6 +790,25 @@ async function migrateV5AddPendingRetryColumns() {
 }
 
 /**
+ * v6 마이그레이션: common query candidate SQL용 인덱스 보강
+ */
+async function migrateV6CandidateQueryIndexes() {
+    console.log('🔄 [Migration v6] Creating candidate-query indexes...');
+
+    try {
+        await db.runAsync('CREATE INDEX IF NOT EXISTS idx_todos_active_date ON todos(date) WHERE deleted_at IS NULL');
+        await db.runAsync('CREATE INDEX IF NOT EXISTS idx_todos_active_range ON todos(start_date, end_date) WHERE deleted_at IS NULL AND end_date IS NOT NULL');
+        await db.runAsync('CREATE INDEX IF NOT EXISTS idx_todos_active_start_open ON todos(start_date) WHERE deleted_at IS NULL AND end_date IS NULL');
+        await db.runAsync('CREATE INDEX IF NOT EXISTS idx_todos_active_recur_window ON todos(start_date, recurrence_end_date) WHERE deleted_at IS NULL AND recurrence IS NOT NULL AND start_date IS NOT NULL');
+        await db.runAsync('CREATE INDEX IF NOT EXISTS idx_todos_active_recur_date_window ON todos(date, recurrence_end_date) WHERE deleted_at IS NULL AND recurrence IS NOT NULL AND start_date IS NULL');
+        console.log('✅ [Migration v6] Candidate-query indexes ready');
+    } catch (error) {
+        console.error('❌ [Migration v6] Failed:', error);
+        throw error;
+    }
+}
+
+/**
  * v2 마이그레이션: pending_changes에 entity_id 컬럼 추가
  * (UUID 마이그레이션 지원)
  */
@@ -854,8 +978,9 @@ export async function clearAllData() {
         await db.execAsync('DELETE FROM completions');
         await db.execAsync('DELETE FROM todos');
         await db.execAsync('DELETE FROM categories');
+        await db.runAsync('DELETE FROM metadata WHERE key = ?', [SYNC_CURSOR_METADATA_KEY]);
 
-        console.log('✅ [DB] All user data cleared');
+        console.log('✅ [DB] All user data cleared (sync cursor reset)');
     } catch (error) {
         console.error('❌ [DB] Failed to clear data:', error);
         throw error;

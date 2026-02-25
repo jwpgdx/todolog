@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { Profiler, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { useDateStore } from '../../../store/dateStore';
 import { useTodayDate } from '../../../hooks/useTodayDate';
@@ -17,15 +17,46 @@ import WeeklyStripList from './WeeklyStripList';
 import MonthlyStripList from './MonthlyStripList';
 import StripCalendarHeader from './StripCalendarHeader';
 import ModeToggleBar from './ModeToggleBar';
-import { MONTHLY_VISIBLE_WEEK_COUNT, WEEK_ROW_HEIGHT } from '../utils/stripCalendarConstants';
+import { MONTHLY_VISIBLE_WEEK_COUNT, STRIP_CALENDAR_PERF_LOG_ENABLED, WEEK_ROW_HEIGHT } from '../utils/stripCalendarConstants';
 import { useStripCalendarStore } from '../store/stripCalendarStore';
 import { logStripCalendar } from '../utils/stripCalendarDebug';
+
+function nowPerfMs() {
+  if (typeof globalThis?.performance?.now === 'function') {
+    return globalThis.performance.now();
+  }
+  return Date.now();
+}
+
+function formatMs(value) {
+  return Number((value || 0).toFixed(2));
+}
+
+const MONTHLY_REACT_PROFILER_THRESHOLD_MS = 8;
+
+function createWeekWindowMeasured(pivotWeekStart, reason) {
+  const t0 = STRIP_CALENDAR_PERF_LOG_ENABLED ? nowPerfMs() : 0;
+  const result = createWeekWindow(pivotWeekStart);
+  if (STRIP_CALENDAR_PERF_LOG_ENABLED) {
+    const t1 = nowPerfMs();
+    const start = result[0] || 'null';
+    const end = result[result.length - 1] || 'null';
+    console.log(
+      `[strip-calendar:ui-perf] weekWindow create reason=${reason} ` +
+        `pivot=${pivotWeekStart || 'null'} ` +
+        `start=${start} end=${end} weeks=${result.length} ` +
+        `ms=${formatMs(t1 - t0)} t=${formatMs(t1)}ms`
+    );
+  }
+  return result;
+}
 
 export default function StripCalendarShell() {
   const { currentDate, setCurrentDate } = useDateStore();
   const { todayDate } = useTodayDate();
   const { data: settings = {} } = useSettings();
   const hasBootstrappedRef = useRef(false);
+  const viewportLayoutRef = useRef({ mode: null, width: null, height: null });
 
   const startDayOfWeek = settings.startDayOfWeek || 'sunday';
   const language = resolveCalendarLanguage(settings.language || 'system');
@@ -39,11 +70,28 @@ export default function StripCalendarShell() {
     [currentDate, startDayOfWeek]
   );
 
-  const [weekStarts, setWeekStarts] = useState(() => createWeekWindow(currentWeekStart));
+  const [weekStarts, setWeekStarts] = useState(() =>
+    createWeekWindowMeasured(currentWeekStart, 'init:currentWeekStart')
+  );
   const [weeklyTargetWeekStart, setWeeklyTargetWeekStart] = useState(null);
   const [monthlyTargetWeekStart, setMonthlyTargetWeekStart] = useState(null);
   const [scrollAnimated, setScrollAnimated] = useState(false);
   const [isNavigationReady, setIsNavigationReady] = useState(false);
+  const prevModeRef = useRef('weekly');
+
+  const handleMonthlyReactProfilerRender = useCallback(
+    (id, phase, actualDuration, baseDuration, startTime, commitTime) => {
+      if (!STRIP_CALENDAR_PERF_LOG_ENABLED) return;
+      if (phase !== 'mount' && actualDuration < MONTHLY_REACT_PROFILER_THRESHOLD_MS) return;
+
+      console.log(
+        `[strip-calendar:react-profiler] id=${id} phase=${phase} ` +
+          `actual=${formatMs(actualDuration)}ms base=${formatMs(baseDuration)}ms ` +
+          `start=${formatMs(startTime)}ms commit=${formatMs(commitTime)}ms t=${formatMs(nowPerfMs())}ms`
+      );
+    },
+    []
+  );
 
   const {
     mode,
@@ -63,11 +111,40 @@ export default function StripCalendarShell() {
     startDayOfWeek,
   });
 
-  const { getSummaryByDate } = useStripCalendarDataRange({
+  useStripCalendarDataRange({
     mode,
     weeklyVisibleWeekStart,
     monthlyTopWeekStart,
+    weeklyTargetWeekStart,
+    monthlyTargetWeekStart,
   });
+
+  useEffect(() => {
+    const prevMode = prevModeRef.current;
+    if (STRIP_CALENDAR_PERF_LOG_ENABLED && mode === 'monthly' && prevMode !== 'monthly') {
+      const targetTopWeekStart =
+        monthlyTargetWeekStart ||
+        monthlyTopWeekStart ||
+        anchorWeekStart ||
+        todayWeekStart ||
+        currentWeekStart ||
+        null;
+      console.log(
+        `[strip-calendar:ui] monthly enter from=${prevMode || 'unknown'} ` +
+          `targetTopWeekStart=${targetTopWeekStart || 'null'} weekStarts=${weekStarts.length} ` +
+          `t=${formatMs(nowPerfMs())}ms`
+      );
+    }
+    prevModeRef.current = mode;
+  }, [
+    anchorWeekStart,
+    currentWeekStart,
+    mode,
+    monthlyTargetWeekStart,
+    monthlyTopWeekStart,
+    todayWeekStart,
+    weekStarts.length,
+  ]);
 
   useEffect(() => {
     if (hasBootstrappedRef.current) return;
@@ -87,7 +164,7 @@ export default function StripCalendarShell() {
     state.setWeeklyVisibleWeekStart(todayWeekStart);
     state.setMonthlyTopWeekStart(todayWeekStart);
 
-    const initialWeekWindow = createWeekWindow(todayWeekStart);
+    const initialWeekWindow = createWeekWindowMeasured(todayWeekStart, 'bootstrap:todayWeekStart');
     setWeekStarts(initialWeekWindow);
     setWeeklyTargetWeekStart(todayWeekStart);
     setMonthlyTargetWeekStart(todayWeekStart);
@@ -115,7 +192,7 @@ export default function StripCalendarShell() {
         pivotWeekStart,
         weekWindowLength: weekStarts.length,
       });
-      setWeekStarts(createWeekWindow(pivotWeekStart));
+      setWeekStarts(createWeekWindowMeasured(pivotWeekStart, 'recenter:effect'));
     }
   }, [
     currentWeekStart,
@@ -188,7 +265,7 @@ export default function StripCalendarShell() {
       });
       setWeeklyTargetWeekStart(target);
       if (shouldRecenterWeekWindow(weekStarts, target)) {
-        setWeekStarts(createWeekWindow(target));
+        setWeekStarts(createWeekWindowMeasured(target, 'recenter:prevWeek'));
       }
       return;
     }
@@ -202,7 +279,7 @@ export default function StripCalendarShell() {
     });
     setMonthlyTargetWeekStart(target);
     if (shouldRecenterWeekWindow(weekStarts, target)) {
-      setWeekStarts(createWeekWindow(target));
+      setWeekStarts(createWeekWindowMeasured(target, 'recenter:prevWeek'));
     }
   };
 
@@ -218,7 +295,7 @@ export default function StripCalendarShell() {
       });
       setWeeklyTargetWeekStart(target);
       if (shouldRecenterWeekWindow(weekStarts, target)) {
-        setWeekStarts(createWeekWindow(target));
+        setWeekStarts(createWeekWindowMeasured(target, 'recenter:nextWeek'));
       }
       return;
     }
@@ -232,7 +309,7 @@ export default function StripCalendarShell() {
     });
     setMonthlyTargetWeekStart(target);
     if (shouldRecenterWeekWindow(weekStarts, target)) {
-      setWeekStarts(createWeekWindow(target));
+      setWeekStarts(createWeekWindowMeasured(target, 'recenter:nextWeek'));
     }
   };
 
@@ -248,46 +325,70 @@ export default function StripCalendarShell() {
     handleTodayJump();
   };
 
-  const onToggleMode = () => {
-    logStripCalendar('StripCalendarShell', 'action:toggleMode', {
-      mode,
-      weeklyTargetWeekStart,
-      weeklyVisibleWeekStart,
-      monthlyTopWeekStart,
-      currentWeekStart,
-      anchorWeekStart,
-    });
-    setScrollAnimated(false);
+  const onToggleMode = (source = 'unknown') => {
+    const startedAt = STRIP_CALENDAR_PERF_LOG_ENABLED ? nowPerfMs() : 0;
+    const fromMode = mode;
+    const toMode = mode === 'weekly' ? 'monthly' : 'weekly';
 
-    if (mode === 'weekly') {
-      const preferredWeeklyWeekStart =
-        weeklyTargetWeekStart ||
-        weeklyVisibleWeekStart ||
-        anchorWeekStart ||
-        currentWeekStart;
-
-      if (preferredWeeklyWeekStart) {
-        setMonthlyTargetWeekStart(preferredWeeklyWeekStart);
-      }
-
-      handleToggleMode({ weeklyWeekStart: preferredWeeklyWeekStart });
-      return;
+    if (STRIP_CALENDAR_PERF_LOG_ENABLED) {
+      console.log(
+        `[strip-calendar:ui] toggle request source=${source} from=${fromMode} to=${toMode} ` +
+          `weeklyVisible=${weeklyVisibleWeekStart || 'null'} monthlyTop=${monthlyTopWeekStart || 'null'} ` +
+          `anchor=${anchorWeekStart || 'null'} currentWeek=${currentWeekStart || 'null'} ` +
+          `t=${formatMs(nowPerfMs())}ms`
+      );
     }
 
-    // Prevent stale weekly target from overriding monthly->weekly transition result.
-    setWeeklyTargetWeekStart(null);
-    handleToggleMode();
+    try {
+      logStripCalendar('StripCalendarShell', 'action:toggleMode', {
+        mode,
+        source,
+        weeklyTargetWeekStart,
+        weeklyVisibleWeekStart,
+        monthlyTopWeekStart,
+        currentWeekStart,
+        anchorWeekStart,
+      });
+      setScrollAnimated(false);
+
+      if (mode === 'weekly') {
+        const preferredWeeklyWeekStart =
+          weeklyTargetWeekStart ||
+          weeklyVisibleWeekStart ||
+          anchorWeekStart ||
+          currentWeekStart;
+
+        if (preferredWeeklyWeekStart) {
+          setMonthlyTargetWeekStart(preferredWeeklyWeekStart);
+        }
+
+        handleToggleMode({ weeklyWeekStart: preferredWeeklyWeekStart });
+        return;
+      }
+
+      // Prevent stale weekly target from overriding monthly->weekly transition result.
+      setWeeklyTargetWeekStart(null);
+      handleToggleMode();
+    } finally {
+      if (STRIP_CALENDAR_PERF_LOG_ENABLED) {
+        const endedAt = nowPerfMs();
+        console.log(
+          `[strip-calendar:ui-perf] toggle handler done source=${source} ` +
+            `dt=${formatMs(endedAt - startedAt)}ms t=${formatMs(endedAt)}ms`
+        );
+      }
+    }
   };
 
   const onSwipeUp = () => {
     if (mode === 'monthly') {
-      onToggleMode();
+      onToggleMode('gesture:swipeUp');
     }
   };
 
   const onSwipeDown = () => {
     if (mode === 'weekly') {
-      onToggleMode();
+      onToggleMode('gesture:swipeDown');
     }
   };
 
@@ -317,7 +418,7 @@ export default function StripCalendarShell() {
         onTodayJump={onTodayJump}
         onPrevWeek={onPrevWeek}
         onNextWeek={onNextWeek}
-        onToggleMode={onToggleMode}
+        onToggleMode={() => onToggleMode('header')}
       />
 
       <View style={styles.weekdayHeader}>
@@ -328,7 +429,21 @@ export default function StripCalendarShell() {
         ))}
       </View>
 
-      <View style={mode === 'weekly' ? styles.weeklyViewport : styles.monthlyViewport}>
+      <View
+        style={mode === 'weekly' ? styles.weeklyViewport : styles.monthlyViewport}
+        onLayout={(event) => {
+          if (!STRIP_CALENDAR_PERF_LOG_ENABLED) return;
+          const width = Math.round(event.nativeEvent.layout.width || 0);
+          const height = Math.round(event.nativeEvent.layout.height || 0);
+          const prev = viewportLayoutRef.current;
+          if (prev.mode === mode && prev.width === width && prev.height === height) return;
+          viewportLayoutRef.current = { mode, width, height };
+          console.log(
+            `[strip-calendar:ui-perf] shell viewport layout ` +
+              `mode=${mode} w=${width} h=${height} t=${formatMs(nowPerfMs())}ms`
+          );
+        }}
+      >
         {isNavigationReady && mode === 'weekly' ? (
           <WeeklyStripList
             weekStarts={weekStarts}
@@ -336,7 +451,6 @@ export default function StripCalendarShell() {
             todayDate={todayDate}
             currentDate={currentDate}
             language={language}
-            getSummaryByDate={getSummaryByDate}
             onDayPress={handleDayPress}
             onWeekSettled={onWeeklySettled}
             onSwipePrevWeek={onPrevWeek}
@@ -345,17 +459,18 @@ export default function StripCalendarShell() {
           />
         ) : null}
         {isNavigationReady && mode === 'monthly' ? (
-          <MonthlyStripList
-            weekStarts={weekStarts}
-            targetTopWeekStart={monthlyTargetWeekStart || monthlyTopWeekStart || anchorWeekStart || todayWeekStart || currentWeekStart}
-            todayDate={todayDate}
-            currentDate={currentDate}
-            language={language}
-            getSummaryByDate={getSummaryByDate}
-            onDayPress={handleDayPress}
-            onTopWeekSettled={onMonthlySettled}
-            scrollAnimated={scrollAnimated}
-          />
+          <Profiler id="StripCalendarMonthlySubtree" onRender={handleMonthlyReactProfilerRender}>
+            <MonthlyStripList
+              weekStarts={weekStarts}
+              targetTopWeekStart={monthlyTargetWeekStart || monthlyTopWeekStart || anchorWeekStart || todayWeekStart || currentWeekStart}
+              todayDate={todayDate}
+              currentDate={currentDate}
+              language={language}
+              onDayPress={handleDayPress}
+              onTopWeekSettled={onMonthlySettled}
+              scrollAnimated={scrollAnimated}
+            />
+          </Profiler>
         ) : null}
       </View>
 

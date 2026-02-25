@@ -4,6 +4,7 @@ import { deleteCategory as apiDeleteCategory } from '../../api/categories';
 import { deleteCategory as sqliteDeleteCategory } from '../../services/db/categoryService';
 import { addPendingChange } from '../../services/db/pendingService';
 import { ensureDatabase } from '../../services/db/database';
+import { invalidateAllScreenCaches } from '../../services/query-aggregation/cache';
 
 export const useDeleteCategory = () => {
     const queryClient = useQueryClient();
@@ -45,8 +46,10 @@ export const useDeleteCategory = () => {
             }
         },
         onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: ['categories'] });
-            queryClient.invalidateQueries({ queryKey: ['todos'] });
+            invalidateAllScreenCaches({
+                queryClient,
+                reason: 'category:delete',
+            });
         },
     });
 };

@@ -10,12 +10,6 @@ export function useStripCalendarController({ currentDate, setCurrentDate, todayD
   const monthlyTopWeekStart = useStripCalendarStore((state) => state.monthlyTopWeekStart);
   const showTodayJumpButton = useStripCalendarStore((state) => state.showTodayJumpButton);
 
-  const setMode = useStripCalendarStore((state) => state.setMode);
-  const setAnchorWeekStart = useStripCalendarStore((state) => state.setAnchorWeekStart);
-  const setWeeklyVisibleWeekStart = useStripCalendarStore((state) => state.setWeeklyVisibleWeekStart);
-  const setMonthlyTopWeekStart = useStripCalendarStore((state) => state.setMonthlyTopWeekStart);
-  const setShowTodayJumpButton = useStripCalendarStore((state) => state.setShowTodayJumpButton);
-
   const currentWeekStart = useMemo(
     () => toWeekStart(currentDate, startDayOfWeek),
     [currentDate, startDayOfWeek]
@@ -27,52 +21,46 @@ export function useStripCalendarController({ currentDate, setCurrentDate, todayD
   );
 
   useEffect(() => {
-    if (!anchorWeekStart) {
-      logStripCalendar('useStripCalendarController', 'init:setAnchorWeekStart', {
-        currentWeekStart,
-      });
-      setAnchorWeekStart(currentWeekStart);
-    }
+    // Batch init defaults in one store update to reduce nested updates on mount.
+    const patch = {};
+    if (!anchorWeekStart) patch.anchorWeekStart = currentWeekStart;
+    if (!weeklyVisibleWeekStart) patch.weeklyVisibleWeekStart = currentWeekStart;
+    if (!monthlyTopWeekStart) patch.monthlyTopWeekStart = currentWeekStart;
 
-    if (!weeklyVisibleWeekStart) {
-      logStripCalendar('useStripCalendarController', 'init:setWeeklyVisibleWeekStart', {
-        currentWeekStart,
-      });
-      setWeeklyVisibleWeekStart(currentWeekStart);
-    }
+    if (Object.keys(patch).length === 0) return;
 
-    if (!monthlyTopWeekStart) {
-      logStripCalendar('useStripCalendarController', 'init:setMonthlyTopWeekStart', {
-        currentWeekStart,
-      });
-      setMonthlyTopWeekStart(currentWeekStart);
-    }
+    logStripCalendar('useStripCalendarController', 'init:batchDefaults', {
+      currentWeekStart,
+      patch,
+    });
+    useStripCalendarStore.setState(patch);
   }, [
     anchorWeekStart,
     currentWeekStart,
     monthlyTopWeekStart,
-    setAnchorWeekStart,
-    setMonthlyTopWeekStart,
-    setWeeklyVisibleWeekStart,
     weeklyVisibleWeekStart,
   ]);
 
-  const evaluateTodayVisibility = useCallback(
+  const computeShowTodayJumpButton = useCallback(
     (nextMode, weeklyWeekStart, monthlyWeekStart) => {
       if (nextMode === 'weekly') {
-        setShowTodayJumpButton(todayWeekStart !== weeklyWeekStart);
-        return;
+        return todayWeekStart !== weeklyWeekStart;
       }
 
-      setShowTodayJumpButton(!isTodayVisibleInMonthlyViewport(monthlyWeekStart, todayDate));
+      return !isTodayVisibleInMonthlyViewport(monthlyWeekStart, todayDate);
     },
-    [setShowTodayJumpButton, todayDate, todayWeekStart]
+    [todayDate, todayWeekStart]
   );
 
   useEffect(() => {
     if (!weeklyVisibleWeekStart || !monthlyTopWeekStart) return;
-    evaluateTodayVisibility(mode, weeklyVisibleWeekStart, monthlyTopWeekStart);
-  }, [evaluateTodayVisibility, mode, monthlyTopWeekStart, weeklyVisibleWeekStart]);
+    const next = computeShowTodayJumpButton(mode, weeklyVisibleWeekStart, monthlyTopWeekStart);
+    // Avoid redundant store updates during toggle/settle where we already set the same value.
+    useStripCalendarStore.setState((state) => {
+      if (state.showTodayJumpButton === next) return state;
+      return { showTodayJumpButton: next };
+    });
+  }, [computeShowTodayJumpButton, mode, monthlyTopWeekStart, weeklyVisibleWeekStart]);
 
   const handleWeeklySettled = useCallback(
     (weekStart) => {
@@ -80,11 +68,23 @@ export function useStripCalendarController({ currentDate, setCurrentDate, todayD
         weekStart,
         monthlyTopWeekStart,
       });
-      setWeeklyVisibleWeekStart(weekStart);
-      setAnchorWeekStart(weekStart);
-      evaluateTodayVisibility('weekly', weekStart, monthlyTopWeekStart || weekStart);
+      const nextShowToday = computeShowTodayJumpButton('weekly', weekStart, monthlyTopWeekStart || weekStart);
+      useStripCalendarStore.setState((state) => {
+        if (
+          state.weeklyVisibleWeekStart === weekStart &&
+          state.anchorWeekStart === weekStart &&
+          state.showTodayJumpButton === nextShowToday
+        ) {
+          return state;
+        }
+        return {
+          weeklyVisibleWeekStart: weekStart,
+          anchorWeekStart: weekStart,
+          showTodayJumpButton: nextShowToday,
+        };
+      });
     },
-    [evaluateTodayVisibility, monthlyTopWeekStart, setAnchorWeekStart, setWeeklyVisibleWeekStart]
+    [computeShowTodayJumpButton, monthlyTopWeekStart]
   );
 
   const handleMonthlySettled = useCallback(
@@ -93,11 +93,23 @@ export function useStripCalendarController({ currentDate, setCurrentDate, todayD
         topWeekStart,
         weeklyVisibleWeekStart,
       });
-      setMonthlyTopWeekStart(topWeekStart);
-      setAnchorWeekStart(topWeekStart);
-      evaluateTodayVisibility('monthly', weeklyVisibleWeekStart || topWeekStart, topWeekStart);
+      const nextShowToday = computeShowTodayJumpButton('monthly', weeklyVisibleWeekStart || topWeekStart, topWeekStart);
+      useStripCalendarStore.setState((state) => {
+        if (
+          state.monthlyTopWeekStart === topWeekStart &&
+          state.anchorWeekStart === topWeekStart &&
+          state.showTodayJumpButton === nextShowToday
+        ) {
+          return state;
+        }
+        return {
+          monthlyTopWeekStart: topWeekStart,
+          anchorWeekStart: topWeekStart,
+          showTodayJumpButton: nextShowToday,
+        };
+      });
     },
-    [evaluateTodayVisibility, setAnchorWeekStart, setMonthlyTopWeekStart, weeklyVisibleWeekStart]
+    [computeShowTodayJumpButton, weeklyVisibleWeekStart]
   );
 
   const handleToggleMode = useCallback((options = {}) => {
@@ -121,10 +133,23 @@ export function useStripCalendarController({ currentDate, setCurrentDate, todayD
       logStripCalendar('useStripCalendarController', 'action:handleToggleMode:toMonthly', {
         nextTop,
       });
-      setMonthlyTopWeekStart(nextTop);
-      setAnchorWeekStart(nextTop);
-      setMode('monthly');
-      evaluateTodayVisibility('monthly', weeklyVisibleWeekStart || nextTop, nextTop);
+      const nextShowToday = computeShowTodayJumpButton('monthly', weeklyVisibleWeekStart || nextTop, nextTop);
+      useStripCalendarStore.setState((state) => {
+        if (
+          state.mode === 'monthly' &&
+          state.monthlyTopWeekStart === nextTop &&
+          state.anchorWeekStart === nextTop &&
+          state.showTodayJumpButton === nextShowToday
+        ) {
+          return state;
+        }
+        return {
+          monthlyTopWeekStart: nextTop,
+          anchorWeekStart: nextTop,
+          mode: 'monthly',
+          showTodayJumpButton: nextShowToday,
+        };
+      });
       return;
     }
 
@@ -144,21 +169,30 @@ export function useStripCalendarController({ currentDate, setCurrentDate, todayD
       isCurrentDateVisibleFromTop,
       nextWeek,
     });
-    setWeeklyVisibleWeekStart(nextWeek);
-    setAnchorWeekStart(nextWeek);
-    setMode('weekly');
-    evaluateTodayVisibility('weekly', nextWeek, monthlyTopWeekStart || nextWeek);
+    const nextShowToday = computeShowTodayJumpButton('weekly', nextWeek, monthlyTopWeekStart || nextWeek);
+    useStripCalendarStore.setState((state) => {
+      if (
+        state.mode === 'weekly' &&
+        state.weeklyVisibleWeekStart === nextWeek &&
+        state.anchorWeekStart === nextWeek &&
+        state.showTodayJumpButton === nextShowToday
+      ) {
+        return state;
+      }
+      return {
+        weeklyVisibleWeekStart: nextWeek,
+        anchorWeekStart: nextWeek,
+        mode: 'weekly',
+        showTodayJumpButton: nextShowToday,
+      };
+    });
   }, [
     anchorWeekStart,
     currentDate,
     currentWeekStart,
-    evaluateTodayVisibility,
+    computeShowTodayJumpButton,
     mode,
     monthlyTopWeekStart,
-    setAnchorWeekStart,
-    setMode,
-    setMonthlyTopWeekStart,
-    setWeeklyVisibleWeekStart,
     weeklyVisibleWeekStart,
   ]);
 
@@ -183,30 +217,51 @@ export function useStripCalendarController({ currentDate, setCurrentDate, todayD
     setCurrentDate(todayDate);
 
     if (mode === 'weekly') {
-      setWeeklyVisibleWeekStart(todayWeekStart);
-      setAnchorWeekStart(todayWeekStart);
-      evaluateTodayVisibility('weekly', todayWeekStart, monthlyTopWeekStart || todayWeekStart);
+      const nextShowToday = computeShowTodayJumpButton('weekly', todayWeekStart, monthlyTopWeekStart || todayWeekStart);
+      useStripCalendarStore.setState((state) => {
+        if (
+          state.weeklyVisibleWeekStart === todayWeekStart &&
+          state.anchorWeekStart === todayWeekStart &&
+          state.showTodayJumpButton === nextShowToday
+        ) {
+          return state;
+        }
+        return {
+          weeklyVisibleWeekStart: todayWeekStart,
+          anchorWeekStart: todayWeekStart,
+          showTodayJumpButton: nextShowToday,
+        };
+      });
       logStripCalendar('useStripCalendarController', 'action:handleTodayJump:weeklyDone', {
         todayWeekStart,
       });
       return todayWeekStart;
     }
 
-    setMonthlyTopWeekStart(todayWeekStart);
-    setAnchorWeekStart(todayWeekStart);
-    evaluateTodayVisibility('monthly', weeklyVisibleWeekStart || todayWeekStart, todayWeekStart);
+    const nextShowToday = computeShowTodayJumpButton('monthly', weeklyVisibleWeekStart || todayWeekStart, todayWeekStart);
+    useStripCalendarStore.setState((state) => {
+      if (
+        state.monthlyTopWeekStart === todayWeekStart &&
+        state.anchorWeekStart === todayWeekStart &&
+        state.showTodayJumpButton === nextShowToday
+      ) {
+        return state;
+      }
+      return {
+        monthlyTopWeekStart: todayWeekStart,
+        anchorWeekStart: todayWeekStart,
+        showTodayJumpButton: nextShowToday,
+      };
+    });
     logStripCalendar('useStripCalendarController', 'action:handleTodayJump:monthlyDone', {
       todayWeekStart,
     });
     return todayWeekStart;
   }, [
-    evaluateTodayVisibility,
+    computeShowTodayJumpButton,
     mode,
     monthlyTopWeekStart,
-    setAnchorWeekStart,
     setCurrentDate,
-    setMonthlyTopWeekStart,
-    setWeeklyVisibleWeekStart,
     todayDate,
     todayWeekStart,
     weeklyVisibleWeekStart,
@@ -223,7 +278,5 @@ export function useStripCalendarController({ currentDate, setCurrentDate, todayD
     handleMonthlySettled,
     handleDayPress,
     handleTodayJump,
-    setWeeklyVisibleWeekStart,
-    setMonthlyTopWeekStart,
   };
 }

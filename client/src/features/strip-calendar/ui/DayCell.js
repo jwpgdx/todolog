@@ -1,15 +1,27 @@
 import React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { useStripCalendarStore } from '../store/stripCalendarStore';
 
-function DayCell({ day, summary, onPress }) {
-  const dotColors = summary.uniqueCategoryColors.slice(0, 3);
-  const overflow = summary.dotCount > 3;
+const EMPTY_SUMMARY = Object.freeze({
+  date: null,
+  hasTodo: false,
+  uniqueCategoryColors: [],
+  dotCount: 0,
+  maxDots: 3,
+  overflowCount: 0,
+});
+
+function DayCell({ day, onPress }) {
+  const date = day?.date || null;
+  const summary = useStripCalendarStore((state) => state.summariesByDate?.[date]) || EMPTY_SUMMARY;
+  const dotColors = (summary.uniqueCategoryColors || EMPTY_SUMMARY.uniqueCategoryColors).slice(0, 3);
+  const overflow = (summary.dotCount || 0) > 3;
   const isEvenMonth = (day.month + 1) % 2 === 0;
 
   return (
     <Pressable
       style={[styles.cell, isEvenMonth ? styles.evenMonthCell : styles.oddMonthCell]}
-      onPress={() => onPress(day.date)}
+      onPress={() => onPress(date)}
     >
       {day.monthLabel ? <Text style={styles.monthLabel}>{day.monthLabel}</Text> : <View style={styles.monthPlaceholder} />}
 
