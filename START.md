@@ -57,13 +57,37 @@ ipconfig getifaddr en0
 .env 수정할것.
 
 1. 그냥 실행
-npx expo start --dev-client -c
+cd client
+npm run dev
+(= npx expo start --dev-client -c)
 
 2. 네이티브 포함 실행
+cd client
 npx expo run:ios --device
 npx expo run:android --device
 
 결론: 평소엔 1번으로 개발하다가, 뭐 새로 설치하면 2번 돌리세요!
+
+## 웹 자동 E2E (Playwright)
+
+1. 의존성 설치
+```bash
+cd client
+npm install
+npm run e2e:web:install
+```
+
+2. 웹 스모크 테스트 실행
+```bash
+cd client
+npm run e2e:web
+```
+
+3. 디버깅 모드 실행(선택)
+```bash
+cd client
+npm run e2e:web:headed
+```
 
 ## 접속 주소
 - 웹 앱: http://localhost:8081

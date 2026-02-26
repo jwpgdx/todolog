@@ -43,10 +43,18 @@ function getMonthlyRange(topWeekStart, policy = 'three_month') {
     };
   }
 
-  const monthAnchor = dayjs(topWeekStart);
+  const monthStart = dayjs(topWeekStart).startOf('month');
+  const window =
+    policy === 'six_month'
+      ? { beforeMonths: 2, afterMonths: 3 } // past 2 + current + future 3
+      : { beforeMonths: 1, afterMonths: 1 }; // past 1 + current + future 1
   return {
-    startDate: monthAnchor.startOf('month').subtract(1, 'month').format('YYYY-MM-DD'),
-    endDate: monthAnchor.endOf('month').add(1, 'month').format('YYYY-MM-DD'),
+    startDate: monthStart.subtract(window.beforeMonths, 'month').format('YYYY-MM-DD'),
+    // Inclusive end date: last day of (anchorMonth + afterMonths).
+    endDate: monthStart
+      .add(window.afterMonths + 1, 'month')
+      .subtract(1, 'day')
+      .format('YYYY-MM-DD'),
   };
 }
 
@@ -83,7 +91,9 @@ export function useStripCalendarDataRange({
   monthlyTargetWeekStart,
 }) {
   const monthlyRangePolicy = useStripCalendarStore((state) => state.monthlyRangePolicy);
+  const dirtySeq = useStripCalendarStore((state) => state.dirtySeq);
   const lastRetentionMonthRef = useRef(null);
+  const refreshDirtyInFlightRef = useRef(false);
 
   const activeRange = useMemo(() => {
     if (mode === 'weekly' && weeklyVisibleWeekStart) {
@@ -198,7 +208,7 @@ export function useStripCalendarDataRange({
     if (STRIP_CALENDAR_PERF_LOG_ENABLED) {
       console.log(
         `[strip-calendar:timeline] ensure request mode=${mode} ` +
-          `range=${activeRange.startDate}~${activeRange.endDate} trace=${traceId} t=${formatMs(nowPerfMs())}ms`
+        `range=${activeRange.startDate}~${activeRange.endDate} trace=${traceId} t=${formatMs(nowPerfMs())}ms`
       );
     }
 
@@ -217,11 +227,11 @@ export function useStripCalendarDataRange({
         if (STRIP_CALENDAR_PERF_LOG_ENABLED) {
           console.log(
             `[strip-calendar:state] reason=${mode}:settled ` +
-              `range=${activeRange.startDate}~${activeRange.endDate} ` +
-              `cacheHit=${result?.cacheHit ? 'Y' : 'N'} covered=${snapshot.covered ? 'Y' : 'N'} ` +
-              `loadedRanges=${snapshot.loadedRangesCount} storedDays=${snapshot.storedDayCount} ` +
-              `todoDays=${snapshot.storedHasTodoDays} dotDays=${snapshot.storedDotDays} dotTotal=${snapshot.storedDotTotal} ` +
-              `trace=${result?.traceId || 'none'}`
+            `range=${activeRange.startDate}~${activeRange.endDate} ` +
+            `cacheHit=${result?.cacheHit ? 'Y' : 'N'} covered=${snapshot.covered ? 'Y' : 'N'} ` +
+            `loadedRanges=${snapshot.loadedRangesCount} storedDays=${snapshot.storedDayCount} ` +
+            `todoDays=${snapshot.storedHasTodoDays} dotDays=${snapshot.storedDotDays} dotTotal=${snapshot.storedDotTotal} ` +
+            `trace=${result?.traceId || 'none'}`
           );
         }
 
@@ -240,6 +250,101 @@ export function useStripCalendarDataRange({
         console.warn('[strip-calendar] ensureRangeLoaded failed:', error?.message || error);
       });
   }, [activeRange, mode, monthlyRangePolicy]);
+
+  useEffect(() => {
+    if (!activeRange) return;
+    if (!ENABLE_STRIP_CALENDAR_SUMMARY) return;
+    if (refreshDirtyInFlightRef.current) return;
+
+    const initialDirty = useStripCalendarStore.getState().dirtyRanges;
+    if (!Array.isArray(initialDirty) || initialDirty.length === 0) return;
+
+    refreshDirtyInFlightRef.current = true;
+    (async () => {
+      while (true) {
+        const snapshot = useStripCalendarStore.getState();
+        const currentDirty = snapshot.dirtyRanges || [];
+        const seqBefore = snapshot.dirtySeq;
+
+        if (!Array.isArray(currentDirty) || currentDirty.length === 0) {
+          return;
+        }
+
+        const overlaps = [];
+        for (const dirty of currentDirty) {
+          if (!dirty?.startDate || !dirty?.endDate) continue;
+          const overlapStart = dirty.startDate > activeRange.startDate ? dirty.startDate : activeRange.startDate;
+          const overlapEnd = dirty.endDate < activeRange.endDate ? dirty.endDate : activeRange.endDate;
+          if (overlapStart <= overlapEnd) {
+            overlaps.push({ startDate: overlapStart, endDate: overlapEnd });
+          }
+        }
+        if (overlaps.length === 0) {
+          return;
+        }
+
+        // Merge overlaps (adjacent or overlapping) so we do fewer ensure calls.
+        overlaps.sort((a, b) => a.startDate.localeCompare(b.startDate));
+        const merged = [];
+        for (const range of overlaps) {
+          if (merged.length === 0) {
+            merged.push({ ...range });
+            continue;
+          }
+          const last = merged[merged.length - 1];
+          const adjacentOrOverlap = range.startDate <= addDays(last.endDate, 1);
+          if (adjacentOrOverlap) {
+            if (range.endDate > last.endDate) last.endDate = range.endDate;
+          } else {
+            merged.push({ ...range });
+          }
+        }
+
+        logStripCalendar('useStripCalendarDataRange', 'range:dirty:refresh:start', {
+          mode,
+          monthlyRangePolicy,
+          activeStart: activeRange.startDate,
+          activeEnd: activeRange.endDate,
+          dirtyCount: currentDirty.length,
+          overlaps: merged.map((r) => `${r.startDate}~${r.endDate}`),
+        });
+
+        for (const range of merged) {
+          await ensureRangeLoaded({
+            startDate: range.startDate,
+            endDate: range.endDate,
+            reason: `${mode}:dirty-refresh`,
+          });
+        }
+
+        const seqAfter = useStripCalendarStore.getState().dirtySeq;
+        if (seqAfter !== seqBefore) {
+          // New invalidation happened during refresh; retry from the latest dirty ranges.
+          continue;
+        }
+
+        // Remove only the part we refreshed; keep other dirty ranges for later scroll.
+        useStripCalendarStore.getState().consumeDirtyRanges(merged);
+
+        logStripCalendar('useStripCalendarDataRange', 'range:dirty:refresh:done', {
+          mode,
+          monthlyRangePolicy,
+          refreshed: merged.map((r) => `${r.startDate}~${r.endDate}`),
+        });
+      }
+    })()
+      .catch((error) => {
+        console.warn('[strip-calendar] dirty refresh failed:', error?.message || error);
+      })
+      .finally(() => {
+        refreshDirtyInFlightRef.current = false;
+      });
+  }, [
+    activeRange,
+    dirtySeq,
+    mode,
+    monthlyRangePolicy,
+  ]);
 
   useEffect(() => {
     if (!prefetchRange) return;

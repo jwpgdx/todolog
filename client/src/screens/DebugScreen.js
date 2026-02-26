@@ -319,6 +319,11 @@ export default function DebugScreen({ navigation }) {
     addLog('⚙️ Strip 월간 정책 변경: three_month (월 기준 -1M ~ +1M)');
   };
 
+  const setStripMonthlyPolicySixMonth = () => {
+    useStripCalendarStore.getState().setMonthlyRangePolicy('six_month');
+    addLog('⚙️ Strip 월간 정책 변경: six_month (월 기준 -2M ~ +3M)');
+  };
+
   const printStripMonthlyPolicy = () => {
     const policy = useStripCalendarStore.getState().monthlyRangePolicy;
     addLog(`ℹ️ Strip 월간 정책 현재값: ${policy}`);
@@ -331,9 +336,16 @@ export default function DebugScreen({ navigation }) {
         endDate: dayjs(anchorDate).add(48, 'day').format('YYYY-MM-DD'),
       };
     }
+    const monthStart = dayjs(anchorDate).startOf('month');
+    if (policy === 'six_month') {
+      return {
+        startDate: monthStart.subtract(2, 'month').format('YYYY-MM-DD'),
+        endDate: monthStart.add(3, 'month').endOf('month').format('YYYY-MM-DD'),
+      };
+    }
     return {
-      startDate: dayjs(anchorDate).startOf('month').subtract(1, 'month').format('YYYY-MM-DD'),
-      endDate: dayjs(anchorDate).endOf('month').add(1, 'month').format('YYYY-MM-DD'),
+      startDate: monthStart.subtract(1, 'month').format('YYYY-MM-DD'),
+      endDate: monthStart.add(1, 'month').endOf('month').format('YYYY-MM-DD'),
     };
   };
 
@@ -387,6 +399,7 @@ export default function DebugScreen({ navigation }) {
     try {
       const legacy = await benchmarkPolicy('legacy_9week');
       const threeMonth = await benchmarkPolicy('three_month');
+      const sixMonth = await benchmarkPolicy('six_month');
 
       const elapsedImprovement =
         legacy.elapsedMs > 0 ? ((legacy.elapsedMs - threeMonth.elapsedMs) / legacy.elapsedMs) * 100 : 0;
@@ -399,8 +412,18 @@ export default function DebugScreen({ navigation }) {
       addLog(
         `three_month: elapsed=${threeMonth.elapsedMs}ms, missΔ=${threeMonth.missDelta}, hitΔ=${threeMonth.hitDelta}, loadsΔ=${threeMonth.loadsDelta}`
       );
+      addLog(
+        `six_month: elapsed=${sixMonth.elapsedMs}ms, missΔ=${sixMonth.missDelta}, hitΔ=${sixMonth.hitDelta}, loadsΔ=${sixMonth.loadsDelta}`
+      );
       addLog(`improvement(elapsed)=${elapsedImprovement.toFixed(1)}%`);
       addLog(`improvement(miss)=${missImprovement.toFixed(1)}%`);
+
+      const sixVsThreeElapsed =
+        threeMonth.elapsedMs > 0 ? ((sixMonth.elapsedMs - threeMonth.elapsedMs) / threeMonth.elapsedMs) * 100 : 0;
+      const sixVsThreeMiss =
+        threeMonth.missDelta > 0 ? ((sixMonth.missDelta - threeMonth.missDelta) / threeMonth.missDelta) * 100 : 0;
+      addLog(`six_month vs three_month(elapsed)=${sixVsThreeElapsed.toFixed(1)}%`);
+      addLog(`six_month vs three_month(miss)=${sixVsThreeMiss.toFixed(1)}%`);
 
       if (elapsedImprovement >= 30 || missImprovement >= 30) {
         addLog('✅ PASS [option-a-benchmark]: 30%+ 개선 충족');
@@ -957,7 +980,7 @@ export default function DebugScreen({ navigation }) {
 
   const runCandidateExplainProbe = async () => {
     const rangeStart = dayjs(selectedDate).startOf('month').subtract(1, 'month').format('YYYY-MM-DD');
-    const rangeEnd = dayjs(selectedDate).endOf('month').add(1, 'month').format('YYYY-MM-DD');
+    const rangeEnd = dayjs(selectedDate).add(1, 'month').endOf('month').format('YYYY-MM-DD');
     const syncStatus = { isSyncing, error: syncError, lastSyncTime };
 
     addLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
@@ -1000,7 +1023,7 @@ export default function DebugScreen({ navigation }) {
 
   const buildPerfProbeRange = (anchorDate) => ({
     startDate: dayjs(anchorDate).startOf('month').subtract(1, 'month').format('YYYY-MM-DD'),
-    endDate: dayjs(anchorDate).endOf('month').add(1, 'month').format('YYYY-MM-DD'),
+    endDate: dayjs(anchorDate).add(1, 'month').endOf('month').format('YYYY-MM-DD'),
   });
 
   const getRecurrenceText = (rawRecurrence) => {
@@ -2305,6 +2328,13 @@ export default function DebugScreen({ navigation }) {
           onPress={setStripMonthlyPolicyThreeMonth}
         >
           <Text style={styles.buttonText}>⚙️ Strip 월간 정책: 3개월</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.button, styles.actionButton]}
+          onPress={setStripMonthlyPolicySixMonth}
+        >
+          <Text style={styles.buttonText}>⚙️ Strip 월간 정책: 6개월</Text>
         </TouchableOpacity>
 
         <TouchableOpacity

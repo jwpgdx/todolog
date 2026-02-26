@@ -36,6 +36,10 @@ export const useStripCalendarStore = create((set, get) => ({
   showTodayJumpButton: false,
   summariesByDate: {},
   loadedRanges: [],
+  // Ranges that were invalidated by CRUD but not yet re-fetched for the current viewport.
+  // This is used to trigger targeted refresh without forcing a full-range reload.
+  dirtyRanges: [],
+  dirtySeq: 0,
 
   setMode: (mode) => set({ mode }),
   setAnchorWeekStart: (anchorWeekStart) => set({ anchorWeekStart }),
@@ -43,7 +47,12 @@ export const useStripCalendarStore = create((set, get) => ({
   setMonthlyTopWeekStart: (monthlyTopWeekStart) => set({ monthlyTopWeekStart }),
   setMonthlyRangePolicy: (monthlyRangePolicy) =>
     set({
-      monthlyRangePolicy: monthlyRangePolicy === 'legacy_9week' ? 'legacy_9week' : 'three_month',
+      monthlyRangePolicy:
+        monthlyRangePolicy === 'legacy_9week'
+          ? 'legacy_9week'
+          : monthlyRangePolicy === 'six_month'
+            ? 'six_month'
+            : 'three_month',
     }),
   setShowTodayJumpButton: (showTodayJumpButton) => set({ showTodayJumpButton }),
 
@@ -59,7 +68,60 @@ export const useStripCalendarStore = create((set, get) => ({
 
   hasRangeCoverage: (startDate, endDate) => isCovered(get().loadedRanges, startDate, endDate),
 
-  clearRangeCache: () => set({ loadedRanges: [], summariesByDate: {} }),
+  clearRangeCache: () => set({ loadedRanges: [], summariesByDate: {}, dirtyRanges: [], dirtySeq: 0 }),
+
+  addDirtyRanges: (ranges = []) => {
+    if (!Array.isArray(ranges) || ranges.length === 0) return;
+    set((state) => ({
+      dirtyRanges: mergeRanges([...state.dirtyRanges, ...ranges]),
+    }));
+  },
+
+  consumeDirtyRanges: (ranges = []) => {
+    if (!Array.isArray(ranges) || ranges.length === 0) return;
+    set((state) => {
+      let remaining = [...state.dirtyRanges];
+      const normalized = mergeRanges(ranges);
+
+      for (const remove of normalized) {
+        const next = [];
+        for (const source of remaining) {
+          const overlap = !(remove.endDate < source.startDate || remove.startDate > source.endDate);
+          if (!overlap) {
+            next.push(source);
+            continue;
+          }
+
+          if (source.startDate < remove.startDate) {
+            const leftEnd = dayjs(remove.startDate).subtract(1, 'day').format('YYYY-MM-DD');
+            if (source.startDate <= leftEnd) {
+              next.push({ startDate: source.startDate, endDate: leftEnd });
+            }
+          }
+
+          if (source.endDate > remove.endDate) {
+            const rightStart = dayjs(remove.endDate).add(1, 'day').format('YYYY-MM-DD');
+            if (rightStart <= source.endDate) {
+              next.push({ startDate: rightStart, endDate: source.endDate });
+            }
+          }
+        }
+        remaining = next;
+      }
+
+      const merged = mergeRanges(remaining);
+      if (merged.length === state.dirtyRanges.length &&
+        state.dirtyRanges.every((r, i) => {
+          const next = merged[i];
+          return next && r.startDate === next.startDate && r.endDate === next.endDate;
+        })
+      ) {
+        return state;
+      }
+
+      return { dirtyRanges: merged };
+    });
+  },
 
   /**
    * Retention helper: keep only summaries/loadedRanges within [startDate, endDate].

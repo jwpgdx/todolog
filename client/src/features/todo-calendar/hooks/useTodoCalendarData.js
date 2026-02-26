@@ -11,7 +11,7 @@
  * Validates: Requirements 6.1, 6.2, 6.3, 6.4, 6.5, 6.6, 6.7
  */
 
-import { useCallback, useRef } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import { useTodoCalendarStore } from '../store/todoCalendarStore';
 import { fetchCalendarDataForMonths } from '../services/calendarTodoService';
 import { createMonthMetadata } from '../utils/calendarHelpers';
@@ -74,9 +74,13 @@ export function useTodoCalendarData(startDayOfWeek = 0) {
   const inFlightMetaRef = useRef(null);
   const skippedWhileFetchingRef = useRef(0);
   const lastRetentionMonthRef = useRef(null);
+  const isDrainingRef = useRef(false);
+  const pendingVisibleRef = useRef(null);
+  const pendingTriggerRef = useRef(null);
   const hasMonth = useTodoCalendarStore(state => state.hasMonth);
   const setBatchMonthData = useTodoCalendarStore(state => state.setBatchMonthData);
   const pruneToMonthWindow = useTodoCalendarStore(state => state.pruneToMonthWindow);
+  const invalidationSeq = useTodoCalendarStore(state => state.invalidationSeq);
 
   const formatMs = (value) => Number((value || 0).toFixed(2));
 
@@ -100,7 +104,7 @@ export function useTodoCalendarData(startDayOfWeek = 0) {
    * 
    * Validates: Requirements 6.1, 6.2, 6.3, 6.4, 6.5, 6.6, 6.7
    */
-  const fetchUncachedMonths = useCallback(async (viewableItems) => {
+  const fetchUncachedMonths = useCallback(async (viewableItems, { trigger = 'unknown' } = {}) => {
     if (viewableItems.length === 0) return;
 
     // Retention policy (Option A): keep only around the current visible month (±6 months).
@@ -108,23 +112,6 @@ export function useTodoCalendarData(startDayOfWeek = 0) {
     const anchorMonthMeta = viewableItems[0]?.item || null;
     if (anchorMonthMeta?.id) {
       maybePruneRetention(anchorMonthMeta);
-    }
-
-    if (isFetchingRef.current) {
-      skippedWhileFetchingRef.current += 1;
-      const inFlight = inFlightMetaRef.current;
-      const inFlightElapsedMs = inFlight?.startedAtMs != null
-        ? (performance.now() - inFlight.startedAtMs).toFixed(2)
-        : 'n/a';
-      console.log(
-        `[useTodoCalendarData] Already fetching, skipping... ` +
-          `incoming=${describeVisibleRange(viewableItems)} ` +
-          `inFlightVisible=${inFlight?.visibleRange || 'unknown'} ` +
-          `inFlightMonths=${inFlight?.monthIds?.join(', ') || 'none'} ` +
-          `inFlightElapsed=${inFlightElapsedMs}ms ` +
-          `skippedCount=${skippedWhileFetchingRef.current}`
-      );
-      return;
     }
 
     // 1. Calculate visible month range
@@ -135,6 +122,7 @@ export function useTodoCalendarData(startDayOfWeek = 0) {
 
     console.log(
       `[useTodoCalendarData] Visible months: ${firstVisible.id} ~ ${lastVisible.id} ` +
+      `(trigger=${trigger}) ` +
       `(${formatMs(performance.now() - visibleStartedAt)}ms)`
     );
 
@@ -208,7 +196,7 @@ export function useTodoCalendarData(startDayOfWeek = 0) {
       };
       console.log(
         `[useTodoCalendarData:trace] trace=${traceId} ` +
-        `start visible=${firstVisible.id}~${lastVisible.id} ` +
+        `trigger=${trigger} start visible=${firstVisible.id}~${lastVisible.id} ` +
         `months=${targetMonths.length}`
       );
       const { todosMap, completionsMap } = await fetchCalendarDataForMonths(
@@ -237,17 +225,70 @@ export function useTodoCalendarData(startDayOfWeek = 0) {
       console.error('[useTodoCalendarData] Batch fetch failed:', error);
     } finally {
       isFetchingRef.current = false;
-      const skipped = skippedWhileFetchingRef.current;
-      if (skipped > 0) {
-        console.log(
-          `[useTodoCalendarData] Fetch finished with skipped incoming updates: ${skipped} ` +
-            `(consider queueing latest visible range)`
-        );
-      }
-      skippedWhileFetchingRef.current = 0;
       inFlightMetaRef.current = null;
     }
   }, [startDayOfWeek, hasMonth, maybePruneRetention, setBatchMonthData]);
+
+  const requestFetch = useCallback((viewableItems, { trigger = 'unknown' } = {}) => {
+    if (!Array.isArray(viewableItems) || viewableItems.length === 0) return;
+
+    // Keep last visible around for future invalidation/focus triggers.
+    lastVisibleRef.current = viewableItems;
+
+    // Retention policy should apply even when we are currently fetching.
+    const anchorMonthMeta = viewableItems[0]?.item || null;
+    if (anchorMonthMeta?.id) {
+      maybePruneRetention(anchorMonthMeta);
+    }
+
+    // Keep only the latest request; older ones are obsolete once a newer visible range arrives.
+    pendingVisibleRef.current = viewableItems;
+    pendingTriggerRef.current = trigger;
+
+    if (isDrainingRef.current) {
+      skippedWhileFetchingRef.current += 1;
+      const inFlight = inFlightMetaRef.current;
+      const inFlightElapsedMs = inFlight?.startedAtMs != null
+        ? (performance.now() - inFlight.startedAtMs).toFixed(2)
+        : 'n/a';
+      console.log(
+        `[useTodoCalendarData] Queued while fetching trigger=${trigger} ` +
+          `incoming=${describeVisibleRange(viewableItems)} ` +
+          `inFlightVisible=${inFlight?.visibleRange || 'unknown'} ` +
+          `inFlightMonths=${inFlight?.monthIds?.join(', ') || 'none'} ` +
+          `inFlightElapsed=${inFlightElapsedMs}ms ` +
+          `queuedCount=${skippedWhileFetchingRef.current}`
+      );
+      return;
+    }
+
+    isDrainingRef.current = true;
+    skippedWhileFetchingRef.current = 0;
+
+    (async () => {
+      try {
+        // Drain in a single loop so we never miss invalidations/visible changes while in-flight.
+        while (pendingVisibleRef.current && pendingVisibleRef.current.length > 0) {
+          const nextItems = pendingVisibleRef.current;
+          const nextTrigger = pendingTriggerRef.current || 'unknown';
+          pendingVisibleRef.current = null;
+          pendingTriggerRef.current = null;
+          await fetchUncachedMonths(nextItems, { trigger: nextTrigger });
+        }
+      } finally {
+        isDrainingRef.current = false;
+        skippedWhileFetchingRef.current = 0;
+      }
+    })();
+  }, [fetchUncachedMonths, maybePruneRetention]);
+
+  // Trigger a refetch when month caches are invalidated by Todo CRUD.
+  // This removes "stale until focus/scroll" gaps for in-place CRUD flows (modal, inline edit, etc).
+  useEffect(() => {
+    if (invalidationSeq <= 0) return;
+    if (lastVisibleRef.current.length === 0) return;
+    requestFetch(lastVisibleRef.current, { trigger: `invalidation:${invalidationSeq}` });
+  }, [invalidationSeq, requestFetch]);
 
   /**
    * Callback for CalendarList's onViewableItemsChanged
@@ -255,10 +296,9 @@ export function useTodoCalendarData(startDayOfWeek = 0) {
    * 
    * Validates: Requirements 6.1, 6.2, 6.3, 6.4, 6.5, 6.6, 6.7
    */
-  const onVisibleMonthsChange = useCallback(async (viewableItems) => {
-    lastVisibleRef.current = viewableItems; // Store for refetchInvalidated
-    await fetchUncachedMonths(viewableItems);
-  }, [fetchUncachedMonths]);
+  const onVisibleMonthsChange = useCallback((viewableItems) => {
+    requestFetch(viewableItems, { trigger: 'viewability' });
+  }, [requestFetch]);
 
   /**
    * Refetch invalidated months on screen focus
@@ -267,11 +307,11 @@ export function useTodoCalendarData(startDayOfWeek = 0) {
    * 
    * Called by CalendarList's useFocusEffect
    */
-  const refetchInvalidated = useCallback(async () => {
+  const refetchInvalidated = useCallback(() => {
     if (lastVisibleRef.current.length === 0) return;
     console.log('[useTodoCalendarData] Refetching invalidated months on focus...');
-    await fetchUncachedMonths(lastVisibleRef.current);
-  }, [fetchUncachedMonths]);
+    requestFetch(lastVisibleRef.current, { trigger: 'focus' });
+  }, [requestFetch]);
 
   return { onVisibleMonthsChange, refetchInvalidated };
 }

@@ -3,6 +3,7 @@ import { fetchDaySummariesByRange, buildDefaultSummaryRange } from './stripCalen
 import { invalidateRangeCacheByDateRange } from '../../../services/query-aggregation/cache';
 import { STRIP_CALENDAR_PERF_LOG_ENABLED } from '../utils/stripCalendarConstants';
 import { addDays } from '../utils/stripCalendarDateUtils';
+import { mergeRanges, splitRangeByInvalidation } from '../../../services/query-aggregation/cache/rangeMerge';
 
 function nowMs() {
   if (typeof globalThis?.performance?.now === 'function') {
@@ -207,19 +208,29 @@ export function selectDaySummaries({ startDate, endDate }) {
 export function invalidateRanges(ranges = []) {
   if (!ranges.length) return;
 
+  const normalizedRanges = mergeRanges(ranges);
   const store = useStripCalendarStore.getState();
-  const nextLoadedRanges = store.loadedRanges.filter((loadedRange) => {
-    return !ranges.some((target) => {
-      const overlap = !(target.endDate < loadedRange.startDate || target.startDate > loadedRange.endDate);
-      return overlap;
-    });
-  });
+  const beforeLoadedRanges = store.loadedRanges || [];
+  let nextLoadedRanges = beforeLoadedRanges.map((r) => ({ ...r }));
+
+  // IMPORTANT:
+  // Do not drop a whole loaded range when a 1-day invalidation overlaps.
+  // Instead, keep coverage for unaffected days and create a "hole" for the invalidated subrange.
+  for (const invalid of normalizedRanges) {
+    const splitParts = [];
+    for (const loaded of nextLoadedRanges) {
+      const parts = splitRangeByInvalidation(loaded, invalid);
+      splitParts.push(...parts);
+    }
+    nextLoadedRanges = splitParts;
+  }
+  nextLoadedRanges = mergeRanges(nextLoadedRanges);
 
   const nextSummariesByDate = { ...store.summariesByDate };
   const summaryDates = Object.keys(nextSummariesByDate);
 
   summaryDates.forEach((date) => {
-    const shouldDelete = ranges.some((range) => date >= range.startDate && date <= range.endDate);
+    const shouldDelete = normalizedRanges.some((range) => date >= range.startDate && date <= range.endDate);
     if (shouldDelete) {
       delete nextSummariesByDate[date];
     }
@@ -228,9 +239,11 @@ export function invalidateRanges(ranges = []) {
   useStripCalendarStore.setState({
     loadedRanges: nextLoadedRanges,
     summariesByDate: nextSummariesByDate,
+    dirtyRanges: mergeRanges([...(store.dirtyRanges || []), ...normalizedRanges]),
+    dirtySeq: Number(store.dirtySeq || 0) + 1,
   });
 
-  ranges.forEach((range) => {
+  normalizedRanges.forEach((range) => {
     invalidateRangeCacheByDateRange({
       startDate: range.startDate,
       endDate: range.endDate,

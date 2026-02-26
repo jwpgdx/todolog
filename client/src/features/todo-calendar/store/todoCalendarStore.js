@@ -20,6 +20,7 @@ import { create } from 'zustand';
 export const useTodoCalendarStore = create((set, get) => ({
   todosByMonth: {},
   completionsByMonth: {},
+  invalidationSeq: 0,
 
   /**
    * Set Todo + Completion data for a single month
@@ -107,7 +108,11 @@ export const useTodoCalendarStore = create((set, get) => ({
       const updatedCompletions = { ...state.completionsByMonth };
       delete updatedTodos[monthId];
       delete updatedCompletions[monthId];
-      return { todosByMonth: updatedTodos, completionsByMonth: updatedCompletions };
+      return {
+        todosByMonth: updatedTodos,
+        completionsByMonth: updatedCompletions,
+        invalidationSeq: (state.invalidationSeq || 0) + 1,
+      };
     });
   },
 
@@ -148,7 +153,11 @@ export const useTodoCalendarStore = create((set, get) => ({
         delete updatedCompletions[id];
       });
 
-      return { todosByMonth: updatedTodos, completionsByMonth: updatedCompletions };
+      return {
+        todosByMonth: updatedTodos,
+        completionsByMonth: updatedCompletions,
+        invalidationSeq: (state.invalidationSeq || 0) + 1,
+      };
     });
 
     console.log(`[TodoCalendarStore] Invalidated adjacent months: ${idsToInvalidate.join(', ')}`);
