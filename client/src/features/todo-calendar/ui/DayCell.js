@@ -49,7 +49,7 @@ export default React.memo(DayCell);
 const styles = StyleSheet.create({
   cell: {
     width: SCREEN_WIDTH / 7,
-    height: 70,
+    height: 88,
     justifyContent: 'center',
     alignItems: 'center',
   },

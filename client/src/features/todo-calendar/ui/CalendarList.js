@@ -18,7 +18,7 @@ import MonthSection from './MonthSection';
  * - Fixed header showing current visible month (e.g., "2025년 5월")
  * - Fixed weekday header below month title
  * - Month titles visible in each MonthSection (for user convenience)
- * - Fixed height estimation (450px per month: 30px title + 420px weeks)
+ * - Fixed height estimation (558px per month: 30px title + 528px weeks)
  * - Bottom scroll: append 6 future months
  * - Top scroll: prepend 6 past months (via onViewableItemsChanged)
  * - maintainVisibleContentPosition: prevent screen jump on prepend
@@ -26,16 +26,16 @@ import MonthSection from './MonthSection';
  * 
  * Height Calculation (Apple Calendar style):
  * - TITLE_HEIGHT: 30px (month title)
- * - WEEK_ROW_HEIGHT: 70px (week row)
- * - MONTH_HEIGHT: 30 + (6 × 70) = 450px
+ * - WEEK_ROW_HEIGHT: 88px (week row)
+ * - MONTH_HEIGHT: 30 + (6 × 88) = 558px
  * 
  * Validates: Requirements 1.2, 1.3, 1.4, 3.4, 7.4
  */
 
 // Height constants (Apple Calendar style)
 const TITLE_HEIGHT = 30;
-const WEEK_ROW_HEIGHT = 70;
-const MONTH_HEIGHT = TITLE_HEIGHT + (6 * WEEK_ROW_HEIGHT); // 450px
+const WEEK_ROW_HEIGHT = 88;
+const MONTH_HEIGHT = TITLE_HEIGHT + (6 * WEEK_ROW_HEIGHT); // 558px
 
 export default function CalendarList() {
   const {

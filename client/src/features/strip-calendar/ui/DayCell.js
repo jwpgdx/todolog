@@ -53,8 +53,8 @@ const styles = StyleSheet.create({
   cell: {
     flex: 1,
     alignItems: 'center',
-    justifyContent: 'flex-start',
-    paddingTop: 3,
+    justifyContent: 'space-between',
+    paddingVertical: 2,
   },
   oddMonthCell: {
     backgroundColor: '#FFFFFF',
@@ -63,27 +63,26 @@ const styles = StyleSheet.create({
     backgroundColor: '#F8FAFC',
   },
   monthLabel: {
-    fontSize: 10,
+    fontSize: 9,
     color: '#6B7280',
-    lineHeight: 12,
-    minHeight: 12,
+    lineHeight: 10,
+    minHeight: 10,
   },
   monthPlaceholder: {
-    minHeight: 12,
+    minHeight: 10,
   },
   dateContainer: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: 2,
   },
   selectedDateContainer: {
     backgroundColor: '#2563EB',
   },
   dateText: {
-    fontSize: 15,
+    fontSize: 13,
     color: '#111827',
   },
   selectedDateText: {
@@ -93,22 +92,21 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   dotRow: {
-    minHeight: 10,
-    marginTop: 4,
+    minHeight: 8,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 2,
   },
   dot: {
-    width: 5,
-    height: 5,
-    borderRadius: 3,
+    width: 4,
+    height: 4,
+    borderRadius: 2,
   },
   overflowText: {
-    fontSize: 9,
+    fontSize: 8,
     fontWeight: '700',
     color: '#374151',
-    lineHeight: 10,
+    lineHeight: 8,
   },
 });

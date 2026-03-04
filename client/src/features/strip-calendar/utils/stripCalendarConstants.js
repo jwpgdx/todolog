@@ -5,7 +5,7 @@
  * - 여기 값들은 캘린더의 "기하(높이/개수/윈도우 범위)"를 결정한다.
  * - 튜닝값(보정 지연/임계값)과 다르게, 이 값들을 바꾸면 화면 구조 자체가 바뀐다.
  */
-export const WEEK_ROW_HEIGHT = 76;
+export const WEEK_ROW_HEIGHT = 48;
 export const MONTHLY_VISIBLE_WEEK_COUNT = 5;
 export const WEEK_WINDOW_BEFORE = 520;
 export const WEEK_WINDOW_AFTER = 520;

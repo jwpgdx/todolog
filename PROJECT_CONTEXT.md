@@ -350,6 +350,9 @@ Calendar module:
 - `client/src/features/todo-calendar/services/calendarTodoService.js`
 - `client/src/features/todo-calendar/store/todoCalendarStore.js`
 - `client/src/features/todo-calendar/ui/*`
+- UI geometry defaults:
+  - week row / day cell height: `88px` (see `CalendarList` + `DayCell`)
+  - month height estimation: `TITLE_HEIGHT + (6 * WEEK_ROW_HEIGHT)`
 
 Strip calendar module:
 
@@ -364,6 +367,8 @@ Strip calendar module:
 - `client/src/features/strip-calendar/utils/stripCalendarConstants.js`
 - `client/src/features/strip-calendar/utils/stripCalendarDebug.js`
 - `client/src/screens/StripCalendarTestScreen.js`
+- UI geometry defaults:
+  - `WEEK_ROW_HEIGHT = 48px` (weekly viewport: 1 row, monthly viewport: 5 rows)
 
 Todo form:
 
