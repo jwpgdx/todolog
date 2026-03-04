@@ -1,7 +1,7 @@
 import React, { useCallback, useRef, useState, useMemo } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { FlashList } from '@shopify/flash-list';
-import { useFocusEffect } from '@react-navigation/native';
+import { useFocusEffect, useIsFocused } from '@react-navigation/native';
 import { useInfiniteCalendar } from '../hooks/useInfiniteCalendar';
 import { useTodoCalendarData } from '../hooks/useTodoCalendarData';
 import { getWeekdayNames, formatMonthTitle } from '../utils/calendarHelpers';
@@ -38,6 +38,7 @@ const WEEK_ROW_HEIGHT = 88;
 const MONTH_HEIGHT = TITLE_HEIGHT + (6 * WEEK_ROW_HEIGHT); // 558px
 
 export default function CalendarList() {
+  const isFocused = useIsFocused();
   const {
     months,
     handleEndReached,
@@ -194,9 +195,9 @@ export default function CalendarList() {
         estimatedItemSize={MONTH_HEIGHT}
         drawDistance={960}
         initialScrollIndex={initialScrollIndex}
-        onEndReached={handleEndReached}
+        onEndReached={isFocused ? handleEndReached : undefined}
         onEndReachedThreshold={0.2}
-        onViewableItemsChanged={onViewableItemsChanged}
+        onViewableItemsChanged={isFocused ? onViewableItemsChanged : undefined}
         viewabilityConfig={viewabilityConfig}
         maintainVisibleContentPosition={{ minIndexForVisible: 0 }}
         onScrollToIndexFailed={onScrollToIndexFailed}

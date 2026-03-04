@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, TouchableOpacity, ScrollView } from 'react-native';
+import { View, Text, TouchableOpacity, ScrollView, Platform } from 'react-native';
 import { useAuthStore } from '../store/authStore';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -167,7 +167,14 @@ export default function ProfileScreen({ navigation }) {
 function MenuLink({ title, onPress, isLast }) {
   return (
     <TouchableOpacity
-      onPress={onPress}
+      onPress={() => {
+        // Web: avoid "Blocked aria-hidden... descendant retained focus" warnings
+        // when navigating to a stack screen that hides the current tab subtree.
+        if (Platform.OS === 'web' && typeof document !== 'undefined') {
+          document.activeElement?.blur?.();
+        }
+        onPress?.();
+      }}
       className={`flex-row justify-between items-center py-4 ${!isLast ? 'border-b border-gray-100' : ''}`}
     >
       <Text className="text-base text-gray-800">{title}</Text>
