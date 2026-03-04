@@ -13,6 +13,18 @@
 
 ---
 
+## Update (2026-03-03)
+
+추가로 “깜빡임”과 별개로, 아래의 **CRUD 이후 stale/ghost 도트** 이슈가 관측되었고 구현 레벨에서 먼저 조치했다.
+
+- **증상:** 무기한 반복(예: 매일, `recurrenceEndDate 없음`)을 만든 뒤 수년까지 스크롤 → 삭제하면, 이미 봤던 구간 일부(대개 retention 윈도우 내부)에서 도트가 즉시 안 사라지고 남음.
+- **원인:** invalidation 시작이 `activeRange.start`로 잘려서 이미 loadedRanges로 커버된 과거 구간이 dirty/uncovered가 안 됨 + strip summary가 sparse map이라 delete가 `upsert(merge)`만으로는 덮이지 않음.
+- **조치:** 무기한 반복 CRUD 시 invalidation 범위를 `minLoadedStart~maxLoadedEnd`까지 확장(weekly/monthly 모두) + dirty overlap 로드 시 empty summary를 먼저 깔고 덮어쓰기.
+
+이 문서의 본 목적(“스크롤 중 미로딩 → settle 후 채워짐” UX)과는 별개라, 필요 시 옵션 A(viewability prefetch)는 별도 트랙으로 계속 논의한다.
+
+---
+
 ## 1) 우리 앱/기술 스택(관련 부분만)
 
 - React Native(Expo) 기반, **offline-first**.
@@ -205,4 +217,3 @@ Todo-calendar (비교용):
 
 실험 로그:
 - `.kiro/specs/cache-policy-unification/3mo.md` (strip-calendar perf/timeline/range-cache trace 로그 모음)
-

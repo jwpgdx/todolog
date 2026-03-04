@@ -177,3 +177,49 @@ items(total): todos=791, completions=0
 판정:
 
 - PASS (장기 스크롤로 캐시가 무한히 누적되는 구조가 아니라, anchor 기준 retention으로 상한이 생김)
+
+---
+
+## StripCalendar 무기한 반복 CRUD 후 도트 stale/ghost (Monthly/Weekly)
+
+날짜: 2026-03-03 (KST)
+
+증상:
+
+1. 무기한 반복(예: 매일, `recurrenceEndDate 없음`) 일정을 생성한다.
+2. 수개월~수년 뒤까지 스크롤해 도트가 정상적으로 렌더된 것을 확인한다.
+3. 해당 반복일정을 삭제한다.
+4. 다시 스크롤을 올리면, “예전에 봤던 구간” 중 일부(대개 anchor ±6개월 retention 윈도우 내부)가 **도트가 안 사라지고 남는다**.
+5. 더 과거로 올라가 “새로 로드되는 구간”은 도트가 정상적으로 사라진다(=삭제 반영).
+
+해석(원인):
+
+- invalidate 범위가 “현재 보고 있는 active range”에만 맞춰져 있을 경우, 사용자가 먼 미래/과거로 이동해 CRUD를 수행하면
+  이미 loadedRanges로 커버되어 있던 이전 구간이 dirty/uncovered가 되지 않아 stale로 남을 수 있다.
+- strip summary adapter는 `itemsByDate`가 있는 날짜만 summary를 만드는 **sparse map**이라,
+  단순 `upsert(merge)`만으로는 “삭제로 인해 0개가 된 날짜”를 기존 summary에서 지우지 못해 ghost 도트가 남을 수 있다.
+- retention(±6개월) 때문에 stale가 “몇 개월만 남는 것처럼” 보이며, 그 밖 구간은 prune되어 다시 스크롤 시 DB 재조회로 정상화된다.
+
+조치(구현):
+
+1. `invalidateRanges(ranges, { keepSummaries: true })` 옵션 추가
+   - CRUD 직후 깜빡임을 줄이기 위해 summariesByDate는 유지하되, loadedRanges coverage에는 hole을 만든다.
+2. `invalidateTodoSummary(todo)`에서 무기한 반복 + monthly/weekly 모드일 때 invalidation 범위를 확장
+   - start: `max(todo.startDate, minLoadedStart)`
+   - end:
+     - monthly: `max(activeRange.endDate, todoMonthRange.endDate, maxLoadedEnd)`
+     - weekly: `max(activeRange.endDate, maxLoadedEnd)`
+3. `ensureRangeLoaded()`가 dirtyRanges와 overlap인 range를 로드할 때
+   - `buildDefaultSummaryRange(startDate, endDate)`로 empty summary를 먼저 채운 뒤 fetch 결과를 덮어써서
+     “삭제/0개”를 확실히 반영한다.
+
+검증 포인트(로그):
+
+- CRUD 직후 `[range-cache] invalidateByDateRange ... range=START~END`에서 START가 activeRange.start에 잘리지 않고
+  `minLoadedStart`까지 내려가는지 확인.
+- 재진입 시 `range:dirty:refresh:start overlaps=[...]` + `reason=monthly:dirty-refresh|weekly:dirty-refresh` ensure 호출 확인.
+
+관련 파일:
+
+- `client/src/features/strip-calendar/services/stripCalendarDataAdapter.js`
+- `client/src/features/strip-calendar/hooks/useStripCalendarDataRange.js`

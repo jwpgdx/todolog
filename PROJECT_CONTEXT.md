@@ -246,6 +246,20 @@ Shared range cache implementation:
    - `ENABLE_STRIP_CALENDAR_SUMMARY = true`
    - summary source is shared range cache miss -> `runCommonQueryForRange` -> shared range cache upsert -> `adaptStripCalendarFromRangeHandoff`
    - dot rendering uses category-color dedupe + overflow metadata
+   - L1 summary cache (`stripCalendarStore`) contract:
+     - `summariesByDate`: per-day dot summary map (adapter output). Empty summaries are meaningful.
+     - `loadedRanges`: coverage ranges used by `ensureRangeLoaded`; fully-covered requests short-circuit without DB work.
+     - `dirtyRanges`/`dirtySeq`: CRUD invalidation queue used for targeted refresh in `useStripCalendarDataRange`.
+   - CRUD invalidation (Todo create/update/delete):
+     - hooks call `invalidateTodoSummary(todo)` which splits `loadedRanges` to create coverage "holes", records `dirtyRanges`,
+       and invalidates the shared range cache for the same date range.
+     - for unbounded recurrence (`recurrenceEndDate = null`) in `monthly`/`weekly`, invalidation is extended to the current
+       loaded window (`minLoadedStart`/`maxLoadedEnd`) to prevent stale dots in already-scrolled months/weeks.
+   - Dirty refresh:
+     - `useStripCalendarDataRange` re-ensures only the dirty overlap within the current `activeRange`, then consumes refreshed dirty ranges.
+   - Deletion/ghost-dot safety:
+     - strip adapter emits a sparse map (only dates that have items). For dirty-overlap reloads, `ensureRangeLoaded` fills
+       `buildDefaultSummaryRange(startDate, endDate)` first so "no todo" days overwrite stale summaries.
 6. Monthly -> Weekly target resolution policy:
    - stale weekly transition target is cleared in shell on monthly settle and before monthly->weekly toggle
    - transition target is resolved once at mode-switch time (no per-frame `onScroll` evaluation)
