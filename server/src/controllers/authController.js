@@ -7,6 +7,48 @@ const { generateId, generateGuestId } = require('../utils/idGenerator');
 
 const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
+async function ensureInbox(userId) {
+  if (!userId) return null;
+
+  const inbox = await Category.findOne({
+    userId,
+    systemKey: 'inbox',
+    deletedAt: null,
+  });
+
+  if (!inbox) {
+    return Category.create({
+      _id: generateId(),
+      userId,
+      name: 'Inbox',
+      color: '#CCCCCC',
+      order: 0,
+      systemKey: 'inbox',
+    });
+  }
+
+  let changed = false;
+
+  if (inbox.order !== 0) {
+    inbox.order = 0;
+    changed = true;
+  }
+  if (inbox.name !== 'Inbox') {
+    inbox.name = 'Inbox';
+    changed = true;
+  }
+  if (inbox.color !== '#CCCCCC') {
+    inbox.color = '#CCCCCC';
+    changed = true;
+  }
+
+  if (changed) {
+    await inbox.save();
+  }
+
+  return inbox;
+}
+
 exports.register = async (req, res) => {
   try {
     const { email, password, name, timeZone } = req.body;
@@ -83,14 +125,7 @@ exports.register = async (req, res) => {
       }
     });
 
-    // Inbox 카테고리 생성 (UUID)
-    await Category.create({
-      _id: generateId(),
-      userId: user._id,
-      name: 'Inbox',
-      isDefault: true,
-      color: '#CCCCCC'
-    });
+    await ensureInbox(user._id);
 
     const token = jwt.sign({ userId: user._id }, process.env.JWT_SECRET, {
       expiresIn: '7d',
@@ -99,6 +134,7 @@ exports.register = async (req, res) => {
     res.status(201).json({
       token,
       user: {
+        _id: user._id,
         id: user._id,
         email: user.email,
         name: user.name,
@@ -144,14 +180,7 @@ exports.createGuest = async (req, res) => {
       }
     });
 
-    // Inbox 카테고리 생성
-    await Category.create({
-      _id: generateId(),
-      userId: user._id,
-      name: 'Inbox',
-      isDefault: true,
-      color: '#CCCCCC'
-    });
+    await ensureInbox(user._id);
 
     // Access Token (7일)
     const accessToken = jwt.sign({ userId: user._id }, process.env.JWT_SECRET, {
@@ -171,6 +200,7 @@ exports.createGuest = async (req, res) => {
       accessToken,
       refreshToken,
       user: {
+        _id: user._id,
         id: user._id,
         email: user.email,
         name: user.name,
@@ -263,9 +293,12 @@ exports.convertGuest = async (req, res) => {
     user.accountType = 'local';
     await user.save();
 
+    await ensureInbox(user._id);
+
     res.json({
       message: '회원 전환 완료',
       user: {
+        _id: user._id,
         id: user._id,
         email: user.email,
         name: user.name,
@@ -306,17 +339,7 @@ exports.login = async (req, res) => {
 
     console.log('Password match, creating token...');
 
-    // Inbox 카테고리 존재 확인 및 생성 (마이그레이션용)
-    const existingCategory = await Category.findOne({ userId: user._id, isDefault: true });
-    if (!existingCategory) {
-      await Category.create({
-        _id: generateId(),
-        userId: user._id,
-        name: 'Inbox',
-        isDefault: true,
-        color: '#CCCCCC'
-      });
-    }
+    await ensureInbox(user._id);
 
     const token = jwt.sign({ userId: user._id }, process.env.JWT_SECRET, {
       expiresIn: '7d',
@@ -327,6 +350,7 @@ exports.login = async (req, res) => {
     res.json({
       token,
       user: {
+        _id: user._id,
         id: user._id,
         email: user.email,
         name: user.name,
@@ -367,14 +391,7 @@ exports.googleLogin = async (req, res) => {
         provider: 'google',
         picture,
       });
-      // Inbox 카테고리 생성
-      await Category.create({
-        _id: generateId(),
-        userId: userId,
-        name: 'Inbox',
-        isDefault: true,
-        color: '#CCCCCC'
-      });
+      await ensureInbox(user._id);
     } else if (!user.googleId) {
       // 기존 이메일 계정에 구글 연동
       user.googleId = googleId;
@@ -382,17 +399,7 @@ exports.googleLogin = async (req, res) => {
       user.picture = picture;
       await user.save();
 
-      // Inbox 카테고리 존재 확인 및 생성
-      const existingCategory = await Category.findOne({ userId: user._id, isDefault: true });
-      if (!existingCategory) {
-        await Category.create({
-          _id: generateId(),
-          userId: user._id,
-          name: 'Inbox',
-          isDefault: true,
-          color: '#CCCCCC'
-        });
-      }
+      await ensureInbox(user._id);
     }
 
     // JWT 토큰 생성
@@ -403,6 +410,7 @@ exports.googleLogin = async (req, res) => {
     res.json({
       token,
       user: {
+        _id: user._id,
         id: user._id,
         email: user.email,
         name: user.name,
@@ -444,16 +452,7 @@ exports.googleLoginWeb = async (req, res) => {
       await user.save();
     }
 
-    // Inbox 카테고리 존재 확인 및 생성
-    const existingCategory = await Category.findOne({ userId: user._id, isDefault: true });
-    if (!existingCategory) {
-      await Category.create({
-        userId: user._id,
-        name: 'Inbox',
-        isDefault: true,
-        color: '#CCCCCC'
-      });
-    }
+    await ensureInbox(user._id);
 
     // JWT 토큰 생성
     const token = jwt.sign({ userId: user._id }, process.env.JWT_SECRET, {
@@ -463,6 +462,7 @@ exports.googleLoginWeb = async (req, res) => {
     res.json({
       token,
       user: {
+        _id: user._id,
         id: user._id,
         email: user.email,
         name: user.name,
@@ -526,6 +526,7 @@ exports.exchangeGoogleCode = async (req, res) => {
     res.json({
       message: '구글 캘린더 연동 완료',
       user: {
+        _id: user._id,
         id: user._id,
         email: user.email,
         name: user.name,
@@ -570,6 +571,7 @@ exports.updateCalendarAccess = async (req, res) => {
     res.json({
       message: '캘린더 연동 완료',
       user: {
+        _id: user._id,
         id: user._id,
         email: user.email,
         name: user.name,
@@ -602,6 +604,7 @@ exports.toggleCalendarSync = async (req, res) => {
     res.json({
       message: enabled ? '캘린더 동기화 활성화' : '캘린더 동기화 비활성화',
       user: {
+        _id: user._id,
         id: user._id,
         email: user.email,
         name: user.name,
@@ -730,6 +733,7 @@ exports.updateProfile = async (req, res) => {
     res.json({
       message: '프로필 업데이트 완료',
       user: {
+        _id: user._id,
         id: user._id,
         email: user.email,
         name: user.name,
@@ -1138,6 +1142,7 @@ exports.migrateGuestData = async (req, res) => {
       message: '마이그레이션 완료',
       token,
       user: {
+        _id: user._id,
         id: user._id,
         email: user.email,
         name: user.name,

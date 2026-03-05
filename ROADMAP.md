@@ -1,6 +1,6 @@
 # Todolog Roadmap
 
-Last Updated: 2026-02-25
+Last Updated: 2026-03-05
 Owner: Product + Engineering
 
 ## 1. Purpose
@@ -217,6 +217,20 @@ Evidence:
 - `.kiro/specs/cache-policy-unification/design.md`
 - `.kiro/specs/cache-policy-unification/tasks.md`
 - `.kiro/specs/cache-policy-unification/log.md`
+
+### 2026-03-05
+
+- Inbox system category 도입 (`systemKey='inbox'`)
+  - 서버: `Category.systemKey` 추가 + partial unique(활성 + userId+systemKey) + auth flow에서 멱등 ensureInbox
+  - 서버: Inbox CRUD 잠금 + `systemKey` 주입/변경 차단
+  - 클라: SQLite `categories.system_key` 마이그레이션(v7) + Inbox-first 정렬 + 카테고리 관리 화면에서 잠금/상단 고정
+  - 레거시 `isDefault` 삭제 완료 (서버/클라)
+
+Evidence:
+
+- `.kiro/specs/inbox-system-category/requirements.md`
+- `.kiro/specs/inbox-system-category/design.md`
+- `.kiro/specs/inbox-system-category/tasks.md`
 
 ### 2026-02-25
 

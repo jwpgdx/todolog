@@ -1,7 +1,6 @@
 import React, { useState, useLayoutEffect } from 'react';
-import { View, Text, TextInput, TouchableOpacity, ScrollView, Platform, Switch, Alert } from 'react-native';
+import { Text, TouchableOpacity, ScrollView } from 'react-native';
 import { useCreateCategory, useUpdateCategory } from '../hooks/queries/useCategories';
-import { Ionicons } from '@expo/vector-icons';
 import Toast from 'react-native-toast-message';
 import CategoryForm from '../components/domain/category/CategoryForm';
 import { DEFAULT_COLOR } from '../constants/categoryColors';
@@ -14,7 +13,6 @@ export default function CategoryFormScreen({ navigation, route }) {
 
     const [name, setName] = useState(category?.name || '');
     const [selectedColor, setSelectedColor] = useState(category?.color || DEFAULT_COLOR); // Default Peacock
-    const [isDefault, setIsDefault] = useState(category?.isDefault || false);
     const [isLoading, setIsLoading] = useState(false);
 
     const createCategory = useCreateCategory();
@@ -35,7 +33,7 @@ export default function CategoryFormScreen({ navigation, route }) {
                 </TouchableOpacity>
             ),
         });
-    }, [navigation, name, selectedColor, isDefault, isLoading]);
+    }, [navigation, name, selectedColor, isLoading]);
 
     const handleSubmit = () => {
         if (!name.trim()) return;
@@ -49,7 +47,6 @@ export default function CategoryFormScreen({ navigation, route }) {
                     data: {
                         name: name.trim(),
                         color: selectedColor,
-                        isDefault: isDefault ? true : undefined
                     }
                 },
                 {
@@ -96,31 +93,6 @@ export default function CategoryFormScreen({ navigation, route }) {
                 })}
                 autoFocus={!isEditMode}
             />
-
-            {isEditMode && (
-                <View className="flex-row items-center justify-between bg-gray-50 p-4 rounded-xl border border-gray-100 mb-6">
-                    <View className="flex-1 mr-4">
-                        <Text className="text-base font-semibold text-gray-900">기본 카테고리로 설정</Text>
-                        <Text className="text-xs text-gray-500 mt-1">
-                            {category?.isDefault
-                                ? '현재 기본 카테고리입니다 (해제 불가)'
-                                : '새 할일이 추가될 때 기본으로 선택됩니다'}
-                        </Text>
-                    </View>
-                    <Switch
-                        value={isDefault}
-                        onValueChange={(val) => {
-                            if (category?.isDefault && !val) {
-                                return;
-                            }
-                            setIsDefault(val);
-                        }}
-                        trackColor={{ false: "#E5E7EB", true: "#3B82F6" }}
-                        thumbColor={Platform.OS === 'ios' ? '#FFFFFF' : (isDefault ? "#FFFFFF" : "#F3F4F6")}
-                        disabled={category?.isDefault}
-                    />
-                </View>
-            )}
         </ScrollView>
     );
 }

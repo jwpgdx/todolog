@@ -39,6 +39,7 @@ export const useCategories = () => {
         // 서버 데이터를 SQLite에 저장 (이미 response.data 반환됨)
         if (serverCategories && serverCategories.length > 0) {
           await upsertCategories(serverCategories);
+          return await getAllCategories();
         }
         return serverCategories || [];
       }

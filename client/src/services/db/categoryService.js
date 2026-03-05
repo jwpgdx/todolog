@@ -21,7 +21,10 @@ export async function getAllCategories() {
     const result = await db.getAllAsync(`
     SELECT * FROM categories 
     WHERE deleted_at IS NULL
-    ORDER BY order_index ASC, created_at ASC
+    ORDER BY
+      CASE WHEN system_key = 'inbox' THEN 0 ELSE 1 END,
+      order_index ASC,
+      created_at ASC
   `);
 
     return result.map(deserializeCategory);
@@ -76,14 +79,15 @@ export async function upsertCategory(category) {
 
     await db.runAsync(`
     INSERT OR REPLACE INTO categories 
-    (_id, name, color, icon, order_index, created_at, updated_at, deleted_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    (_id, name, color, icon, order_index, system_key, created_at, updated_at, deleted_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
   `, [
         category._id,
         category.name,
         category.color || null,
         category.icon || null,
         category.order || category.order_index || 0,
+        category.systemKey || category.system_key || null,
         category.createdAt || category.created_at || new Date().toISOString(),
         category.updatedAt || category.updated_at || new Date().toISOString(),
         category.deletedAt || category.deleted_at || null,
@@ -103,14 +107,15 @@ export async function upsertCategories(categories) {
         for (const cat of categories) {
             await db.runAsync(`
         INSERT OR REPLACE INTO categories 
-        (_id, name, color, icon, order_index, created_at, updated_at, deleted_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        (_id, name, color, icon, order_index, system_key, created_at, updated_at, deleted_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
       `, [
                 cat._id,
                 cat.name,
                 cat.color || null,
                 cat.icon || null,
                 cat.order || cat.order_index || 0,
+                cat.systemKey || cat.system_key || null,
                 cat.createdAt || cat.created_at || new Date().toISOString(),
                 cat.updatedAt || cat.updated_at || new Date().toISOString(),
                 cat.deletedAt || cat.deleted_at || null,
@@ -218,6 +223,7 @@ function deserializeCategory(row) {
         name: row.name,
         color: row.color,
         icon: row.icon,
+        systemKey: row.system_key || null,
         order: row.order_index,
         createdAt: row.created_at,
         updatedAt: row.updated_at,

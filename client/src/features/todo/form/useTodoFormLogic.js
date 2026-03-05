@@ -174,8 +174,10 @@ export const useTodoFormLogic = (initialTodo, onClose, visible) => {
                 if (lastUsed && categories.find(c => c._id === lastUsed)) {
                     handleChange('categoryId', lastUsed);
                 } else {
-                    const defaultCat = categories.find(c => c.isDefault) || categories[0];
-                    handleChange('categoryId', defaultCat._id);
+                    const firstCategory = categories[0];
+                    if (firstCategory) {
+                        handleChange('categoryId', firstCategory._id);
+                    }
                 }
             } catch (e) {
                 console.error('Failed to load default category:', e);

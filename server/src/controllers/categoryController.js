@@ -18,6 +18,10 @@ exports.createCategory = async (req, res) => {
   try {
     const { _id, name, color } = req.body;
 
+    if (Object.prototype.hasOwnProperty.call(req.body, 'systemKey')) {
+      return res.status(400).json({ message: 'systemKey는 설정할 수 없습니다.' });
+    }
+
     // 클라이언트 _id 수용 또는 서버에서 생성
     const categoryId = _id || generateId();
 
@@ -30,8 +34,7 @@ exports.createCategory = async (req, res) => {
       _id: categoryId,
       userId: req.userId,
       name,
-      color,
-      isDefault: false
+      color
     });
     const newCategory = await category.save();
     res.status(201).json(newCategory);
@@ -54,18 +57,19 @@ exports.updateCategory = async (req, res) => {
       return res.status(404).json({ message: 'Category not found' });
     }
 
-    if (req.body.isDefault === true) {
-      // Find current default and unset it
-      const currentDefault = await Category.findOne({ userId: req.userId, isDefault: true });
-      if (currentDefault && currentDefault._id.toString() !== req.params.id) {
-        currentDefault.isDefault = false;
-        await currentDefault.save();
-      }
-      category.isDefault = true;
-    } else if (req.body.isDefault === false) {
-      // Prevent unsetting default directly
-      if (category.isDefault) {
-        return res.status(400).json({ message: '기본 카테고리는 해제할 수 없습니다. 다른 카테고리를 기본으로 설정하세요.' });
+    if (Object.prototype.hasOwnProperty.call(req.body, 'systemKey')) {
+      return res.status(400).json({ message: 'systemKey는 변경할 수 없습니다.' });
+    }
+
+    const isInbox = category.systemKey === 'inbox';
+    if (isInbox) {
+      const attempted = [];
+      if (Object.prototype.hasOwnProperty.call(req.body, 'name')) attempted.push('name');
+      if (Object.prototype.hasOwnProperty.call(req.body, 'color')) attempted.push('color');
+      if (Object.prototype.hasOwnProperty.call(req.body, 'order')) attempted.push('order');
+      if (Object.prototype.hasOwnProperty.call(req.body, 'icon')) attempted.push('icon');
+      if (attempted.length > 0) {
+        return res.status(400).json({ message: `Inbox 카테고리는 변경할 수 없습니다. (${attempted.join(', ')})` });
       }
     }
 
@@ -89,8 +93,16 @@ exports.deleteCategory = async (req, res) => {
       return res.status(404).json({ message: 'Category not found' });
     }
 
-    if (category.isDefault) {
-      return res.status(400).json({ message: 'Cannot delete default category' });
+    if (category.systemKey === 'inbox') {
+      return res.status(400).json({ message: 'Inbox 카테고리는 삭제할 수 없습니다.' });
+    }
+
+    const activeCategoryCount = await Category.countDocuments({
+      userId: req.userId,
+      deletedAt: null,
+    });
+    if (activeCategoryCount <= 1) {
+      return res.status(400).json({ message: '마지막 카테고리는 삭제할 수 없습니다.' });
     }
 
     const now = new Date();

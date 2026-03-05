@@ -19,7 +19,13 @@ export const useReorderCategory = () => {
         if (!old) return [];
         return old.map((cat) => 
           cat._id === id ? { ...cat, order } : cat
-        ).sort((a, b) => a.order - b.order);
+        ).sort((a, b) => {
+          const aInbox = a?.systemKey === 'inbox';
+          const bInbox = b?.systemKey === 'inbox';
+          if (aInbox && !bInbox) return -1;
+          if (!aInbox && bInbox) return 1;
+          return (a.order || 0) - (b.order || 0);
+        });
       });
 
       // Return a context object with the snapshotted value

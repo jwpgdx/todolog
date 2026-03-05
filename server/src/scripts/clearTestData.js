@@ -41,7 +41,7 @@ async function clearTestData() {
     const Category = mongoose.connection.collection('categories');
     const catResult = await Category.deleteMany({ 
       userId: testUser._id,
-      isDefault: { $ne: true }
+      name: { $ne: 'Inbox' }
     });
     console.log(`🗑️  Deleted ${catResult.deletedCount} categories (kept Inbox)`);
 

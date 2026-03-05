@@ -6,7 +6,7 @@ import DraggableFlatList, { ScaleDecorator } from 'react-native-draggable-flatli
 import { DndContext, closestCenter, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { useCategories, useUpdateCategory } from '../hooks/queries/useCategories';
+import { useCategories } from '../hooks/queries/useCategories';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { deleteCategory } from '../api/categories';
 import { useReorderCategory } from '../hooks/queries/useReorderCategory';
@@ -15,13 +15,13 @@ import { useCategoryActionSheet } from '../hooks/useCategoryActionSheet';
 import * as Haptics from 'expo-haptics';
 
 
-const CategoryListItem = ({ item, isDragging, drag, onShowOptions, isWeb, isEditing, onDelete }) => (
+const CategoryListItem = ({ item, isLocked, isDragging, drag, onShowOptions, isWeb, isEditing, onDelete }) => (
   <View
     className={`flex-row items-center justify-between p-4 rounded-xl mb-3 ${isDragging ? 'bg-blue-50 shadow-lg' : 'bg-gray-50'}`}
   >
     <View className="flex-row items-center flex-1">
       {/* Edit Mode: Delete Button on Left */}
-      {isEditing && (
+      {isEditing && !isLocked && (
         <TouchableOpacity
           onPress={onDelete}
           className="mr-3 p-1"
@@ -53,8 +53,8 @@ const CategoryListItem = ({ item, isDragging, drag, onShowOptions, isWeb, isEdit
           <Text className="font-semibold text-base text-gray-900">
             {item.name}
           </Text>
-          {item.isDefault && (
-            <Text className="text-blue-500 text-xs font-medium ml-1.5">(기본)</Text>
+          {isLocked && (
+            <Ionicons name="lock-closed" size={14} color="#9CA3AF" style={{ marginLeft: 6 }} />
           )}
         </View>
       </View>
@@ -64,21 +64,25 @@ const CategoryListItem = ({ item, isDragging, drag, onShowOptions, isWeb, isEdit
     <View className="flex-row items-center">
       {isEditing ? (
         /* Edit Mode: Reorder Handle on Right */
-        <TouchableOpacity
-          onPressIn={!isWeb ? drag : undefined}
-          className="ml-2 cursor-grab active:cursor-grabbing p-2"
-          disabled={isWeb}
-        >
-          <Ionicons name="reorder-three" size={24} color="#9CA3AF" />
-        </TouchableOpacity>
+        isLocked ? null : (
+          <TouchableOpacity
+            onPressIn={!isWeb ? drag : undefined}
+            className="ml-2 cursor-grab active:cursor-grabbing p-2"
+            disabled={isWeb}
+          >
+            <Ionicons name="reorder-three" size={24} color="#9CA3AF" />
+          </TouchableOpacity>
+        )
       ) : (
-        /* Normal Mode: Ellipsis Button (Action Sheet) */
-        <TouchableOpacity
-          onPress={() => onShowOptions(item)}
-          className="p-2"
-        >
-          <Ionicons name="ellipsis-horizontal" size={20} color="#6B7280" />
-        </TouchableOpacity>
+        isLocked ? null : (
+          /* Normal Mode: Ellipsis Button (Action Sheet) */
+          <TouchableOpacity
+            onPress={() => onShowOptions(item)}
+            className="p-2"
+          >
+            <Ionicons name="ellipsis-horizontal" size={20} color="#6B7280" />
+          </TouchableOpacity>
+        )
       )}
     </View>
   </View>
@@ -115,6 +119,7 @@ const SortableCategoryItem = ({ item, onShowOptions, isEditing, onDelete, onItem
     <div ref={setNodeRef} style={style} {...attributes} {...(isEditing ? listeners : {})} onClick={handleClick}>
       <CategoryListItem
         item={item}
+        isLocked={item.systemKey === 'inbox'}
         isDragging={isDragging}
         onShowOptions={onShowOptions}
         isWeb={true}
@@ -165,7 +170,7 @@ const WebCategoryList = ({ data, onDragEnd, HeaderComponent, onShowOptions, Foot
               item={item}
               onShowOptions={onShowOptions}
               isEditing={isEditing}
-              onDelete={() => onDelete(item._id, item.isDefault)}
+              onDelete={() => onDelete(item._id)}
               onItemPress={onItemPress}
             />
           ))}
@@ -186,6 +191,16 @@ export default function CategoryManagementScreen({ navigation }) {
   const reorderMutation = useReorderCategory();
 
   const [localCategories, setLocalCategories] = useState([]);
+  const isWeb = Platform.OS === 'web';
+
+  const inboxCategory = useMemo(
+    () => localCategories.find((cat) => cat?.systemKey === 'inbox') || null,
+    [localCategories]
+  );
+  const draggableCategories = useMemo(
+    () => localCategories.filter((cat) => cat?.systemKey !== 'inbox'),
+    [localCategories]
+  );
 
   // Sync local state when data loads
   useEffect(() => {
@@ -213,6 +228,10 @@ export default function CategoryManagementScreen({ navigation }) {
   }, [navigation, isEditing]);
 
   const handleEdit = (category) => {
+    if (category?.systemKey === 'inbox') {
+      Toast.show({ type: 'info', text1: 'Inbox 카테고리는 편집할 수 없습니다.' });
+      return;
+    }
     navigation.navigate('CategoryForm', { category });
   };
 
@@ -220,34 +239,9 @@ export default function CategoryManagementScreen({ navigation }) {
     navigation.navigate('CategoryForm');
   };
 
-  const updateCategory = useUpdateCategory();
-
-  const handleSetDefault = (category) => {
-    updateCategory.mutate(
-      {
-        id: category._id,
-        data: { isDefault: true }
-      },
-      {
-        onSuccess: () => {
-          Toast.show({ type: 'success', text1: '기본 카테고리로 설정되었습니다.' });
-          queryClient.invalidateQueries({ queryKey: ['categories'] });
-        },
-        onError: (error) => {
-          Toast.show({
-            type: 'error',
-            text1: '설정 실패',
-            text2: error.response?.data?.message || '다시 시도해주세요',
-          });
-        }
-      }
-    );
-  };
-
   const { showOptions } = useCategoryActionSheet({
     onEdit: (category) => handleEdit(category),
-    onDelete: (id, isDefault) => handleDelete(id, isDefault),
-    onSetDefault: (category) => handleSetDefault(category),
+    onDelete: (id) => handleDelete(id),
   });
 
   const deleteMutation = useMutation({
@@ -265,13 +259,24 @@ export default function CategoryManagementScreen({ navigation }) {
     },
   });
 
-  const handleDelete = (id, isDefault) => {
-    console.log('handleDelete called with:', id, isDefault);
-    if (isDefault) {
-      if (Platform.OS === 'web') {
-        window.alert('기본 카테고리는 삭제할 수 없습니다.');
+  const handleDelete = (id) => {
+    console.log('handleDelete called with:', id);
+
+    const target = localCategories.find((cat) => cat?._id === id) || null;
+    if (target?.systemKey === 'inbox') {
+      if (isWeb) {
+        window.alert('Inbox 카테고리는 삭제할 수 없습니다.');
       } else {
-        Alert.alert('알림', '기본 카테고리는 삭제할 수 없습니다.');
+        Alert.alert('알림', 'Inbox 카테고리는 삭제할 수 없습니다.');
+      }
+      return;
+    }
+
+    if (localCategories.length <= 1) {
+      if (Platform.OS === 'web') {
+        window.alert('마지막 카테고리는 삭제할 수 없습니다.');
+      } else {
+        Alert.alert('알림', '마지막 카테고리는 삭제할 수 없습니다.');
       }
       return;
     }
@@ -304,11 +309,13 @@ export default function CategoryManagementScreen({ navigation }) {
   };
 
   const handleDragEnd = ({ data, from, to }) => {
-    setLocalCategories(data); // Optimistic UI update
+    const nextAll = inboxCategory ? [inboxCategory, ...data] : data;
+    setLocalCategories(nextAll); // Optimistic UI update
 
     if (from === to) return;
 
     const movedItem = data[to];
+    if (!movedItem) return;
     const prevItem = data[to - 1];
     const nextItem = data[to + 1];
 
@@ -350,12 +357,13 @@ export default function CategoryManagementScreen({ navigation }) {
         >
           <CategoryListItem
             item={item}
+            isLocked={item.systemKey === 'inbox'}
             isDragging={isActive}
             drag={drag}
             onShowOptions={showOptions}
             isWeb={false}
             isEditing={isEditing}
-            onDelete={() => handleDelete(item._id, item.isDefault)}
+            onDelete={() => handleDelete(item._id)}
           />
         </TouchableOpacity>
       </ScaleDecorator>
@@ -369,6 +377,22 @@ export default function CategoryManagementScreen({ navigation }) {
           ? '오른쪽 핸들을 드래그하여 순서를 변경하거나 왼쪽 버튼으로 삭제하세요.'
           : '카테고리를 꾹 누르면 편집 모드로 진입합니다.'}
       </Text>
+      {inboxCategory ? (
+        <TouchableOpacity
+          disabled={isEditing}
+          onPress={() => navigation.navigate('CategoryTodos', { category: inboxCategory })}
+        >
+          <CategoryListItem
+            item={inboxCategory}
+            isLocked={true}
+            isDragging={false}
+            onShowOptions={() => {}}
+            isWeb={isWeb}
+            isEditing={isEditing}
+            onDelete={() => {}}
+          />
+        </TouchableOpacity>
+      ) : null}
     </View>
   );
 
@@ -398,7 +422,7 @@ export default function CategoryManagementScreen({ navigation }) {
 
           {Platform.OS === 'web' ? (
             <WebCategoryList
-              data={localCategories}
+              data={draggableCategories}
               onDragEnd={handleDragEnd}
               HeaderComponent={renderHeader()}
               onShowOptions={showOptions}
@@ -409,7 +433,7 @@ export default function CategoryManagementScreen({ navigation }) {
             />
           ) : (
             <DraggableFlatList
-              data={localCategories}
+              data={draggableCategories}
               onDragEnd={handleDragEnd}
               keyExtractor={(item) => item._id}
               renderItem={renderItem}

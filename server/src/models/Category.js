@@ -19,9 +19,10 @@ const categorySchema = new mongoose.Schema({
     type: String,
     default: '#CCCCCC'
   },
-  isDefault: {
-    type: Boolean,
-    default: false
+  systemKey: {
+    type: String,
+    default: null,
+    trim: true,
   },
   order: {
     type: Number,
@@ -36,5 +37,15 @@ const categorySchema = new mongoose.Schema({
 // 인덱스
 categorySchema.index({ userId: 1, order: 1 });
 categorySchema.index({ userId: 1, deletedAt: 1 });
+categorySchema.index(
+  { userId: 1, systemKey: 1 },
+  {
+    unique: true,
+    partialFilterExpression: {
+      deletedAt: null,
+      systemKey: { $ne: null },
+    },
+  }
+);
 
 module.exports = mongoose.model('Category', categorySchema);

@@ -94,13 +94,17 @@ export default function TodoForm({ visible, onClose, initialTodo }) {
           if (lastUsed && categories.find(c => c._id === lastUsed)) {
             setCategoryId(lastUsed);
           } else {
-            const defaultCat = categories.find(c => c.isDefault) || categories[0];
-            setCategoryId(defaultCat._id);
+            const defaultCat = categories[0];
+            if (defaultCat) {
+              setCategoryId(defaultCat._id);
+            }
           }
         } catch (error) {
           console.error('Failed to load last used category:', error);
-          const defaultCat = categories.find(c => c.isDefault) || categories[0];
-          setCategoryId(defaultCat._id);
+          const defaultCat = categories[0];
+          if (defaultCat) {
+            setCategoryId(defaultCat._id);
+          }
         }
       }
     };

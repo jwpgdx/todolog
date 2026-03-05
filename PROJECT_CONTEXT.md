@@ -1,6 +1,6 @@
 # Todolog Project Context
 
-Last Updated: 2026-02-25
+Last Updated: 2026-03-05
 Status: Sync hardening complete (Pending Push -> Delta Pull), Phase 3 Step 1 recurrence engine complete/validated, Phase 3 Step 2 common query/aggregation complete/validated, Phase 3 Step 3 screen-adapter layer complete/validated, cache-policy unification complete/validated
 
 ## 1. Purpose
@@ -122,7 +122,7 @@ Validation and rejection logic:
 
 File: `client/src/services/db/database.js`
 
-- `MIGRATION_VERSION = 5`
+- `MIGRATION_VERSION = 7`
 - `todos` key columns:
   - `_id TEXT PRIMARY KEY`
   - `date TEXT` (legacy compatibility column; runtime contract uses start/end date)
@@ -132,6 +132,20 @@ File: `client/src/services/db/database.js`
   - `end_time TEXT`
   - `recurrence TEXT`
   - `recurrence_end_date TEXT`
+- `categories` key columns:
+  - `_id TEXT PRIMARY KEY`
+  - `name TEXT NOT NULL`
+  - `color TEXT`
+  - `icon TEXT`
+  - `system_key TEXT` (nullable, e.g. `'inbox'`)
+  - `order_index INTEGER`
+  - `created_at TEXT`
+  - `updated_at TEXT`
+  - `deleted_at TEXT`
+  - Note: `isDefault` is deprecated/removed. New-todo category preselect uses:
+    - `lastUsedCategoryId` if valid
+    - else first category in the current list ordering
+    - server also blocks deleting the last active category
 - Key index:
   - `idx_todos_recurrence_window(start_date, recurrence_end_date)`
 - Pending queue v5 additions:
@@ -181,6 +195,7 @@ Behavior:
 ### 6.1 Todo create/update flow
 
 1. UI form creates normalized payload.
+   - category preselect policy: `lastUsedCategoryId` (if valid) -> first category
 2. Data persists to SQLite.
 3. Pending change queued if needed.
 4. Sync service sends normalized payload to server.

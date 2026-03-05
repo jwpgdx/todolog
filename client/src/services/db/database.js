@@ -66,7 +66,7 @@ function snapshotInitDebugState() {
 }
 
 // 현재 마이그레이션 버전
-const MIGRATION_VERSION = 6;
+const MIGRATION_VERSION = 7;
 const SYNC_CURSOR_METADATA_KEY = 'sync.last_success_at';
 
 // ============================================================
@@ -83,6 +83,7 @@ CREATE TABLE IF NOT EXISTS categories (
   name TEXT NOT NULL,
   color TEXT,
   icon TEXT,
+  system_key TEXT,
   order_index INTEGER DEFAULT 0,
   created_at TEXT,
   updated_at TEXT,
@@ -262,6 +263,11 @@ export async function initDatabase() {
                 // v6: common query candidate SQL 튜닝용 인덱스 추가
                 if (currentVersion < 6) {
                     await migrateV6CandidateQueryIndexes();
+                }
+
+                // v7: categories에 system_key 컬럼 추가 + partial unique index
+                if (currentVersion < 7) {
+                    await migrateV7AddCategorySystemKey();
                 }
 
                 await setMetadata('migration_version', String(MIGRATION_VERSION));
@@ -804,6 +810,33 @@ async function migrateV6CandidateQueryIndexes() {
         console.log('✅ [Migration v6] Candidate-query indexes ready');
     } catch (error) {
         console.error('❌ [Migration v6] Failed:', error);
+        throw error;
+    }
+}
+
+/**
+ * v7 마이그레이션: categories에 system_key 컬럼 추가 + system_key 유일성 인덱스
+ */
+async function migrateV7AddCategorySystemKey() {
+    console.log('🔄 [Migration v7] Adding system_key column to categories...');
+
+    try {
+        const tableInfo = await db.getAllAsync("PRAGMA table_info(categories)");
+        const hasSystemKey = tableInfo.some(col => col.name === 'system_key');
+
+        if (!hasSystemKey) {
+            await db.runAsync('ALTER TABLE categories ADD COLUMN system_key TEXT');
+            console.log('✅ [Migration v7] Added system_key column');
+        } else {
+            console.log('✅ [Migration v7] system_key column already exists');
+        }
+
+        await db.runAsync(
+            "CREATE UNIQUE INDEX IF NOT EXISTS uniq_categories_system_key_active ON categories(system_key) WHERE deleted_at IS NULL AND system_key IS NOT NULL"
+        );
+        console.log('✅ [Migration v7] Created uniq_categories_system_key_active index');
+    } catch (error) {
+        console.error('❌ [Migration v7] Failed:', error);
         throw error;
     }
 }

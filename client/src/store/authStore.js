@@ -17,6 +17,29 @@ export const setQueryClient = (client) => {
   queryClientInstance = client;
 };
 
+const normalizeAuthUser = (user) => {
+  if (!user || typeof user !== 'object') return user;
+
+  const resolvedId = user._id || user.id;
+  if (!resolvedId) return user;
+
+  return {
+    ...user,
+    _id: resolvedId,
+    id: resolvedId,
+  };
+};
+
+const isGuestUser = (user) => {
+  if (!user || typeof user !== 'object') return false;
+  if (user.accountType === 'anonymous') return true;
+
+  const resolvedId = user._id || user.id;
+  if (typeof resolvedId !== 'string') return false;
+
+  return resolvedId === 'guest_temp' || resolvedId.startsWith('guest_');
+};
+
 export const useAuthStore = create((set, get) => ({
   user: null,
   token: null,
@@ -25,9 +48,10 @@ export const useAuthStore = create((set, get) => ({
   shouldShowLogin: false, // 로그아웃 후 바로 로그인 화면으로 이동할지 여부
 
   setAuth: async (token, user) => {
+    const normalizedUser = normalizeAuthUser(user);
     if (token && user) {
       await AsyncStorage.setItem('token', token);
-      await AsyncStorage.setItem('user', JSON.stringify(user));
+      await AsyncStorage.setItem('user', JSON.stringify(normalizedUser));
     } else {
       // null 입력 시 로그아웃과 동일하게 처리
       await AsyncStorage.removeItem('token');
@@ -35,14 +59,15 @@ export const useAuthStore = create((set, get) => ({
     }
     
     // isLoggedIn 계산: user && token && 게스트 아님
-    const isLoggedIn = !!(user && token && !user._id?.startsWith('guest_'));
+    const isLoggedIn = !!(normalizedUser && token && !isGuestUser(normalizedUser));
     
-    set({ token, user, isLoading: false, isLoggedIn });
+    set({ token, user: normalizedUser, isLoading: false, isLoggedIn });
   },
 
   setUser: async (user) => {
-    await AsyncStorage.setItem('user', JSON.stringify(user));
-    set({ user });
+    const normalizedUser = normalizeAuthUser(user);
+    await AsyncStorage.setItem('user', JSON.stringify(normalizedUser));
+    set({ user: normalizedUser });
   },
 
   // ✅ Settings 업데이트 (Offline-First)
@@ -106,7 +131,7 @@ export const useAuthStore = create((set, get) => ({
   updateProfile: async (data) => {
     try {
       const response = await api.post('/auth/profile', data);
-      const updatedUser = response.data.user;
+      const updatedUser = normalizeAuthUser(response.data.user);
       await AsyncStorage.setItem('user', JSON.stringify(updatedUser));
       set({ user: updatedUser });
       return updatedUser;
@@ -143,16 +168,17 @@ export const useAuthStore = create((set, get) => ({
       // 3. Call server API
       const response = await authAPI.createGuest({ userId, timeZone });
       const { accessToken, refreshToken, user } = response.data;
+      const normalizedUser = normalizeAuthUser(user);
 
       // 4. Store tokens and user in AsyncStorage
       await AsyncStorage.setItem('token', accessToken);
       await AsyncStorage.setItem('refreshToken', refreshToken);
-      await AsyncStorage.setItem('user', JSON.stringify(user));
+      await AsyncStorage.setItem('user', JSON.stringify(normalizedUser));
 
       // 5. Update Zustand state (게스트는 isLoggedIn = false)
-      set({ token: accessToken, user, isLoading: false, isLoggedIn: false });
+      set({ token: accessToken, user: normalizedUser, isLoading: false, isLoggedIn: false });
 
-      return user;
+      return normalizedUser;
     } catch (error) {
       console.error('Guest login error:', error);
       set({ isLoading: false });
@@ -164,7 +190,7 @@ export const useAuthStore = create((set, get) => ({
     try {
       const token = await AsyncStorage.getItem('token');
       const userStr = await AsyncStorage.getItem('user');
-      let user = userStr ? JSON.parse(userStr) : null;
+      let user = userStr ? normalizeAuthUser(JSON.parse(userStr)) : null;
 
       // 🔄 Migration: @userSettings → user.settings
       const oldSettingsStr = await AsyncStorage.getItem('@userSettings');
@@ -187,6 +213,7 @@ export const useAuthStore = create((set, get) => ({
             _id: 'guest_temp',
             settings: parsedOldSettings,
           };
+          user = normalizeAuthUser(user);
           await AsyncStorage.setItem('user', JSON.stringify(user));
           console.log('🔄 [Migration] Created user from old settings (guest case)');
         }
@@ -197,7 +224,7 @@ export const useAuthStore = create((set, get) => ({
       }
 
       // isLoggedIn 계산
-      const isLoggedIn = !!(user && token && !user._id?.startsWith('guest_'));
+      const isLoggedIn = !!(user && token && !isGuestUser(user));
 
       set({ token, user, isLoading: false, isLoggedIn, shouldShowLogin: false });
     } catch (error) {
@@ -267,6 +294,7 @@ export const useAuthStore = create((set, get) => ({
       });
       
       const { token, user } = response.data;
+      const normalizedUser = normalizeAuthUser(user);
       
       console.log('✅ [Migration] Server migration successful');
       
@@ -276,12 +304,12 @@ export const useAuthStore = create((set, get) => ({
       
       // 4. 새 토큰 및 사용자 정보 저장
       await AsyncStorage.setItem('token', token);
-      await AsyncStorage.setItem('user', JSON.stringify(user));
+      await AsyncStorage.setItem('user', JSON.stringify(normalizedUser));
       
       // isLoggedIn 계산
-      const isLoggedIn = !!(user && token && !user._id?.startsWith('guest_'));
+      const isLoggedIn = !!(normalizedUser && token && !isGuestUser(normalizedUser));
       
-      set({ token, user, isLoading: false, isLoggedIn });
+      set({ token, user: normalizedUser, isLoading: false, isLoggedIn });
       
       // 5. React Query 캐시 무효화 (Full Sync 트리거)
       if (queryClientInstance) {
@@ -291,7 +319,7 @@ export const useAuthStore = create((set, get) => ({
       
       console.log('✅ [Migration] Migration completed successfully');
       
-      return user;
+      return normalizedUser;
     } catch (error) {
       console.error('❌ [Migration] Migration failed:', error);
       throw error;
