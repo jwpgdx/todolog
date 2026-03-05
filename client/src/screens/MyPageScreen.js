@@ -4,7 +4,7 @@ import { useAuthStore } from '../store/authStore';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 
-export default function ProfileScreen({ navigation }) {
+export default function MyPageScreen({ navigation }) {
   const { user } = useAuthStore();
 
   // Mock data for activity summary

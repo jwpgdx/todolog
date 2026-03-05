@@ -225,12 +225,18 @@ Evidence:
   - 서버: Inbox CRUD 잠금 + `systemKey` 주입/변경 차단
   - 클라: SQLite `categories.system_key` 마이그레이션(v7) + Inbox-first 정렬 + 카테고리 관리 화면에서 잠금/상단 고정
   - 레거시 `isDefault` 삭제 완료 (서버/클라)
+- UI 네이밍 정리: `My` 탭을 `My Page`로 변경
+  - 탭 라우트명: `Profile` -> `MyPage`
+  - 스크린 파일/컴포넌트명: `ProfileScreen` -> `MyPageScreen`
 
 Evidence:
 
 - `.kiro/specs/inbox-system-category/requirements.md`
 - `.kiro/specs/inbox-system-category/design.md`
 - `.kiro/specs/inbox-system-category/tasks.md`
+- `client/src/navigation/MainTabs.js`
+- `client/src/navigation/MainStack.js`
+- `client/src/screens/MyPageScreen.js`
 
 ### 2026-02-25
 

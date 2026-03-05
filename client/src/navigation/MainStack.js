@@ -29,7 +29,7 @@ export default function MainStack() {
         component={require('../screens/CategoryManagementScreen').default}
         options={{
           title: '카테고리 관리',
-          headerBackTitle: '내 정보',
+          headerBackTitle: 'My Page',
           headerShown: true,
         }}
       />

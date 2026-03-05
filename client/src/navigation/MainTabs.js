@@ -3,7 +3,7 @@ import { View, TouchableOpacity, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import TodoScreen from '../screens/TodoScreen';
 import NotificationScreen from '../screens/NotificationScreen';
-import ProfileScreen from '../screens/ProfileScreen';
+import MyPageScreen from '../screens/MyPageScreen';
 import TodoCalendarScreen from '../screens/TodoCalendarScreen';
 import DebugScreen from '../screens/DebugScreen';
 import StripCalendarTestScreen from '../screens/StripCalendarTestScreen';
@@ -74,10 +74,10 @@ export default function MainTabs() {
         }}
       />
       <Tab.Screen
-        name="Profile"
-        component={ProfileScreen}
+        name="MyPage"
+        component={MyPageScreen}
         options={{
-          tabBarLabel: 'My',
+          tabBarLabel: 'My Page',
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="person-outline" size={size} color={color} />
           ),

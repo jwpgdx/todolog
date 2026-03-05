@@ -41,6 +41,7 @@ Server:
 - Cache-policy unification (Option A -> Option B): complete and validated (shared range cache + sync invalidation unification)
 - Cache retention (memory control): enabled (shared range cache + calendar L1 caches pruned to anchor ±6 months)
 - Strip-calendar foundation (weekly/monthly shell + anchor sync + debug instrumentation): active and integrated via adapter path
+- UI navigation: bottom tab `My Page` (route: `MyPage`, screen: `client/src/screens/MyPageScreen.js`)
 
 ## 3. Non-Negotiable Architecture Commitments
 
