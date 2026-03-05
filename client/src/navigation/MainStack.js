@@ -17,22 +17,13 @@ export default function MainStack() {
   useTimeZone();
 
   return (
-    <Stack.Navigator
+      <Stack.Navigator
       screenOptions={{
         headerShown: false,
         cardStyle: { flex: 1 }
       }}
     >
       <Stack.Screen name="MainTabs" component={MainTabs} />
-      <Stack.Screen
-        name="CategoryManagement"
-        component={require('../screens/CategoryManagementScreen').default}
-        options={{
-          title: '카테고리 관리',
-          headerBackTitle: 'My Page',
-          headerShown: true,
-        }}
-      />
       <Stack.Screen
         name="CategoryTodos"
         component={require('../screens/CategoryTodosScreen').default}

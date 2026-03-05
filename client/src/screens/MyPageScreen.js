@@ -3,6 +3,7 @@ import { View, Text, TouchableOpacity, ScrollView, Platform } from 'react-native
 import { useAuthStore } from '../store/authStore';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import CategoryGroupList from '../components/domain/category/CategoryGroupList';
 
 export default function MyPageScreen({ navigation }) {
   const { user } = useAuthStore();
@@ -100,15 +101,13 @@ export default function MyPageScreen({ navigation }) {
             onPress={() => navigation.navigate('ManageTodos')}
           />
           <MenuLink
-            title="카테고리 관리"
-            onPress={() => navigation.navigate('CategoryManagement')}
-          />
-          <MenuLink
             title="구글 캘린더 연동"
             onPress={() => navigation.navigate('GoogleCalendarSettings')}
             isLast
           />
         </View>
+
+        <CategoryGroupList navigation={navigation} />
 
         {/* Settings & Others */}
         <View className="px-4 mt-8">

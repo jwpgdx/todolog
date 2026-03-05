@@ -228,6 +228,9 @@ Evidence:
 - UI 네이밍 정리: `My` 탭을 `My Page`로 변경
   - 탭 라우트명: `Profile` -> `MyPage`
   - 스크린 파일/컴포넌트명: `ProfileScreen` -> `MyPageScreen`
+- 카테고리 UI 임시 재배치: `CategoryManagement` 화면 제거 → `My Page`에 iOS 그룹 리스트로 내장
+  - 새 컴포넌트: `CategoryGroupList`
+  - 이동: 카테고리 관리 진입을 별도 라우트가 아닌 `My Page` 내 섹션으로 제공
 
 Evidence:
 
@@ -237,6 +240,7 @@ Evidence:
 - `client/src/navigation/MainTabs.js`
 - `client/src/navigation/MainStack.js`
 - `client/src/screens/MyPageScreen.js`
+- `client/src/components/domain/category/CategoryGroupList.js`
 
 ### 2026-02-25
 

@@ -1,6 +1,8 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { updateCategory } from '../../api/categories';
 import { invalidateAllScreenCaches } from '../../services/query-aggregation/cache';
+import { updateCategoryOrders } from '../../services/db/categoryService';
+import { ensureDatabase } from '../../services/db/database';
 
 export const useReorderCategory = () => {
   const queryClient = useQueryClient();
@@ -34,7 +36,11 @@ export const useReorderCategory = () => {
     onError: (err, newTodo, context) => {
       queryClient.setQueryData(['categories'], context.previousCategories);
     },
-    onSuccess: () => {
+    onSuccess: async (_data, variables) => {
+      try {
+        await ensureDatabase();
+        await updateCategoryOrders([{ _id: variables.id, order: variables.order }]);
+      } catch {}
       invalidateAllScreenCaches({
         queryClient,
         reason: 'category:reorder',
