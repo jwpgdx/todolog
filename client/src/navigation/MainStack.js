@@ -167,6 +167,15 @@ export default function MainStack() {
         }}
       />
       <Stack.Screen
+        name="PageSheetTest"
+        component={require('../test/PageSheetTestScreen').default}
+        options={{
+          title: 'PageSheet Test',
+          headerBackTitle: '뒤로',
+          headerShown: true,
+        }}
+      />
+      <Stack.Screen
         name="Debug"
         component={DebugScreen}
         options={{

@@ -1,6 +1,6 @@
 # Todolog Project Context
 
-Last Updated: 2026-03-05
+Last Updated: 2026-03-06
 Status: Sync hardening complete (Pending Push -> Delta Pull), Phase 3 Step 1 recurrence engine complete/validated, Phase 3 Step 2 common query/aggregation complete/validated, Phase 3 Step 3 screen-adapter layer complete/validated, cache-policy unification complete/validated
 
 ## 1. Purpose
@@ -41,7 +41,9 @@ Server:
 - Cache-policy unification (Option A -> Option B): complete and validated (shared range cache + sync invalidation unification)
 - Cache retention (memory control): enabled (shared range cache + calendar L1 caches pruned to anchor ±6 months)
 - Strip-calendar foundation (weekly/monthly shell + anchor sync + debug instrumentation): active and integrated via adapter path
+- Page-sheet reusable overlay infrastructure: implemented (`client/src/components/ui/page-sheet/`), manual cross-platform validation pending, first consumer migration pending
 - UI navigation: bottom tab `My Page` (route: `MyPage`, screen: `client/src/screens/MyPageScreen.js`) includes inline category group list (`CategoryGroupList`)
+- Debug test route: `PageSheetTest` (`client/src/test/PageSheetTestScreen.js`) is available from `DebugScreen`
 
 ## 3. Non-Negotiable Architecture Commitments
 

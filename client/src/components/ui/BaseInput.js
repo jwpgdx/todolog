@@ -29,6 +29,9 @@ function BaseInput({
 
     const isSecure = secureTextEntry && !isPasswordVisible;
     const hasValue = value && value.length > 0;
+    const showClearButton = Boolean(hasValue && !secureTextEntry && typeof onChangeText === 'function');
+    const showPasswordToggle = Boolean(secureTextEntry);
+    const showRightIcons = showClearButton || showPasswordToggle;
 
     return (
         <View style={[styles.container, containerStyle]}>
@@ -75,33 +78,32 @@ function BaseInput({
                     {...props}
                 />
 
-                {/* Right Icons */}
-                <View style={[styles.rightIcons, multiline && styles.rightIconsMultiline]}>
-                    {/* Clear Button */}
-                    {hasValue && !secureTextEntry && (
-                        <TouchableOpacity
-                            onPress={() => onChangeText('')}
-                            style={styles.iconButton}
-                            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                        >
-                            <Ionicons name="close-circle" size={18} color="#C7C7CC" />
-                        </TouchableOpacity>
-                    )}
+                {showRightIcons ? (
+                    <View style={[styles.rightIcons, multiline && styles.rightIconsMultiline]}>
+                        {showClearButton ? (
+                            <TouchableOpacity
+                                onPress={() => onChangeText('')}
+                                style={styles.iconButton}
+                                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                            >
+                                <Ionicons name="close-circle" size={18} color="#C7C7CC" />
+                            </TouchableOpacity>
+                        ) : null}
 
-                    {/* Password Toggle */}
-                    {secureTextEntry && (
-                        <TouchableOpacity
-                            onPress={() => setIsPasswordVisible(!isPasswordVisible)}
-                            style={[styles.iconButton, styles.passwordToggle]}
-                        >
-                            <Ionicons
-                                name={isPasswordVisible ? 'eye-off' : 'eye'}
-                                size={20}
-                                color="#9CA3AF"
-                            />
-                        </TouchableOpacity>
-                    )}
-                </View>
+                        {showPasswordToggle ? (
+                            <TouchableOpacity
+                                onPress={() => setIsPasswordVisible(!isPasswordVisible)}
+                                style={[styles.iconButton, styles.passwordToggle]}
+                            >
+                                <Ionicons
+                                    name={isPasswordVisible ? 'eye-off' : 'eye'}
+                                    size={20}
+                                    color="#9CA3AF"
+                                />
+                            </TouchableOpacity>
+                        ) : null}
+                    </View>
+                ) : null}
             </View>
 
             {/* Error Message */}

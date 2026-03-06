@@ -1,6 +1,6 @@
 # Todolog Roadmap
 
-Last Updated: 2026-03-05
+Last Updated: 2026-03-06
 Owner: Product + Engineering
 
 ## 1. Purpose
@@ -25,6 +25,7 @@ Current state:
 - Phase 3 screen-adapter layer (Step 3) is complete/validated
 - Cache-policy unification (Option A -> Option B) is complete/validated
 - Strip-calendar module remains in stabilization/debugging phase (runtime tuning only)
+- Page-sheet reusable overlay infrastructure is implemented; manual validation and first consumer migration remain
 
 Immediate objective:
 
@@ -32,6 +33,7 @@ Immediate objective:
 - reduce runtime debug log noise after Phase 3 integration
 - stabilize strip-calendar weekly/monthly settle behavior and mode-anchor consistency
 - prepare next feature track on top of common layer + screen-adapter contracts
+- run page-sheet manual validation on iOS/Android/Web and decide first production consumer migration
 
 ## 3. Dated Milestones (Completed)
 
@@ -217,6 +219,27 @@ Evidence:
 - `.kiro/specs/cache-policy-unification/design.md`
 - `.kiro/specs/cache-policy-unification/tasks.md`
 - `.kiro/specs/cache-policy-unification/log.md`
+
+### 2026-03-06
+
+- Page-sheet reusable overlay baseline implemented
+  - Added shared cross-platform overlay components under `client/src/components/ui/page-sheet/`
+  - Platform mapping fixed as:
+    - iOS: RN `Modal` page sheet
+    - Android: `BottomSheetModal`
+    - Web mobile: `vaul`
+    - Web desktop: RN centered `Modal`
+  - Added shared `PageSheetInput` entrypoints
+  - Added debug/sample route `PageSheetTest` for long form + in-sheet stack validation
+  - Existing Todo form migration remains deferred; current delivery is infrastructure + sample only
+
+Evidence:
+
+- `.kiro/specs/page-sheet/requirements.md`
+- `.kiro/specs/page-sheet/design.md`
+- `.kiro/specs/page-sheet/tasks.md`
+- `client/src/components/ui/page-sheet/index.js`
+- `client/src/test/PageSheetTestScreen.js`
 
 ### 2026-03-05
 
