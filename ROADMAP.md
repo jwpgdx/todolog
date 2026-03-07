@@ -296,6 +296,7 @@ Evidence:
   - Removed non-serializable route params (CategoryColor callback) and object route params
   - Removed legacy React Navigation stack code (`client/src/navigation/*`)
 - Removed unused page-sheet experiment artifacts (`client/src/components/ui/page-sheet/`)
+- Added iOS form sheet evaluation route (`/test/form-sheet`) to compare against bottom-sheet UX
 
 Evidence:
 
@@ -303,6 +304,8 @@ Evidence:
 - `client/app/_layout.js`
 - `client/app/(app)/(tabs)/_layout.js`
 - `client/e2e/smoke.spec.js`
+- `client/app/(app)/test/form-sheet.js`
+- `client/src/test/FormSheetTestScreen.js`
 
 ## 4. Next Milestones (Planned)
 

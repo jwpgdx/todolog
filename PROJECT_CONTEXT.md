@@ -44,6 +44,7 @@ Server:
 - Strip-calendar foundation (weekly/monthly shell + anchor sync + debug instrumentation): active and integrated via adapter path
 - Expo Router migration: complete and validated (file-based routes under `client/app/`, legacy React Navigation removed)
 - UI navigation: Expo Router groups `/(auth)` + `/(app)` with tabs under `client/app/(app)/(tabs)` (e.g. My Page: `/(app)/(tabs)/my-page`)
+- Experimental UI: iOS form sheet evaluation route `/test/form-sheet` (native-stack `presentation: 'formSheet'` + detents) for potential bottom-sheet replacement exploration
 
 ## 3. Non-Negotiable Architecture Commitments
 

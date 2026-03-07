@@ -1,4 +1,5 @@
 import { Stack } from 'expo-router';
+import { Platform } from 'react-native';
 
 import { useTimeZone } from '../../src/hooks/useTimeZone';
 import { useAuthStore } from '../../src/store/authStore';
@@ -143,6 +144,22 @@ export default function AppLayout() {
           headerBackTitle: '뒤로',
           headerShown: true,
           title: 'Recurrence Engine Test',
+        }}
+      />
+      <Stack.Screen
+        name="test/form-sheet"
+        options={{
+          headerBackTitle: '뒤로',
+          headerShown: true,
+          title: 'Form Sheet Test',
+          presentation: Platform.OS === 'ios' ? 'formSheet' : 'modal',
+          ...(Platform.OS === 'ios'
+            ? {
+                sheetGrabberVisible: true,
+                sheetAllowedDetents: [0.25, 0.5, 1],
+                sheetInitialDetentIndex: 1,
+              }
+            : null),
         }}
       />
 

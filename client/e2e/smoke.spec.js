@@ -80,4 +80,22 @@ test.describe('Todolog Web Smoke', () => {
       page.getByText(/Debug Screen \(SQLite\)|테스트 날짜|기본 상태 확인|통합 테스트/i).first()
     ).toBeVisible();
   });
+
+  test('게스트 진입 후 Form Sheet 테스트 화면 열기/닫기', async ({ page }) => {
+    await mockGuestAuth(page);
+    await page.goto('/');
+    await enterMainByGuest(page);
+
+    const formSheetButton = page.getByText('Form Sheet Test').first();
+    await expect(formSheetButton).toBeVisible();
+    await formSheetButton.click();
+
+    await expect(page.getByText('Scroll/keyboard stress').first()).toBeVisible();
+
+    const closeButton = page.getByText('닫기').first();
+    await expect(closeButton).toBeVisible();
+    await closeButton.click();
+
+    await expect(page.getByText('Scroll/keyboard stress').first()).toBeHidden();
+  });
 });

@@ -1,5 +1,6 @@
 import React, { useCallback, useRef } from 'react';
-import { SafeAreaView, StyleSheet } from 'react-native';
+import { Pressable, SafeAreaView, StyleSheet, Text, View } from 'react-native';
+import { useRouter } from 'expo-router';
 import { useDateStore } from '../store/dateStore';
 import { useTodos } from '../hooks/queries/useTodos';
 import { useToggleCompletion } from '../hooks/queries/useToggleCompletion';
@@ -13,6 +14,7 @@ import DailyTodoList from '../features/todo/list/DailyTodoList';
  * 메인 투두 리스트 화면
  */
 export default function TodoScreen() {
+  const router = useRouter();
   const { currentDate } = useDateStore();
   const { data: todos, isLoading } = useTodos(currentDate);
   const { mutate: toggleCompletion } = useToggleCompletion();
@@ -74,6 +76,16 @@ export default function TodoScreen() {
         onEdit={handleEdit}
         onDelete={handleDelete}
       />
+      {__DEV__ ? (
+        <View pointerEvents="box-none" style={styles.devOverlay}>
+          <Pressable
+            onPress={() => router.push('/test/form-sheet')}
+            style={({ pressed }) => [styles.devButton, pressed && styles.devButtonPressed]}
+          >
+            <Text style={styles.devButtonText}>Form Sheet Test</Text>
+          </Pressable>
+        </View>
+      ) : null}
     </SafeAreaView>
   );
 }
@@ -82,5 +94,29 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#F9FAFB',
+  },
+  devOverlay: {
+    position: 'absolute',
+    bottom: 88,
+    right: 12,
+    zIndex: 50,
+  },
+  devButton: {
+    backgroundColor: '#111827',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 12,
+    elevation: 6,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 6,
+  },
+  devButtonPressed: {
+    opacity: 0.85,
+  },
+  devButtonText: {
+    color: 'white',
+    fontWeight: '700',
   },
 });
