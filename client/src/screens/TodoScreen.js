@@ -76,16 +76,14 @@ export default function TodoScreen() {
         onEdit={handleEdit}
         onDelete={handleDelete}
       />
-      {__DEV__ ? (
-        <View pointerEvents="box-none" style={styles.devOverlay}>
-          <Pressable
-            onPress={() => router.push('/test/form-sheet')}
-            style={({ pressed }) => [styles.devButton, pressed && styles.devButtonPressed]}
-          >
-            <Text style={styles.devButtonText}>Form Sheet Test</Text>
-          </Pressable>
-        </View>
-      ) : null}
+      <View pointerEvents="box-none" style={styles.devOverlay}>
+        <Pressable
+          onPress={() => router.push('/test/form-sheet')}
+          style={({ pressed }) => [styles.devButton, pressed && styles.devButtonPressed]}
+        >
+          <Text style={styles.devButtonText}>Form Sheet Test</Text>
+        </Pressable>
+      </View>
     </SafeAreaView>
   );
 }
