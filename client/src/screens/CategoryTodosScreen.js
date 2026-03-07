@@ -1,8 +1,10 @@
 import React, { useMemo } from 'react';
 import { View, Text, TouchableOpacity, SafeAreaView, FlatList, ActivityIndicator } from 'react-native';
+import { Stack, useLocalSearchParams } from 'expo-router';
 import { useActionSheet } from '@expo/react-native-action-sheet';
 import { Ionicons } from '@expo/vector-icons';
 import dayjs from 'dayjs';
+import { useCategories } from '../hooks/queries/useCategories';
 import { useTodosByCategory } from '../hooks/queries/useTodosByCategory';
 import { useUpdateTodo } from '../hooks/queries/useUpdateTodo';
 import { useDeleteTodo } from '../hooks/queries/useDeleteTodo';
@@ -59,9 +61,17 @@ const TodoItem = ({ todo, onToggleComplete, onDelete }) => {
     );
 };
 
-export default function CategoryTodosScreen({ route, navigation }) {
-    const { category } = route.params;
-    const { data: todos, isLoading } = useTodosByCategory(category._id);
+export default function CategoryTodosScreen() {
+    const { categoryId: rawCategoryId } = useLocalSearchParams();
+    const categoryId = Array.isArray(rawCategoryId) ? rawCategoryId[0] : rawCategoryId;
+    const { data: categories, isLoading: isCategoriesLoading } = useCategories();
+    const category = useMemo(
+        () => categories?.find((cat) => cat?._id === categoryId) || null,
+        [categories, categoryId]
+    );
+    const categoryColor = category?.color || '#3B82F6';
+
+    const { data: todos, isLoading } = useTodosByCategory(categoryId);
     const updateTodo = useUpdateTodo();
     const deleteTodo = useDeleteTodo();
 
@@ -77,15 +87,8 @@ export default function CategoryTodosScreen({ route, navigation }) {
         });
     }, [todos]);
 
-    React.useEffect(() => {
-        navigation.setOptions({
-            title: category.name,
-            headerStyle: {
-                backgroundColor: category.color || '#3B82F6',
-            },
-            headerTintColor: '#fff',
-        });
-    }, [navigation, category]);
+    const headerTitle = category?.name || '카테고리';
+    const headerColor = category?.color || '#3B82F6';
 
     const handleToggleComplete = (todo) => {
         updateTodo.mutate({
@@ -121,16 +124,33 @@ export default function CategoryTodosScreen({ route, navigation }) {
         );
     };
 
-    if (isLoading) {
+    if (!categoryId) {
         return (
             <SafeAreaView className="flex-1 bg-white items-center justify-center">
-                <ActivityIndicator size="large" color={category.color || '#3B82F6'} />
+                <Text className="text-gray-500">잘못된 접근입니다.</Text>
+            </SafeAreaView>
+        );
+    }
+
+    if (isLoading || (isCategoriesLoading && !category)) {
+        return (
+            <SafeAreaView className="flex-1 bg-white items-center justify-center">
+                <ActivityIndicator size="large" color={categoryColor} />
             </SafeAreaView>
         );
     }
 
     return (
         <SafeAreaView className="flex-1 bg-white">
+            <Stack.Screen
+                options={{
+                    title: headerTitle,
+                    headerStyle: {
+                        backgroundColor: headerColor,
+                    },
+                    headerTintColor: '#fff',
+                }}
+            />
             <FlatList
                 data={sortedTodos}
                 keyExtractor={(item) => item._id}

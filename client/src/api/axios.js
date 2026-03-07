@@ -6,17 +6,27 @@ import { Platform } from 'react-native';
  * API URL 설정
  * - 개발: .env의 EXPO_PUBLIC_API_URL 사용
  * - 프로덕션: 환경 변수 또는 하드코딩
- * 
- * 네트워크 바뀔 때 .env의 IP 주소를 수동으로 업데이트해야 함
+ *
+ * 개발 편의:
+ * - iOS 시뮬레이터의 localhost는 호스트 Mac을 가리킴
+ * - Android 에뮬레이터의 localhost는 에뮬레이터 자신을 가리키므로 10.0.2.2로 변환
  */
 const getBaseUrl = () => {
+  const envUrl = process.env.EXPO_PUBLIC_API_URL;
+
   // 플랫폼 공통: 환경 변수가 있으면 최우선 사용
-  if (process.env.EXPO_PUBLIC_API_URL) {
-    return process.env.EXPO_PUBLIC_API_URL;
+  if (envUrl) {
+    if (Platform.OS === 'android') {
+      return envUrl.replace('://localhost', '://10.0.2.2');
+    }
+
+    return envUrl;
   }
 
   // 웹/네이티브 공통 fallback
-  return 'http://localhost:5001/api';
+  return Platform.OS === 'android'
+    ? 'http://10.0.2.2:5001/api'
+    : 'http://localhost:5001/api';
 };
 
 const API_URL = getBaseUrl();

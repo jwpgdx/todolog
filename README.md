@@ -159,6 +159,7 @@ GOOGLE_CLIENT_SECRET=your_google_client_secret
 Important note:
 
 - `client/src/api/axios.js` has a fallback URL `http://localhost:5001/api`
+- Android emulator/dev-client: `localhost` will be converted to `10.0.2.2` automatically for API calls.
 - If API calls fail, set `EXPO_PUBLIC_API_URL` explicitly
 
 ### 4) Run

@@ -1,11 +1,13 @@
 import React, { useState } from 'react';
 import { View, Text, TextInput, TouchableOpacity, ScrollView, Alert } from 'react-native';
+import { Stack, useRouter } from 'expo-router';
 import { useAuthStore } from '../store/authStore';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import Toast from 'react-native-toast-message';
 
-export default function EditProfileScreen({ navigation }) {
+export default function EditProfileScreen() {
+    const router = useRouter();
     const { user, updateProfile } = useAuthStore();
     const [nickname, setNickname] = useState(user?.name || '');
     // 비밀번호 변경 상태
@@ -13,22 +15,6 @@ export default function EditProfileScreen({ navigation }) {
     const [confirmPassword, setConfirmPassword] = useState('');
 
     const [isLoading, setIsLoading] = useState(false);
-
-    React.useLayoutEffect(() => {
-        navigation.setOptions({
-            headerRight: () => (
-                <TouchableOpacity
-                    onPress={handleSave}
-                    disabled={isLoading}
-                    className="mr-4"
-                >
-                    <Text className={`text-base font-semibold ${isLoading ? 'text-gray-400' : 'text-blue-600'}`}>
-                        {isLoading ? '저장 중' : '완료'}
-                    </Text>
-                </TouchableOpacity>
-            ),
-        });
-    }, [navigation, nickname, newPassword, confirmPassword, isLoading]);
 
     const handleSave = async () => {
         if (!nickname.trim()) {
@@ -59,7 +45,7 @@ export default function EditProfileScreen({ navigation }) {
 
             Toast.show({ type: 'success', text1: '프로필이 수정되었습니다.' });
             setTimeout(() => {
-                navigation.goBack();
+                router.back();
             }, 500);
 
         } catch (error) {
@@ -76,6 +62,21 @@ export default function EditProfileScreen({ navigation }) {
 
     return (
         <SafeAreaView className="flex-1 bg-white" edges={['bottom']}>
+            <Stack.Screen
+                options={{
+                    headerRight: () => (
+                        <TouchableOpacity
+                            onPress={handleSave}
+                            disabled={isLoading}
+                            className="mr-4"
+                        >
+                            <Text className={`text-base font-semibold ${isLoading ? 'text-gray-400' : 'text-blue-600'}`}>
+                                {isLoading ? '저장 중' : '완료'}
+                            </Text>
+                        </TouchableOpacity>
+                    ),
+                }}
+            />
             <ScrollView className="flex-1 px-6 pt-4">
 
                 {/* 1. Photo Change */}

@@ -171,8 +171,8 @@ export const useAuthStore = create((set, get) => ({
       const normalizedUser = normalizeAuthUser(user);
 
       // 4. Store tokens and user in AsyncStorage
-      await AsyncStorage.setItem('token', accessToken);
       await AsyncStorage.setItem('refreshToken', refreshToken);
+      await AsyncStorage.setItem('token', accessToken);
       await AsyncStorage.setItem('user', JSON.stringify(normalizedUser));
 
       // 5. Update Zustand state (게스트는 isLoggedIn = false)

@@ -1,6 +1,6 @@
 # Todolog Roadmap
 
-Last Updated: 2026-03-06
+Last Updated: 2026-03-07
 Owner: Product + Engineering
 
 ## 1. Purpose
@@ -24,16 +24,18 @@ Current state:
 - Phase 3 common query/aggregation layer (Step 2) is complete/validated
 - Phase 3 screen-adapter layer (Step 3) is complete/validated
 - Cache-policy unification (Option A -> Option B) is complete/validated
-- Strip-calendar module remains in stabilization/debugging phase (runtime tuning only)
-- Page-sheet reusable overlay infrastructure is implemented; manual validation and first consumer migration remain
+- Strip-calendar legacy module remains in stabilization/debugging phase
+- Week Flow Calendar rewrite planning is active as the replacement path for strip-calendar UI
+- Expo Router migration is complete/validated (file-based routing under `client/app/`)
 
 Immediate objective:
 
 - maintain sync operational stability (retry/dead-letter/throughput monitoring)
 - reduce runtime debug log noise after Phase 3 integration
 - stabilize strip-calendar weekly/monthly settle behavior and mode-anchor consistency
+- finalize Week Flow Calendar rewrite spec and use it as the new source of truth for calendar UI replacement
 - prepare next feature track on top of common layer + screen-adapter contracts
-- run page-sheet manual validation on iOS/Android/Web and decide first production consumer migration
+- post Expo Router migration: ensure deep-link/push route parity and keep legacy navigation deps at 0
 
 ## 3. Dated Milestones (Completed)
 
@@ -284,6 +286,23 @@ Evidence:
 - `client/src/features/todo-calendar/hooks/useTodoCalendarData.js`
 - `client/src/features/todo-calendar/store/todoCalendarStore.js`
 - `.kiro/specs/common-query-aggregation-layer/todo-calendar-first-entry-lag-postmortem-2026-02-24.md`
+
+### 2026-03-07
+
+- Expo Router migration implemented and validated (Web/iOS/Android)
+  - Single routing entry: `expo-router/entry`
+  - File-based routes under `client/app/` with `/(auth)` + `/(app)` groups and tabs
+  - Root providers/side effects migrated to `client/app/_layout.js`
+  - Removed non-serializable route params (CategoryColor callback) and object route params
+  - Removed legacy React Navigation stack code (`client/src/navigation/*`)
+- Removed unused page-sheet experiment artifacts (`client/src/components/ui/page-sheet/`)
+
+Evidence:
+
+- `.kiro/specs/expo-router-migration/tasks.md`
+- `client/app/_layout.js`
+- `client/app/(app)/(tabs)/_layout.js`
+- `client/e2e/smoke.spec.js`
 
 ## 4. Next Milestones (Planned)
 

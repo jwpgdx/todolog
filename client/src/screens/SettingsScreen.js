@@ -3,13 +3,15 @@ import { View, Text, TouchableOpacity, ScrollView, Switch, Platform, Alert } fro
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next'; // 번역 훅
+import { useRouter } from 'expo-router';
 
 import { useAuthStore } from '../store/authStore';
 import { useSettings, useUpdateSetting } from '../hooks/queries/useSettings';
 
 import api from '../api/axios'; // api import 추가
 
-export default function SettingsScreen({ navigation }) {
+export default function SettingsScreen() {
+    const router = useRouter();
     const { user, setAuth } = useAuthStore();
     const { data: settings = {}, isLoading } = useSettings();
     const { mutate: updateSetting } = useUpdateSetting();
@@ -23,7 +25,7 @@ export default function SettingsScreen({ navigation }) {
                 await api.delete('/auth/delete');
                 // 로그아웃 처리
                 await setAuth(null, null);
-                // 네비게이션은 AuthStack으로 자동 전환됨 (App.js의 조건부 렌더링에 따름)
+                // auth 상태 변경은 Expo Router gate(`app/(app)/_layout.js`)에서 /(auth)로 자동 전환됨
             } catch (error) {
                 console.error('Delete account error:', error);
                 Alert.alert('오류', '회원 탈퇴 중 문제가 발생했습니다.');
@@ -114,13 +116,13 @@ export default function SettingsScreen({ navigation }) {
                     <SettingsRow
                         title={t('theme')}
                         value={themeLabels[settings.theme] || settings.theme}
-                        onPress={() => navigation.navigate('ThemeSettings')}
+                        onPress={() => router.push('/(app)/settings/theme')}
                     />
                     <SettingsRow
                         title={t('language')}
                         value={langLabels[settings.language] || settings.language}
                         // onPress={() => cycleOption('language', settings.language || 'system', ['system', 'ko', 'en'])}
-                        onPress={() => navigation.navigate('LanguageSettings')}
+                        onPress={() => router.push('/(app)/settings/language')}
                     />
                 </View>
 
@@ -134,7 +136,7 @@ export default function SettingsScreen({ navigation }) {
                     <SettingsRow
                         title={t('start_day')}
                         value={dayLabels[settings.startDayOfWeek] || settings.startDayOfWeek}
-                        onPress={() => navigation.navigate('StartDaySettings')}
+                        onPress={() => router.push('/(app)/settings/start-day')}
                     />
                     <SettingsRow
                         title={t('hide_completed')}
@@ -152,7 +154,7 @@ export default function SettingsScreen({ navigation }) {
                     <SettingsRow
                         title={t('timezone')}
                         value={settings.timeZoneAuto ? '자동' : settings.timeZone}
-                        onPress={() => navigation.navigate('TimeZoneSettings')}
+                        onPress={() => router.push('/(app)/settings/time-zone')}
                     />
                     <SettingsRow
                         title={t('delete_account')}
@@ -167,7 +169,7 @@ export default function SettingsScreen({ navigation }) {
                 <View className="bg-white dark:bg-gray-800">
                     <SettingsRow
                         title="무한 스크롤 캘린더 테스트"
-                        onPress={() => navigation.navigate('TodoCalendar')}
+                        onPress={() => router.push('/(app)/todo-calendar')}
                     />
                 </View> */}
 

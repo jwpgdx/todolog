@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { View, Text, TouchableOpacity, ActivityIndicator } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import { useRouter } from 'expo-router';
 import Toast from 'react-native-toast-message';
 import { useAuthStore } from '../store/authStore';
 import { authAPI } from '../api/auth';
@@ -9,7 +9,7 @@ const DEV_AUTO_LOGIN_EMAIL = 'admin2321@gmail.com';
 const DEV_AUTO_LOGIN_PASSWORD = '123456';
 
 export default function WelcomeScreen() {
-  const navigation = useNavigation();
+  const router = useRouter();
   const { loginAsGuest, setAuth } = useAuthStore();
   const [loadingType, setLoadingType] = useState(null);
   const isLoading = loadingType !== null;
@@ -18,7 +18,7 @@ export default function WelcomeScreen() {
     try {
       setLoadingType('guest');
       await loginAsGuest();
-      // 게스트 로그인 성공 시 자동으로 Home으로 이동 (Navigation에서 처리)
+      router.replace('/(app)/(tabs)');
     } catch (error) {
       console.error('Guest login error:', error);
 
@@ -80,6 +80,7 @@ export default function WelcomeScreen() {
       }
 
       await setAuth(token, user);
+      router.replace('/(app)/(tabs)');
     } catch (error) {
       console.error('Dev auto login error:', error);
       Toast.show({
@@ -137,7 +138,7 @@ export default function WelcomeScreen() {
 
       {/* 로그인 링크 (작은 텍스트) */}
       <TouchableOpacity 
-        onPress={() => navigation.navigate('Login')}
+        onPress={() => router.push('/(auth)/login')}
         className="p-2"
         disabled={isLoading}
       >

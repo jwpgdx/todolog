@@ -168,8 +168,6 @@ exports.createGuest = async (req, res) => {
     // 게스트 사용자 생성
     const user = await User.create({
       _id: userId,
-      email: null,
-      password: null,
       accountType: 'anonymous',
       name: 'Guest User',
       provider: 'local',

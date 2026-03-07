@@ -1,7 +1,7 @@
 # Todolog Project Context
 
-Last Updated: 2026-03-06
-Status: Sync hardening complete (Pending Push -> Delta Pull), Phase 3 Step 1 recurrence engine complete/validated, Phase 3 Step 2 common query/aggregation complete/validated, Phase 3 Step 3 screen-adapter layer complete/validated, cache-policy unification complete/validated
+Last Updated: 2026-03-07
+Status: Sync hardening complete (Pending Push -> Delta Pull), Phase 3 Step 1 recurrence engine complete/validated, Phase 3 Step 2 common query/aggregation complete/validated, Phase 3 Step 3 screen-adapter layer complete/validated, cache-policy unification complete/validated, Expo Router migration complete/validated
 
 ## 1. Purpose
 
@@ -18,6 +18,7 @@ Client:
 
 - React Native `0.81.5`
 - Expo `54.0.33`
+- Expo Router `~6.0.23`
 - React `19.1.0`
 - Zustand `5.x`
 - React Query `5.x`
@@ -41,9 +42,8 @@ Server:
 - Cache-policy unification (Option A -> Option B): complete and validated (shared range cache + sync invalidation unification)
 - Cache retention (memory control): enabled (shared range cache + calendar L1 caches pruned to anchor ±6 months)
 - Strip-calendar foundation (weekly/monthly shell + anchor sync + debug instrumentation): active and integrated via adapter path
-- Page-sheet reusable overlay infrastructure: implemented (`client/src/components/ui/page-sheet/`), manual cross-platform validation pending, first consumer migration pending
-- UI navigation: bottom tab `My Page` (route: `MyPage`, screen: `client/src/screens/MyPageScreen.js`) includes inline category group list (`CategoryGroupList`)
-- Debug test route: `PageSheetTest` (`client/src/test/PageSheetTestScreen.js`) is available from `DebugScreen`
+- Expo Router migration: complete and validated (file-based routes under `client/app/`, legacy React Navigation removed)
+- UI navigation: Expo Router groups `/(auth)` + `/(app)` with tabs under `client/app/(app)/(tabs)` (e.g. My Page: `/(app)/(tabs)/my-page`)
 
 ## 3. Non-Negotiable Architecture Commitments
 

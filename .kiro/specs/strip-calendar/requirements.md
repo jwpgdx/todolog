@@ -1,5 +1,7 @@
 # Requirements Document: Strip Calendar (Main Screen)
 
+> Legacy reference only. New rewrite planning lives under `.kiro/specs/week-flow-calendar/`.
+
 ## Introduction
 
 Strip Calendar는 `TodoScreen` 메인 화면에서 날짜 선택을 담당하는 경량 캘린더 컴포넌트입니다.

@@ -1,21 +1,14 @@
-import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import { View, TouchableOpacity, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import TodoScreen from '../screens/TodoScreen';
-import NotificationScreen from '../screens/NotificationScreen';
-import MyPageScreen from '../screens/MyPageScreen';
-import TodoCalendarScreen from '../screens/TodoCalendarScreen';
-import DebugScreen from '../screens/DebugScreen';
-import StripCalendarTestScreen from '../screens/StripCalendarTestScreen';
-import CalendarServiceTestScreen from '../test/CalendarServiceTestScreen';
-import { useTodoFormStore } from '../store/todoFormStore';
+import { Tabs } from 'expo-router';
+import { Platform, TouchableOpacity, View } from 'react-native';
 
-const Tab = createBottomTabNavigator();
+import { useTodoFormStore } from '../../../src/store/todoFormStore';
 
-export default function MainTabs() {
+export default function TabsLayout() {
   const { openQuick } = useTodoFormStore();
+
   return (
-    <Tab.Navigator
+    <Tabs
       screenOptions={{
         headerShown: false,
         freezeOnBlur: true,
@@ -23,86 +16,74 @@ export default function MainTabs() {
         tabBarInactiveTintColor: '#9ca3af',
       }}
     >
-      <Tab.Screen
-        name="Home"
-        component={TodoScreen}
+      <Tabs.Screen
+        name="index"
         options={{
+          title: '홈',
           tabBarLabel: '홈',
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="home-outline" size={size} color={color} />
-          ),
+          tabBarIcon: ({ color, size }) => <Ionicons name="home-outline" size={size} color={color} />,
         }}
       />
-      <Tab.Screen
-        name="Calendar"
-        component={TodoCalendarScreen}
+      <Tabs.Screen
+        name="calendar"
         options={{
+          title: '캘린더',
           tabBarLabel: '캘린더',
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="calendar-outline" size={size} color={color} />
           ),
         }}
       />
-      <Tab.Screen
-        name="Strip"
-        component={StripCalendarTestScreen}
+      <Tabs.Screen
+        name="strip"
         options={{
+          title: '스트립',
           tabBarLabel: '스트립',
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="calendar-number-outline" size={size} color={color} />
           ),
         }}
       />
-      <Tab.Screen
-        name="Test"
-        component={CalendarServiceTestScreen}
+      <Tabs.Screen
+        name="test"
         options={{
+          title: '테스트',
           tabBarLabel: '테스트',
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="flask-outline" size={size} color={color} />
-          ),
+          tabBarIcon: ({ color, size }) => <Ionicons name="flask-outline" size={size} color={color} />,
         }}
       />
-      <Tab.Screen
-        name="Debug"
-        component={DebugScreen}
+      <Tabs.Screen
+        name="debug"
         options={{
+          title: '디버그',
           tabBarLabel: '디버그',
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="bug-outline" size={size} color={color} />
-          ),
+          tabBarIcon: ({ color, size }) => <Ionicons name="bug-outline" size={size} color={color} />,
         }}
       />
-      <Tab.Screen
-        name="MyPage"
-        component={MyPageScreen}
+      <Tabs.Screen
+        name="my-page"
         options={{
+          title: 'My Page',
           tabBarLabel: 'My Page',
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="person-outline" size={size} color={color} />
-          ),
+          tabBarIcon: ({ color, size }) => <Ionicons name="person-outline" size={size} color={color} />,
         }}
       />
-      {/* 모든 플랫폼: 탭 바 맨 오른쪽에 추가 버튼 */}
-      <Tab.Screen
-        name="Add"
-        component={View}
+
+      <Tabs.Screen
+        name="add"
         options={{
+          title: '',
           tabBarLabel: '',
           tabBarButton: (props) => {
-            // 웹에서 href와 accessibilityRole을 제거하여 <a> 태그로 렌더링되는 것을 방지
             const { href, accessibilityRole, ...restProps } = props;
-
             return (
               <TouchableOpacity
                 {...restProps}
                 accessibilityRole="button"
                 onPress={(e) => {
-                  // 웹에서 기본 동작 방지
                   if (e && e.preventDefault) {
                     e.preventDefault();
                   }
-                  console.log('🔵 Add button pressed!');
                   openQuick();
                 }}
                 style={{
@@ -125,6 +106,7 @@ export default function MainTabs() {
                     shadowOpacity: 0.25,
                     shadowRadius: 4,
                     elevation: 5,
+                    ...(Platform.OS === 'web' ? { cursor: 'pointer' } : null),
                   }}
                 >
                   <Ionicons name="add" size={28} color="white" />
@@ -135,12 +117,11 @@ export default function MainTabs() {
         }}
         listeners={{
           tabPress: (e) => {
-            console.log('🔵 Tab press intercepted!');
             e.preventDefault();
             openQuick();
           },
         }}
       />
-    </Tab.Navigator>
+    </Tabs>
   );
 }

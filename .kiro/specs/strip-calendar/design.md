@@ -1,5 +1,7 @@
 # Design Document: Strip Calendar (Main Screen)
 
+> Legacy reference only. New rewrite planning lives under `.kiro/specs/week-flow-calendar/`.
+
 ## Overview
 
 Strip Calendar is a lightweight date selector for `TodoScreen`.  

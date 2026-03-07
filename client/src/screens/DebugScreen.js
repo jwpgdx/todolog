@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Platform } from 'react-native';
+import { useRouter } from 'expo-router';
 import dayjs from 'dayjs';
 import { useQueryClient } from '@tanstack/react-query';
 import { useToggleCompletion } from '../hooks/queries/useToggleCompletion';
@@ -67,7 +68,8 @@ function percentile(values, p) {
   return Number(sorted[index].toFixed(2));
 }
 
-export default function DebugScreen({ navigation }) {
+export default function DebugScreen() {
+  const router = useRouter();
   const [logs, setLogs] = useState([]);
   const [selectedDate, setSelectedDate] = useState(getLocalDateString());
   const [validationSummary, setValidationSummary] = useState({
@@ -2353,31 +2355,25 @@ export default function DebugScreen({ navigation }) {
 
         <TouchableOpacity
           style={[styles.button, styles.testButton]}
-          onPress={() => navigation.navigate('GuestMigrationTest')}
+          onPress={() => router.push('/(app)/guest/migration-test')}
         >
           <Text style={styles.buttonText}>🔬 Guest Migration Test</Text>
         </TouchableOpacity>
 
         <TouchableOpacity
           style={[styles.button, styles.testButton]}
-          onPress={() => navigation.navigate('CalendarServiceTest')}
+          onPress={() => router.push('/(app)/(tabs)/test')}
         >
           <Text style={styles.buttonText}>📅 Calendar Service Test</Text>
         </TouchableOpacity>
 
         <TouchableOpacity
           style={[styles.button, styles.testButton]}
-          onPress={() => navigation.navigate('RecurrenceEngineTest')}
+          onPress={() => router.push('/(app)/test/recurrence-engine')}
         >
           <Text style={styles.buttonText}>🔁 Recurrence Engine Test</Text>
         </TouchableOpacity>
 
-        <TouchableOpacity
-          style={[styles.button, styles.testButton]}
-          onPress={() => navigation.navigate('PageSheetTest')}
-        >
-          <Text style={styles.buttonText}>🪟 PageSheet Test</Text>
-        </TouchableOpacity>
       </ScrollView>
 
       <View style={styles.logContainer}>

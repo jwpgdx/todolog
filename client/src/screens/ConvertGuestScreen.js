@@ -3,10 +3,12 @@ import { View, Text, TextInput, TouchableOpacity, ScrollView, ActivityIndicator 
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import Toast from 'react-native-toast-message';
+import { useRouter } from 'expo-router';
 import { useAuthStore } from '../store/authStore';
 import api from '../api/axios';
 
-export default function ConvertGuestScreen({ navigation }) {
+export default function ConvertGuestScreen() {
+  const router = useRouter();
   const { user, setUser } = useAuthStore();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -60,7 +62,7 @@ export default function ConvertGuestScreen({ navigation }) {
         text2: '이제 정회원으로 모든 기능을 사용할 수 있습니다',
       });
 
-      navigation.goBack();
+      router.back();
     } catch (error) {
       console.error('Convert guest error:', error);
 
@@ -109,7 +111,7 @@ export default function ConvertGuestScreen({ navigation }) {
     <SafeAreaView className="flex-1 bg-white" edges={['top']}>
       {/* Header */}
       <View className="flex-row items-center px-4 py-3 border-b border-gray-200">
-        <TouchableOpacity onPress={() => navigation.goBack()} className="mr-3">
+        <TouchableOpacity onPress={() => router.back()} className="mr-3">
           <Ionicons name="close" size={28} color="#000" />
         </TouchableOpacity>
         <Text className="text-lg font-bold">회원으로 전환</Text>

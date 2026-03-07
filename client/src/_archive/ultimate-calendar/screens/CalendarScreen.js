@@ -2,7 +2,7 @@ import React, { useMemo, useCallback, useRef, useState, useEffect } from 'react'
 import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { FlashList } from '@shopify/flash-list';
 import { Ionicons } from '@expo/vector-icons';
-import { useNavigation } from '@react-navigation/native';
+import { useRouter } from 'expo-router';
 import dayjs from 'dayjs';
 import 'dayjs/locale/ko';
 import { useTranslation } from 'react-i18next';
@@ -15,7 +15,7 @@ import { useCalendarDynamicEvents } from '../hooks/useCalendarDynamicEvents';
 
 export default function CalendarScreen() {
     const { t, i18n } = useTranslation();
-    const navigation = useNavigation();
+    const router = useRouter();
     const { setCurrentDate } = useDateStore();
     const { user } = useAuthStore();
     const startDayOfWeek = user?.settings?.startDayOfWeek || 'sunday';
@@ -167,8 +167,8 @@ export default function CalendarScreen() {
     // 3. 날짜 클릭 핸들러
     const handleDatePress = useCallback((dateString) => {
         setCurrentDate(dateString);
-        navigation.navigate('Home');
-    }, [setCurrentDate, navigation]);
+        router.replace('/(app)/(tabs)');
+    }, [setCurrentDate, router]);
 
     // 4. 월 렌더링
     const renderMonth = useCallback(({ item, index }) => {

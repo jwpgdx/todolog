@@ -3,10 +3,12 @@ import { View, Text, TouchableOpacity, ScrollView, Switch, Platform } from 'reac
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as Localization from 'expo-localization';
+import { useRouter } from 'expo-router';
 import { useSettings, useUpdateSetting } from '../../hooks/queries/useSettings';
 import { useTimeZone, getTimeZoneDisplayName } from '../../hooks/useTimeZone';
 
-export default function TimeZoneSettingsScreen({ navigation }) {
+export default function TimeZoneSettingsScreen() {
+    const router = useRouter();
     const { data: settings = {} } = useSettings();
     const { mutate: updateSetting } = useUpdateSetting();
     const { updateTimeZone } = useTimeZone();
@@ -54,7 +56,7 @@ export default function TimeZoneSettingsScreen({ navigation }) {
                     </View>
                     <View className="bg-white dark:bg-gray-800 border-t border-b border-gray-100 dark:border-gray-700">
                         <TouchableOpacity
-                            onPress={() => navigation.navigate('TimeZoneSelection')}
+                            onPress={() => router.push('/(app)/settings/time-zone-selection')}
                             disabled={isAuto}
                             className={`flex-row items-center justify-between py-4 px-4 ${isAuto ? 'opacity-50' : 'active:bg-gray-50 dark:active:bg-gray-700'}`}
                         >

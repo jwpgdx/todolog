@@ -1,5 +1,7 @@
 # Implementation Plan: Strip Calendar (Main Screen)
 
+> Legacy reference only. New rewrite planning lives under `.kiro/specs/week-flow-calendar/`.
+
 ## Overview
 
 This plan implements Strip Calendar using the approved requirements (R1-R25) and design decisions:

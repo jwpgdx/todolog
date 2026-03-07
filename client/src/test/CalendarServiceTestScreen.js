@@ -12,10 +12,12 @@ import React, { useState } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Toast from 'react-native-toast-message';
+import { useRouter } from 'expo-router';
 
 import { fetchCalendarDataForMonths } from '../features/todo-calendar/services/calendarTodoService';
 
-export default function CalendarServiceTestScreen({ navigation }) {
+export default function CalendarServiceTestScreen() {
+  const router = useRouter();
   const [testResults, setTestResults] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
 
@@ -349,7 +351,7 @@ export default function CalendarServiceTestScreen({ navigation }) {
 
         {/* Navigation */}
         <TouchableOpacity
-          onPress={() => navigation.goBack()}
+          onPress={() => router.back()}
           className="py-3 bg-gray-200 rounded-lg"
         >
           <Text className="text-center text-gray-700 font-medium">

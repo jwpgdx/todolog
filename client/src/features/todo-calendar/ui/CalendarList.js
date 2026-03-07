@@ -1,7 +1,7 @@
 import React, { useCallback, useRef, useState, useMemo } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { FlashList } from '@shopify/flash-list';
-import { useFocusEffect, useIsFocused } from '@react-navigation/native';
+import { useFocusEffect } from 'expo-router';
 import { useInfiniteCalendar } from '../hooks/useInfiniteCalendar';
 import { useTodoCalendarData } from '../hooks/useTodoCalendarData';
 import { getWeekdayNames, formatMonthTitle } from '../utils/calendarHelpers';
@@ -38,7 +38,7 @@ const WEEK_ROW_HEIGHT = 88;
 const MONTH_HEIGHT = TITLE_HEIGHT + (6 * WEEK_ROW_HEIGHT); // 558px
 
 export default function CalendarList() {
-  const isFocused = useIsFocused();
+  const isFocusedRef = useRef(true);
   const {
     months,
     handleEndReached,
@@ -68,7 +68,11 @@ export default function CalendarList() {
   // When user returns from Todo CRUD screen, invalidated months are re-fetched
   useFocusEffect(
     useCallback(() => {
+      isFocusedRef.current = true;
       refetchInvalidated();
+      return () => {
+        isFocusedRef.current = false;
+      };
     }, [refetchInvalidated])
   );
 
@@ -104,6 +108,10 @@ export default function CalendarList() {
    * Validates: Requirements 1.3, 1.4, 7.1, 7.2, 7.3, 7.4, 7.5
    */
   const onViewableItemsChanged = useCallback(({ viewableItems }) => {
+    if (!isFocusedRef.current) {
+      return;
+    }
+
     // Skip if months array is not initialized yet
     if (months.length === 0 || viewableItems.length === 0) {
       return;
@@ -161,6 +169,13 @@ export default function CalendarList() {
    */
   const keyExtractor = useCallback((item) => item.id, []);
 
+  const onEndReached = useCallback(() => {
+    if (!isFocusedRef.current) {
+      return;
+    }
+    handleEndReached();
+  }, [handleEndReached]);
+
   return (
     <View style={styles.container}>
       {/* Fixed Header: Current Month Title */}
@@ -195,9 +210,9 @@ export default function CalendarList() {
         estimatedItemSize={MONTH_HEIGHT}
         drawDistance={960}
         initialScrollIndex={initialScrollIndex}
-        onEndReached={isFocused ? handleEndReached : undefined}
+        onEndReached={onEndReached}
         onEndReachedThreshold={0.2}
-        onViewableItemsChanged={isFocused ? onViewableItemsChanged : undefined}
+        onViewableItemsChanged={onViewableItemsChanged}
         viewabilityConfig={viewabilityConfig}
         maintainVisibleContentPosition={{ minIndexForVisible: 0 }}
         onScrollToIndexFailed={onScrollToIndexFailed}

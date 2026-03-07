@@ -1,11 +1,13 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, ScrollView, Platform } from 'react-native';
+import { useRouter } from 'expo-router';
 import { useAuthStore } from '../store/authStore';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import CategoryGroupList from '../components/domain/category/CategoryGroupList';
 
-export default function MyPageScreen({ navigation }) {
+export default function MyPageScreen() {
+  const router = useRouter();
   const { user } = useAuthStore();
 
   // Mock data for activity summary
@@ -15,11 +17,11 @@ export default function MyPageScreen({ navigation }) {
   const handleEditProfilePress = () => {
     // 소셜 로그인 유저는 비밀번호 검증 없이 바로 이동 (비밀번호가 없으므로)
     if (user?.provider === 'google') {
-      navigation.navigate('EditProfile');
+      router.push('/(app)/profile/edit');
       return;
     }
     // 이메일 가입 유저는 비밀번호 확인 화면으로 이동
-    navigation.navigate('VerifyPassword');
+    router.push('/(app)/profile/verify-password');
   };
 
   return (
@@ -41,7 +43,7 @@ export default function MyPageScreen({ navigation }) {
             {/* 회원가입 버튼 */}
             <TouchableOpacity
               className="bg-blue-500 py-3 px-4 rounded-lg active:bg-blue-600 mb-2"
-              onPress={() => navigation.navigate('ConvertGuest')}
+              onPress={() => router.push('/(app)/guest/convert')}
             >
               <Text className="text-white font-semibold text-center">회원가입</Text>
             </TouchableOpacity>
@@ -78,14 +80,14 @@ export default function MyPageScreen({ navigation }) {
         <View className="flex-row mx-4 mb-8 bg-white border border-gray-200 rounded-xl p-4 shadow-sm">
           <TouchableOpacity
             className="flex-1 items-center border-r border-gray-200"
-            onPress={() => navigation.navigate('ManageTodos')}
+            onPress={() => router.push('/(app)/(tabs)')}
           >
             <Text className="text-gray-500 text-sm mb-1">전체 할 일</Text>
             <Text className="text-2xl font-bold">{totalTodos}</Text>
           </TouchableOpacity>
           <TouchableOpacity
             className="flex-1 items-center"
-            onPress={() => navigation.navigate('Home')}
+            onPress={() => router.push('/(app)/(tabs)')}
           >
             <Text className="text-gray-500 text-sm mb-1">오늘 할 일</Text>
             <Text className="text-2xl font-bold text-blue-500">{todayTodos}</Text>
@@ -98,16 +100,16 @@ export default function MyPageScreen({ navigation }) {
 
           <MenuLink
             title="일정 관리"
-            onPress={() => navigation.navigate('ManageTodos')}
+            onPress={() => router.push('/(app)/(tabs)/calendar')}
           />
           <MenuLink
             title="구글 캘린더 연동"
-            onPress={() => navigation.navigate('GoogleCalendarSettings')}
+            onPress={() => router.push('/(app)/settings/google-calendar')}
             isLast
           />
         </View>
 
-        <CategoryGroupList navigation={navigation} />
+        <CategoryGroupList />
 
         {/* Settings & Others */}
         <View className="px-4 mt-8">
@@ -115,11 +117,11 @@ export default function MyPageScreen({ navigation }) {
 
           <MenuLink
             title="앱 설정"
-            onPress={() => navigation.navigate('Settings')}
+            onPress={() => router.push('/(app)/settings')}
           />
           <MenuLink
             title="디버그 (DB 초기화)"
-            onPress={() => navigation.navigate('Debug')}
+            onPress={() => router.push('/(app)/(tabs)/debug')}
             isLast
           />
         </View>

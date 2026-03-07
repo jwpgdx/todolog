@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { View, Text, TouchableOpacity, Alert, Platform } from 'react-native';
+import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import DraggableFlatList, { ScaleDecorator } from 'react-native-draggable-flatlist';
@@ -214,7 +215,8 @@ function WebCategoryList({
   );
 }
 
-export default function CategoryGroupList({ navigation }) {
+export default function CategoryGroupList() {
+  const router = useRouter();
   const { data: categories, isLoading } = useCategories();
   const queryClient = useQueryClient();
   const reorderMutation = useReorderCategory();
@@ -240,7 +242,8 @@ export default function CategoryGroupList({ navigation }) {
 
   const handlePressCategory = (category) => {
     blurActiveElementOnWeb();
-    navigation.navigate('CategoryTodos', { category });
+    if (!category?._id) return;
+    router.push(`/(app)/category/${category._id}`);
   };
 
   const handleEdit = (category) => {
@@ -249,12 +252,16 @@ export default function CategoryGroupList({ navigation }) {
       return;
     }
     blurActiveElementOnWeb();
-    navigation.navigate('CategoryForm', { category });
+    if (!category?._id) return;
+    router.push({
+      pathname: '/(app)/category/form',
+      params: { categoryId: category._id },
+    });
   };
 
   const handleCreate = () => {
     blurActiveElementOnWeb();
-    navigation.navigate('CategoryForm');
+    router.push('/(app)/category/form');
   };
 
   const handleDelete = async (id) => {

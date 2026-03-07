@@ -24,7 +24,7 @@ module.exports = defineConfig({
     video: 'retain-on-failure',
   },
   webServer: {
-    command: `npm run web -- --port ${port} --non-interactive`,
+    command: `CI=1 npm run web -- --port ${port}`,
     url: baseURL,
     cwd: __dirname,
     timeout: 180_000,

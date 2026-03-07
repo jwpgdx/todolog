@@ -35,17 +35,25 @@ async function mockGuestAuth(page) {
 
 async function enterMainByGuest(page) {
   const mainTab = page.getByText(/홈|Home|캘린더|Calendar|디버그|Debug|My/i).first();
-  if (await mainTab.isVisible({ timeout: 2_000 }).catch(() => false)) return;
-
   const startButton = page.getByText(/시작하기|Get Started/i).first();
-  if (await startButton.isVisible({ timeout: 5_000 }).catch(() => false)) {
-    const guestResponse = page.waitForResponse((response) => {
-      return response.request().method() === 'POST' && /\/api\/auth\/guest$/.test(response.url());
-    }, { timeout: 10_000 }).catch(() => null);
 
-    await startButton.click();
-    await guestResponse;
+  await Promise.any([
+    mainTab.waitFor({ state: 'visible', timeout: 30_000 }),
+    startButton.waitFor({ state: 'visible', timeout: 30_000 }),
+  ]).catch(() => {
+    throw new Error('Timed out waiting for main tabs or the guest start button');
+  });
+
+  if (await mainTab.isVisible().catch(() => false)) {
+    return;
   }
+
+  const guestResponse = page.waitForResponse((response) => {
+    return response.request().method() === 'POST' && /\/api\/auth\/guest$/.test(response.url());
+  }, { timeout: 10_000 });
+
+  await startButton.click();
+  await guestResponse;
 
   await expect(mainTab).toBeVisible({ timeout: 30_000 });
 }

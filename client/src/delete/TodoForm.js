@@ -6,7 +6,6 @@ import CategoryForm from '../category/CategoryForm';
 import { DEFAULT_COLOR } from '../../../constants/categoryColors';
 import CategoryColorList from '../category/CategoryColorList';
 import Toast from 'react-native-toast-message';
-import { useNavigation } from '@react-navigation/native';
 import { useDateStore } from '../../../store/dateStore';
 import { useAuthStore } from '../../../store/authStore';
 import Input from '../../ui/Input';
@@ -21,7 +20,6 @@ import DateTimeSection from './DateTimeSection';
 import RecurrenceOptions from './RecurrenceOptions';
 
 export default function TodoForm({ visible, onClose, initialTodo }) {
-  const navigation = useNavigation();
   const { currentDate } = useDateStore();
   const { user } = useAuthStore();
   const { data: categories } = useCategories();

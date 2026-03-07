@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
 import { View, Text, TouchableOpacity, Platform, ScrollView, ActionSheetIOS, Alert, ActivityIndicator } from 'react-native';
+import { useRouter } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 import Toast from 'react-native-toast-message';
 import * as Localization from 'expo-localization';
 
@@ -16,6 +18,7 @@ import { useAuthStore } from '../store/authStore';
 import Input from '../components/ui/Input';
 
 export default function LoginScreen() {
+  const router = useRouter();
   const [isLogin, setIsLogin] = useState(true);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -235,6 +238,7 @@ export default function LoginScreen() {
       });
 
       setIsLoading(false);
+      router.replace('/(app)/(tabs)');
     } catch (error) {
       setIsLoading(false);
       console.error('performAuth error:', error);
@@ -311,6 +315,15 @@ export default function LoginScreen() {
       bottomOffset={50}
       keyboardShouldPersistTaps="handled"
     >
+      {typeof router.canGoBack === 'function' && router.canGoBack() && (
+        <TouchableOpacity
+          onPress={() => router.back()}
+          className="self-start mb-6"
+        >
+          <Ionicons name="arrow-back" size={24} color="black" />
+        </TouchableOpacity>
+      )}
+
       <Text className="text-3xl font-bold mb-8 text-center text-gray-800">
         TODOLOG
       </Text>
@@ -337,8 +350,11 @@ export default function LoginScreen() {
         value={email}
         onChangeText={setEmail}
         autoCapitalize="none"
-        keyboardType="email-address"
-        autoComplete="email"
+        autoCorrect={false}
+        autoComplete={Platform.OS === 'android' ? 'off' : 'email'}
+        textContentType={Platform.OS === 'android' ? 'none' : 'emailAddress'}
+        importantForAutofill={Platform.OS === 'android' ? 'no' : 'auto'}
+        showSoftInputOnFocus={true}
       />
 
       {/* 비밀번호 */}
