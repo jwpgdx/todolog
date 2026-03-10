@@ -1,17 +1,18 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import NetInfo from '@react-native-community/netinfo';
-import { todoAPI } from '../../api/todos';
 import { upsertTodo } from '../../services/db/todoService';
 import { addPendingChange } from '../../services/db/pendingService';
 import { ensureDatabase } from '../../services/db/database';
 import { generateId } from '../../utils/idGenerator';
 import { useTodoCalendarStore } from '../../features/todo-calendar/store/todoCalendarStore';
 import { invalidateTodoSummary } from '../../features/strip-calendar/services/stripCalendarDataAdapter';
+import { useSyncContext } from '../../providers/SyncProvider';
 
 export const useCreateTodo = () => {
   const queryClient = useQueryClient();
   const invalidateAdjacentMonths = useTodoCalendarStore(state => state.invalidateAdjacentMonths);
+  const { syncAll } = useSyncContext();
 
   return useMutation({
     onMutate: async (variables) => {
@@ -75,40 +76,24 @@ export const useCreateTodo = () => {
       // SQLite에 즉시 저장
       await upsertTodo(todo);
 
-      // 네트워크 확인
-      const netInfo = await NetInfo.fetch();
+      // Offline-first: 항상 Pending에 추가하고, 서버 반영은 SyncService(Pending Push)에 맡긴다.
+      await addPendingChange({
+        type: 'createTodo',
+        entityId: data._id,
+        data: todo,
+      });
 
-      if (!netInfo.isConnected) {
-        await addPendingChange({
-          type: 'createTodo',
-          entityId: data._id,
-          data: todo,
-        });
-        const fnEndTime = performance.now();
-        console.log(`⚡ [useCreateTodo] mutationFn 완료 (오프라인): ${(fnEndTime - fnStartTime).toFixed(2)}ms`);
-        return todo;
-      }
-
-      // 온라인: 서버 전송
+      // 온라인이면 백그라운드 동기화 트리거 (UI는 기다리지 않음)
       try {
-        const res = await todoAPI.createTodo(todo);
+        const netInfo = await NetInfo.fetch();
+        if (netInfo.isConnected) {
+          Promise.resolve(syncAll?.()).catch(() => { });
+        }
+      } catch { }
 
-        // 서버 응답으로 SQLite 업데이트
-        await upsertTodo(res.data);
-        const fnEndTime = performance.now();
-        console.log(`⚡ [useCreateTodo] mutationFn 완료 (온라인): ${(fnEndTime - fnStartTime).toFixed(2)}ms`);
-        return res.data;
-      } catch (error) {
-        console.error('⚠️ [useCreateTodo] 서버 실패 → Pending 추가:', error.message);
-        await addPendingChange({
-          type: 'createTodo',
-          entityId: data._id,
-          data: todo,
-        });
-        const fnEndTime = performance.now();
-        console.log(`⚡ [useCreateTodo] mutationFn 완료 (서버 실패): ${(fnEndTime - fnStartTime).toFixed(2)}ms`);
-        return todo;
-      }
+      const fnEndTime = performance.now();
+      console.log(`⚡ [useCreateTodo] mutationFn 완료 (local-first): ${(fnEndTime - fnStartTime).toFixed(2)}ms`);
+      return todo;
     },
     onSuccess: async (data, variables) => {
       const successStartTime = performance.now();

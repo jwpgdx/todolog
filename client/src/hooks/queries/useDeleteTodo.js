@@ -1,15 +1,16 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import NetInfo from '@react-native-community/netinfo';
-import { todoAPI } from '../../api/todos';
 import { deleteTodo } from '../../services/db/todoService';
 import { addPendingChange } from '../../services/db/pendingService';
 import { ensureDatabase } from '../../services/db/database';
 import { useTodoCalendarStore } from '../../features/todo-calendar/store/todoCalendarStore';
 import { invalidateTodoSummary } from '../../features/strip-calendar/services/stripCalendarDataAdapter';
+import { useSyncContext } from '../../providers/SyncProvider';
 
 export const useDeleteTodo = () => {
   const queryClient = useQueryClient();
   const invalidateAdjacentMonths = useTodoCalendarStore(state => state.invalidateAdjacentMonths);
+  const { syncAll } = useSyncContext();
 
   return useMutation({
     onMutate: async (todo) => {
@@ -65,34 +66,20 @@ export const useDeleteTodo = () => {
         return { message: 'SQLite 삭제 완료', deletedTodo: todo };
       };
 
-      // 네트워크 상태 확인
-      const netInfo = await NetInfo.fetch();
+      // Offline-first: 항상 로컬 반영 + Pending에 추가하고, 서버 반영은 SyncService(Pending Push)에 맡긴다.
+      const result = await deleteLocally();
 
-      if (!netInfo.isConnected) {
-        const result = await deleteLocally();
-        const fnEndTime = performance.now();
-        console.log(`⚡ [useDeleteTodo] mutationFn 완료 (오프라인): ${(fnEndTime - fnStartTime).toFixed(2)}ms`);
-        return result;
-      }
-
-      // 온라인이면 서버로 전송 시도
+      // 온라인이면 백그라운드 동기화 트리거 (UI는 기다리지 않음)
       try {
-        const res = await todoAPI.deleteTodo(todo._id);
+        const netInfo = await NetInfo.fetch();
+        if (netInfo.isConnected) {
+          Promise.resolve(syncAll?.()).catch(() => { });
+        }
+      } catch { }
 
-        // 서버 삭제 성공 시 SQLite에서도 삭제
-        await ensureDatabase();
-        await deleteTodo(todo._id);
-
-        const fnEndTime = performance.now();
-        console.log(`⚡ [useDeleteTodo] mutationFn 완료 (온라인): ${(fnEndTime - fnStartTime).toFixed(2)}ms`);
-        return { ...res.data, deletedTodo: todo };
-      } catch (error) {
-        console.error('⚠️ [useDeleteTodo] 서버 요청 실패 → SQLite 삭제로 fallback:', error.message);
-        const result = await deleteLocally();
-        const fnEndTime = performance.now();
-        console.log(`⚡ [useDeleteTodo] mutationFn 완료 (서버 실패): ${(fnEndTime - fnStartTime).toFixed(2)}ms`);
-        return result;
-      }
+      const fnEndTime = performance.now();
+      console.log(`⚡ [useDeleteTodo] mutationFn 완료 (local-first): ${(fnEndTime - fnStartTime).toFixed(2)}ms`);
+      return result;
     },
     onSuccess: (data, variables) => {
       const successStartTime = performance.now();

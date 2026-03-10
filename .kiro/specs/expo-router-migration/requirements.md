@@ -3,6 +3,7 @@
 ## Status
 
 - Completed: 2026-03-07
+- Addendum: 2026-03-10 (My Page subtree routing for native UX parity)
 - Validated: Web smoke (`npm run e2e:web`), iOS/Android dev build boot (`npm run ios` / `npm run android`)
 
 ## Goal
@@ -147,6 +148,12 @@
   - `CalendarServiceTest`
   - `RecurrenceEngineTest`
 - tabs 경로가 있는 test/debug screen은 tabs path를 canonical route로 사용한다
+
+### FR-11: My Page 하위 push는 My Page stack에 쌓인다 (iOS native UX parity)
+
+- My Page에서 열리는 Settings/Profile/Category 흐름은 `/(app)/(tabs)/my-page/*` 아래로 push되어야 한다
+- 목적: iOS Large Title 전환 및 back label이 유저가 체감하는 "이전 화면"(My Page 등)과 일치하도록 한다
+- screen 로직은 기존 `src/screens/*` 재사용을 우선하고, 라우팅은 상대 경로(`./...`)를 우선한다
 
 ## Non-Functional Requirements
 

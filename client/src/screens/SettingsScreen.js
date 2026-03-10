@@ -116,13 +116,13 @@ export default function SettingsScreen() {
                     <SettingsRow
                         title={t('theme')}
                         value={themeLabels[settings.theme] || settings.theme}
-                        onPress={() => router.push('/(app)/settings/theme')}
+                        onPress={() => router.push('./theme', { relativeToDirectory: true })}
                     />
                     <SettingsRow
                         title={t('language')}
                         value={langLabels[settings.language] || settings.language}
                         // onPress={() => cycleOption('language', settings.language || 'system', ['system', 'ko', 'en'])}
-                        onPress={() => router.push('/(app)/settings/language')}
+                        onPress={() => router.push('./language', { relativeToDirectory: true })}
                     />
                 </View>
 
@@ -136,7 +136,7 @@ export default function SettingsScreen() {
                     <SettingsRow
                         title={t('start_day')}
                         value={dayLabels[settings.startDayOfWeek] || settings.startDayOfWeek}
-                        onPress={() => router.push('/(app)/settings/start-day')}
+                        onPress={() => router.push('./start-day', { relativeToDirectory: true })}
                     />
                     <SettingsRow
                         title={t('hide_completed')}
@@ -154,7 +154,7 @@ export default function SettingsScreen() {
                     <SettingsRow
                         title={t('timezone')}
                         value={settings.timeZoneAuto ? '자동' : settings.timeZone}
-                        onPress={() => router.push('/(app)/settings/time-zone')}
+                        onPress={() => router.push('./time-zone', { relativeToDirectory: true })}
                     />
                     <SettingsRow
                         title={t('delete_account')}

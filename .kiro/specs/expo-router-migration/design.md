@@ -3,6 +3,7 @@
 ## Status
 
 - Implemented + validated: 2026-03-07
+- Post-migration UX parity: 2026-03-10 (My Page subtree stack routing)
 - Final state achieved: Expo Router 단일 라우터 (legacy React Navigation 제거)
 
 ## 1. AS-IS Inventory
@@ -101,7 +102,29 @@ client/
 │  │  │  ├─ strip.js
 │  │  │  ├─ test.js
 │  │  │  ├─ debug.js
-│  │  │  └─ my-page.js
+│  │  │  ├─ week-flow.js
+│  │  │  └─ my-page/
+│  │  │     ├─ _layout.js
+│  │  │     ├─ index.js
+│  │  │     ├─ upcoming.js
+│  │  │     ├─ completed.js
+│  │  │     ├─ favorites.js
+│  │  │     ├─ inbox.js
+│  │  │     ├─ settings/
+│  │  │     │  ├─ index.js
+│  │  │     │  ├─ theme.js
+│  │  │     │  ├─ language.js
+│  │  │     │  ├─ start-day.js
+│  │  │     │  ├─ time-zone.js
+│  │  │     │  ├─ time-zone-selection.js
+│  │  │     │  └─ google-calendar.js
+│  │  │     ├─ profile/
+│  │  │     │  ├─ edit.js
+│  │  │     │  └─ verify-password.js
+│  │  │     └─ category/
+│  │  │        ├─ [categoryId].js
+│  │  │        ├─ form.js
+│  │  │        └─ color.js
 │  │  ├─ category/
 │  │  │  ├─ [categoryId].js
 │  │  │  ├─ form.js
@@ -121,7 +144,18 @@ client/
 │  │  │  ├─ convert.js
 │  │  │  └─ migration-test.js
 │  │  ├─ test/
-│  │  │  └─ recurrence-engine.js
+│  │  │  ├─ recurrence-engine.js
+│  │  │  ├─ modals.js
+│  │  │  ├─ form-sheet.js
+│  │  │  ├─ form-sheet-fit.js
+│  │  │  ├─ page-sheet.js
+│  │  │  ├─ presentation-modal.js
+│  │  │  ├─ presentation-page-sheet.js
+│  │  │  ├─ presentation-transparent-modal.js
+│  │  │  ├─ presentation-fullscreen-modal.js
+│  │  │  ├─ presentation-contained-modal.js
+│  │  │  ├─ presentation-contained-transparent-modal.js
+│  │  │  └─ quick-bar-native.js
 │  │  └─ todo-calendar.js
 │  └─ +not-found.js
 ```
@@ -221,6 +255,20 @@ client/
 | `CalendarServiceTest` | `/(app)/(tabs)/test` | 별도 push route 만들지 않고 tabs path 재사용 |
 | `RecurrenceEngineTest` | `/(app)/test/recurrence-engine` | test |
 | `TodoCalendar` | `/(app)/todo-calendar` | push |
+
+### 5.1 My Page Subtree Routes (native UX parity)
+
+My Page에서 열리는 설정/프로필/카테고리 플로우는 iOS 네이티브 Large Title 및 back label UX를 위해
+`/(app)/(tabs)/my-page/*` 아래 동일 stack에서 push 되도록 구성한다.
+
+- Settings: `/(app)/(tabs)/my-page/settings/*`
+- Profile: `/(app)/(tabs)/my-page/profile/*`
+- Category: `/(app)/(tabs)/my-page/category/*`
+
+구현 팁(공유 screen 재사용):
+
+- settings 디렉터리 index route에서 하위로 이동할 때는 `router.push('./theme', { relativeToDirectory: true })` 형태의 상대 경로를 사용한다.
+- category/form -> color 같이 동일 디렉터리에서 이동하는 경우 `router.push('./color')`로 두 stack(root/my-page)에서 동일하게 동작시킨다.
 
 ## 6. Blocking Changes Before Route Swap
 

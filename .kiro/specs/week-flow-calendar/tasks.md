@@ -10,22 +10,22 @@ navigation model with a simpler implementation.
 
 ## Tasks
 
-- [ ] 1. Create new feature path
+- [x] 1. Create new feature path
   - Create `client/src/features/week-flow-calendar/`
   - Add subfolders:
     - `ui/`
     - `utils/`
-    - `hooks/`
+    - (`hooks/`는 Task 10에서 range hook 도입 시 생성)
     - `services/` (only if a thin bridge is needed)
   - Add `index.js` export
 
-- [ ] 2. Define new date/grid utility layer
+- [x] 2. Define new date/grid utility layer
   - Implement:
     - `toWeekStart`
     - `toMonthStart`
-    - `buildWeekDays`
-    - `buildMonthGrid`
-    - month-boundary label helper
+    - `addDays/addWeeks/addMonths`
+    - `getWeekdayIndex`
+    - week meta cache (7-day metadata + month-boundary label helper)
   - Keep all date values as `YYYY-MM-DD`
 
 - [ ] 3. Implement new shell state model
@@ -36,7 +36,7 @@ navigation model with a simpler implementation.
     - `Selected_Date` from global store
   - Avoid legacy-style target/anchor duplication
 
-- [ ] 4. Implement `DayCell`
+- [x] 4. Implement `DayCell`
   - Preserve:
     - selected state
     - today marker
@@ -45,31 +45,31 @@ navigation model with a simpler implementation.
     - category dots
     - month-boundary mini label
 
-- [ ] 5. Implement shared `WeekRow`
+- [x] 5. Implement shared `WeekRow`
   - Render 7 cells
   - Apply `startDayOfWeek`
   - Reuse in both weekly and monthly modes
 
-- [ ] 6. Implement `WeekModeRow`
+- [x] 6. Implement `WeekModeRow`
   - Single bounded week row
   - No large horizontal virtualized list
   - Prev/next navigation moves one week
   - Optional swipe intent uses the same handlers
 
-- [ ] 7. Implement `MonthModeGrid`
+- [x] 7. Implement `MonthModeGrid`
   - Render one bounded month grid (5 or 6 rows)
   - No internal infinite scroll list
   - Prev/next navigation moves one month
   - Selected date must remain visible and highlighted
 
-- [ ] 8. Implement `WeekFlowHeader`
+- [x] 8. Implement `WeekFlowHeader`
   - Render title and navigation controls
   - Weekly mode title: selected/visible month context
   - Monthly mode title: visible month
   - Include today jump button if today is outside the current visible calendar scope
   - Today jump updates both `Selected_Date` and the active visible scope
 
-- [ ] 9. Implement `WeekFlowToggleBar`
+- [x] 9. Implement `WeekFlowToggleBar`
   - Preserve swipe-based weekly/monthly toggle
   - Use toggle bar up/down swipe for mode switching
   - In weekly mode, left/right swipe may reuse prev/next week handlers
@@ -87,7 +87,7 @@ navigation model with a simpler implementation.
   - Monthly mode: visible month grid range + minimal buffer
   - Remove dependence on giant virtual windows
 
-- [ ] 12. Add dedicated test screen
+- [x] 12. Add dedicated test screen
   - Create a new test route for `Week Flow Calendar`
   - Keep legacy `Strip Calendar` test screen side-by-side during migration
 

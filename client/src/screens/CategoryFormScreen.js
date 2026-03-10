@@ -147,7 +147,7 @@ export default function CategoryFormScreen() {
           name={name}
           onNameChange={setName}
           selectedColor={selectedColor}
-          onColorSelectPress={() => router.push('/(app)/category/color')}
+          onColorSelectPress={() => router.push('./color')}
           autoFocus={!isEditMode}
         />
       </ScrollView>

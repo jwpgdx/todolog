@@ -56,7 +56,7 @@ export default function TimeZoneSettingsScreen() {
                     </View>
                     <View className="bg-white dark:bg-gray-800 border-t border-b border-gray-100 dark:border-gray-700">
                         <TouchableOpacity
-                            onPress={() => router.push('/(app)/settings/time-zone-selection')}
+                            onPress={() => router.push('./time-zone-selection')}
                             disabled={isAuto}
                             className={`flex-row items-center justify-between py-4 px-4 ${isAuto ? 'opacity-50' : 'active:bg-gray-50 dark:active:bg-gray-700'}`}
                         >

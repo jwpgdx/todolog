@@ -39,13 +39,11 @@ const MONTHLY_OVERRIDE_PROPS = {
 
 function shouldLogReactProfiler(actualDuration) {
   if (!STRIP_CALENDAR_PERF_LOG_ENABLED) return false;
-  if (typeof __DEV__ === 'boolean' && !__DEV__) return false;
   return actualDuration >= REACT_PROFILER_THRESHOLD_MS;
 }
 
 function shouldLogWeekRowProfiler(actualDuration) {
   if (!STRIP_CALENDAR_PERF_LOG_ENABLED) return false;
-  if (typeof __DEV__ === 'boolean' && !__DEV__) return false;
   return actualDuration >= WEEK_ROW_PROFILER_THRESHOLD_MS;
 }
 
@@ -92,8 +90,7 @@ export default function MonthlyStripList({
   onTopWeekSettled,
   scrollAnimated = false,
 }) {
-  const reactProfilerEnabled =
-    STRIP_CALENDAR_PERF_LOG_ENABLED && (typeof __DEV__ === 'boolean' ? __DEV__ : true);
+  const reactProfilerEnabled = STRIP_CALENDAR_PERF_LOG_ENABLED;
 
   const listRef = useRef(null);
   const scrollStateRef = useRef(createInitialScrollState());

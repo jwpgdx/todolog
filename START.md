@@ -68,6 +68,11 @@ npx expo run:android --device
 
 결론: 평소엔 1번으로 개발하다가, 뭐 새로 설치하면 2번 돌리세요!
 
+
+npm run ios
+npm run ios:device
+
+
 ## 웹 자동 E2E (Playwright)
 
 1. 의존성 설치

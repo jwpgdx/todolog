@@ -1,6 +1,6 @@
 # Todolog Roadmap
 
-Last Updated: 2026-03-07
+Last Updated: 2026-03-10
 Owner: Product + Engineering
 
 ## 1. Purpose
@@ -25,7 +25,7 @@ Current state:
 - Phase 3 screen-adapter layer (Step 3) is complete/validated
 - Cache-policy unification (Option A -> Option B) is complete/validated
 - Strip-calendar legacy module remains in stabilization/debugging phase
-- Week Flow Calendar rewrite planning is active as the replacement path for strip-calendar UI
+- Week Flow Calendar rewrite prototype is active (bounded weekly/monthly shell); spec remains SOT for the full replacement plan
 - Expo Router migration is complete/validated (file-based routing under `client/app/`)
 
 Immediate objective:
@@ -306,6 +306,14 @@ Evidence:
 - `client/e2e/smoke.spec.js`
 - `client/app/(app)/test/form-sheet.js`
 - `client/src/test/FormSheetTestScreen.js`
+
+### 2026-03-10
+
+- My Page subtree routing 도입 (native-stack Large Title/back label UX parity 강화)
+  - My Page에서 여는 Settings/Profile/Category 화면을 `/(app)/(tabs)/my-page/*` stack 하위로 이동
+  - shared screen에서 상대 라우팅(`./...`)을 사용해 root stack / My Page stack 양쪽에서 동작하도록 정리
+- Modal/page-sheet/form-sheet presentation 옵션 비교용 test routes 확장 (`/(app)/test/modals`)
+- Week Flow Calendar rewrite prototype test screen 추가 (`/(app)/(tabs)/week-flow`)
 
 ## 4. Next Milestones (Planned)
 

@@ -77,7 +77,7 @@ export default function DailyTodoList({ date, todos = [], isLoading, onToggleCom
     if (!todos || todos.length === 0) {
         return (
             <View style={styles.centerContainer}>
-                <Text style={styles.emptyText}>등록된 할 일이 없습니다.</Text>
+                <Text style={styles.emptyText}>등록된 할 일이 없습니다. (업데이트 확인)</Text>
             </View>
         );
     }

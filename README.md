@@ -18,7 +18,7 @@ Todolog is designed to work fully offline, then sync safely to server and Google
 
 ## Current Status
 
-As of 2026-02-22:
+As of 2026-03-10:
 
 - Phase 1-2 calendar integration: complete
 - Phase 2.5 data normalization (floating date/time string contract): complete
@@ -27,6 +27,7 @@ As of 2026-02-22:
 - Phase 3 common query/aggregation layer (Step 2): complete and validated
 - Phase 3 screen-adapter layer (Step 3): complete and validated
 - Strip-calendar stabilization/debugging: ongoing hardening (adapter path already active)
+- Expo Router migration: implemented (file-based routing under `client/app/`)
 
 See `ROADMAP.md` for dated milestones and next steps.
 
@@ -53,6 +54,7 @@ Client:
 
 - React Native `0.81.5`
 - Expo `54.0.33`
+- Expo Router `~6.0.23`
 - React `19.1.0`
 - Zustand `5.x`
 - React Query `5.x`
@@ -70,6 +72,7 @@ Server:
 ```text
 .
 ├─ client/
+│  ├─ app/
 │  ├─ src/
 │  │  ├─ api/
 │  │  ├─ features/

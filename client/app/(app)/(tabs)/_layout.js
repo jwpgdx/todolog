@@ -70,6 +70,15 @@ export default function TabsLayout() {
       />
 
       <Tabs.Screen
+        name="week-flow"
+        options={{
+          title: 'Week Flow',
+          tabBarLabel: 'WF',
+          tabBarIcon: ({ color, size }) => <Ionicons name="swap-vertical-outline" size={size} color={color} />,
+        }}
+      />
+
+      <Tabs.Screen
         name="add"
         options={{
           title: '',

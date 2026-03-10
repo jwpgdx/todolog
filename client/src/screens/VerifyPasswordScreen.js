@@ -21,7 +21,7 @@ export default function VerifyPasswordScreen() {
             setIsLoading(true);
             await verifyPassword(password);
             // 인증 성공 시 프로필 수정 화면으로 이동 (replace를 사용하여 뒤로가기 시 다시 비밀번호 화면으로 오지 않게 함)
-            router.replace('/(app)/profile/edit');
+            router.replace('./edit');
         } catch (error) {
             const message = error.response?.data?.message || '비밀번호가 일치하지 않습니다.';
             Toast.show({ type: 'error', text1: '인증 실패', text2: message });

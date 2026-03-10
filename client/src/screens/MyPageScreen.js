@@ -2,7 +2,6 @@ import React from 'react';
 import { View, Text, TouchableOpacity, ScrollView, Platform } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useAuthStore } from '../store/authStore';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import CategoryGroupList from '../components/domain/category/CategoryGroupList';
 
@@ -17,18 +16,19 @@ export default function MyPageScreen() {
   const handleEditProfilePress = () => {
     // 소셜 로그인 유저는 비밀번호 검증 없이 바로 이동 (비밀번호가 없으므로)
     if (user?.provider === 'google') {
-      router.push('/(app)/profile/edit');
+      router.push('/(app)/(tabs)/my-page/profile/edit');
       return;
     }
     // 이메일 가입 유저는 비밀번호 확인 화면으로 이동
-    router.push('/(app)/profile/verify-password');
+    router.push('/(app)/(tabs)/my-page/profile/verify-password');
   };
 
   return (
-    <SafeAreaView className="flex-1 bg-white" edges={['top']}>
-
-
-      <ScrollView className="flex-1" contentContainerStyle={{ paddingBottom: 40 }}>
+    <ScrollView
+      className="flex-1 bg-white"
+      contentInsetAdjustmentBehavior="automatic"
+      contentContainerStyle={{ paddingBottom: 40 }}
+    >
         {/* Guest Banner */}
         {user?.accountType === 'anonymous' && (
           <View className="mx-4 mt-4 mb-2 bg-blue-50 border border-blue-200 rounded-xl p-4">
@@ -104,7 +104,7 @@ export default function MyPageScreen() {
           />
           <MenuLink
             title="구글 캘린더 연동"
-            onPress={() => router.push('/(app)/settings/google-calendar')}
+            onPress={() => router.push('/(app)/(tabs)/my-page/settings/google-calendar')}
             isLast
           />
         </View>
@@ -117,7 +117,7 @@ export default function MyPageScreen() {
 
           <MenuLink
             title="앱 설정"
-            onPress={() => router.push('/(app)/settings')}
+            onPress={() => router.push('/(app)/(tabs)/my-page/settings')}
           />
           <MenuLink
             title="디버그 (DB 초기화)"
@@ -160,8 +160,7 @@ export default function MyPageScreen() {
           <Text className="text-gray-400 text-xs">Ver 1.0.0</Text>
         </View>
 
-      </ScrollView>
-    </SafeAreaView>
+    </ScrollView>
   );
 }
 

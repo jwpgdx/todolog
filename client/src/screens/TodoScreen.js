@@ -1,5 +1,5 @@
 import React, { useCallback, useRef } from 'react';
-import { Pressable, SafeAreaView, StyleSheet, Text, View } from 'react-native';
+import { SafeAreaView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useDateStore } from '../store/dateStore';
 import { useTodos } from '../hooks/queries/useTodos';
@@ -68,6 +68,29 @@ export default function TodoScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
+      <View style={styles.testEntryRow}>
+        <TouchableOpacity
+          onPress={() => router.push('/test/form-sheet')}
+          activeOpacity={0.85}
+          style={styles.devButton}
+        >
+          <Text style={styles.devButtonText}>Form Sheet Test</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          onPress={() => router.push('/test/page-sheet')}
+          activeOpacity={0.85}
+          style={styles.devButton}
+        >
+          <Text style={styles.devButtonText}>Page Sheet Test</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          onPress={() => router.push('/test/modals')}
+          activeOpacity={0.85}
+          style={styles.devButton}
+        >
+          <Text style={styles.devButtonText}>Modals Test</Text>
+        </TouchableOpacity>
+      </View>
       <DailyTodoList
         date={currentDate}
         todos={todos}
@@ -76,14 +99,6 @@ export default function TodoScreen() {
         onEdit={handleEdit}
         onDelete={handleDelete}
       />
-      <View pointerEvents="box-none" style={styles.devOverlay}>
-        <Pressable
-          onPress={() => router.push('/test/form-sheet')}
-          style={({ pressed }) => [styles.devButton, pressed && styles.devButtonPressed]}
-        >
-          <Text style={styles.devButtonText}>Form Sheet Test</Text>
-        </Pressable>
-      </View>
     </SafeAreaView>
   );
 }
@@ -93,11 +108,15 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#F9FAFB',
   },
-  devOverlay: {
-    position: 'absolute',
-    bottom: 88,
-    right: 12,
-    zIndex: 50,
+  testEntryRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    justifyContent: 'flex-end',
+    gap: 10,
+    flexWrap: 'wrap',
+    paddingHorizontal: 12,
+    paddingTop: 8,
+    paddingBottom: 8,
   },
   devButton: {
     backgroundColor: '#111827',
@@ -109,9 +128,6 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.2,
     shadowRadius: 6,
-  },
-  devButtonPressed: {
-    opacity: 0.85,
   },
   devButtonText: {
     color: 'white',

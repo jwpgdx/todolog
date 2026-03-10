@@ -3,6 +3,7 @@
 ## Status
 
 - Implementation complete: 2026-03-07
+- Follow-up complete: 2026-03-10 (My Page subtree routing + presentation test hub)
 - Smoke validated:
   - Web: `npm run e2e:web`
   - iOS: `npm run ios`
@@ -157,3 +158,21 @@
 - [ ] auth logout/login 회귀 없음
 - [ ] home/calendar/strip/debug/test 진입 회귀 없음
 - [ ] console error/warning 증가 없음
+
+## Phase 10: Post-migration UX parity (My Page subtree)
+
+- [x] 10.1 My Page stack 하위 라우트 구성
+  - `/(app)/(tabs)/my-page/settings/*`
+  - `/(app)/(tabs)/my-page/profile/*`
+  - `/(app)/(tabs)/my-page/category/*`
+- [x] 10.2 My Page 미구현 placeholder route 구성
+  - `/(app)/(tabs)/my-page/upcoming`
+  - `/(app)/(tabs)/my-page/completed`
+  - `/(app)/(tabs)/my-page/favorites`
+  - `/(app)/(tabs)/my-page/inbox`
+- [x] 10.3 shared screen 상대 라우팅 정리 (root stack / My Page stack 양쪽 대응)
+  - `SettingsScreen`: `./theme` etc + `relativeToDirectory: true`
+  - `CategoryFormScreen`: `./color`
+  - `VerifyPasswordScreen`: `./edit`
+- [x] 10.4 presentation 옵션 비교용 test hub 확장
+  - `/(app)/test/modals` + presentation 개별 routes

@@ -26,6 +26,7 @@ import DetailContent from './content/DetailContent';
 export default function GlobalFormOverlay() {
     const { mode, activeTodo, close, openDetail: storeOpenDetail, initialFocusTarget } = useTodoFormStore();
     const { width } = useWindowDimensions();
+    const isIOS = Platform.OS === 'ios';
 
     // ⚠️ Hooks는 항상 조건부 return 전에 호출해야 함 (Rules of Hooks)
     const visible = mode !== 'CLOSED';
@@ -60,9 +61,11 @@ export default function GlobalFormOverlay() {
     return (
         <>
             {/* ========== Quick Mode ========== */}
-            {showQuickMode && (
-                <QuickContainer onClose={handleCloseQuick}>
+            {isIOS ? (
+                <>
+                    {/* iOS: InputAccessoryView host는 상시 마운트, 열릴 때만 focus */}
                     <QuickModeContent
+                        visible={showQuickMode}
                         formState={logic.formState}
                         handleChange={logic.handleChange}
                         handleSubmit={logic.handleSubmit}
@@ -70,7 +73,23 @@ export default function GlobalFormOverlay() {
                         onClose={handleCloseQuick}
                         onExpandToDetail={handleExpandToDetail}
                     />
-                </QuickContainer>
+
+                    {/* iOS: backdrop만 QUICK일 때 표시 */}
+                    {showQuickMode && <QuickContainer onClose={handleCloseQuick} />}
+                </>
+            ) : (
+                showQuickMode && (
+                    <QuickContainer onClose={handleCloseQuick}>
+                        <QuickModeContent
+                            formState={logic.formState}
+                            handleChange={logic.handleChange}
+                            handleSubmit={logic.handleSubmit}
+                            quickModeLabels={logic.quickModeLabels}
+                            onClose={handleCloseQuick}
+                            onExpandToDetail={handleExpandToDetail}
+                        />
+                    </QuickContainer>
+                )
             )}
 
             {/* ========== Detail Mode ========== */}

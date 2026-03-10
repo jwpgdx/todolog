@@ -243,7 +243,7 @@ export default function CategoryGroupList() {
   const handlePressCategory = (category) => {
     blurActiveElementOnWeb();
     if (!category?._id) return;
-    router.push(`/(app)/category/${category._id}`);
+    router.push(`/(app)/(tabs)/my-page/category/${category._id}`);
   };
 
   const handleEdit = (category) => {
@@ -254,14 +254,14 @@ export default function CategoryGroupList() {
     blurActiveElementOnWeb();
     if (!category?._id) return;
     router.push({
-      pathname: '/(app)/category/form',
+      pathname: '/(app)/(tabs)/my-page/category/form',
       params: { categoryId: category._id },
     });
   };
 
   const handleCreate = () => {
     blurActiveElementOnWeb();
-    router.push('/(app)/category/form');
+    router.push('/(app)/(tabs)/my-page/category/form');
   };
 
   const handleDelete = async (id) => {

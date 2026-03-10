@@ -1,7 +1,7 @@
 # Todolog Project Context
 
-Last Updated: 2026-03-07
-Status: Sync hardening complete (Pending Push -> Delta Pull), Phase 3 Step 1 recurrence engine complete/validated, Phase 3 Step 2 common query/aggregation complete/validated, Phase 3 Step 3 screen-adapter layer complete/validated, cache-policy unification complete/validated, Expo Router migration complete/validated
+Last Updated: 2026-03-10
+Status: Sync hardening complete (Pending Push -> Delta Pull), Phase 3 Step 1 recurrence engine complete/validated, Phase 3 Step 2 common query/aggregation complete/validated, Phase 3 Step 3 screen-adapter layer complete/validated, cache-policy unification complete/validated, Expo Router migration implemented (parity validation ongoing)
 
 ## 1. Purpose
 
@@ -42,9 +42,11 @@ Server:
 - Cache-policy unification (Option A -> Option B): complete and validated (shared range cache + sync invalidation unification)
 - Cache retention (memory control): enabled (shared range cache + calendar L1 caches pruned to anchor ±6 months)
 - Strip-calendar foundation (weekly/monthly shell + anchor sync + debug instrumentation): active and integrated via adapter path
-- Expo Router migration: complete and validated (file-based routes under `client/app/`, legacy React Navigation removed)
+- Week Flow Calendar (rewrite prototype): bounded calendar UI shell under `client/src/features/week-flow-calendar/`, exposed via tabs `/(app)/(tabs)/week-flow` for side-by-side evaluation (not production default yet)
+- Expo Router migration: implemented (file-based routes under `client/app/`, entry via `expo-router/entry`); parity validation ongoing (Back/Modal/deep-link)
 - UI navigation: Expo Router groups `/(auth)` + `/(app)` with tabs under `client/app/(app)/(tabs)` (e.g. My Page: `/(app)/(tabs)/my-page`)
-- Experimental UI: iOS form sheet evaluation route `/test/form-sheet` (native-stack `presentation: 'formSheet'` + detents) for potential bottom-sheet replacement exploration
+- My Page subtree routing: My Page에서 여는 Settings/Profile/Category 화면은 `client/app/(app)/(tabs)/my-page/*` 아래로 push되어 iOS Large Title/back label UX를 유지
+- Modal/presentation test hub: `/(app)/test/modals` + `/(app)/test/form-sheet` (native-stack presentation 옵션별 플랫폼 동작 확인)
 
 ## 3. Non-Negotiable Architecture Commitments
 
@@ -201,8 +203,8 @@ Behavior:
 1. UI form creates normalized payload.
    - category preselect policy: `lastUsedCategoryId` (if valid) -> first category
 2. Data persists to SQLite.
-3. Pending change queued if needed.
-4. Sync service sends normalized payload to server.
+3. Pending change queued (offline-first; UI does not wait for server).
+4. Sync service sends normalized payload to server (background).
 5. Server validates string contract and saves to Mongo.
 6. Optional Google sync runs using user timezone.
 

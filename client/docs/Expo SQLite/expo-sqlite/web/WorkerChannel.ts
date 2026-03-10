@@ -93,7 +93,7 @@ export function invokeWorkerSync<T extends SQLiteWorkerMessageType & keyof Resul
   type: T,
   data: MessageTypeMap[T]['data']
 ): ResultTypeMap[T] {
-  if (__DEV__ && !hasWarnedSync) {
+  if (!hasWarnedSync) {
     console.warn(
       'Using synchronous SQLite operations can cause significant performance impact. Consider using async operations instead.'
     );

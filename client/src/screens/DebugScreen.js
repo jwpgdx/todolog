@@ -2139,6 +2139,17 @@ export default function DebugScreen() {
       </View>
 
       <ScrollView style={styles.buttonContainer}>
+        <Text style={styles.sectionTitle}>⌨️ 키보드/UI</Text>
+
+        <TouchableOpacity
+          style={[styles.button, styles.testButton]}
+          onPress={() => router.push('/test/quick-bar-native')}
+        >
+          <Text style={styles.buttonText}>⌨️ Quick Bar Native Test 열기</Text>
+        </TouchableOpacity>
+
+        <View style={styles.divider} />
+
         <Text style={styles.sectionTitle}>📊 기본 상태 확인</Text>
 
         <TouchableOpacity style={[styles.button, styles.primaryButton]} onPress={checkDbStatus}>
