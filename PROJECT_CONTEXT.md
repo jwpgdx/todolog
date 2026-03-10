@@ -80,6 +80,12 @@ Main sync entry point:
 
 `client/src/services/sync/index.js`
 
+Pending Push failure behavior (important):
+
+- Pending items live in SQLite `pending_changes` and are pushed FIFO.
+- If a push fails with retryable errors (network/timeout/5xx), the item is marked `failed` with `next_retry_at`, and the sync run stops before `Delta Pull` to avoid inconsistent merges.
+- Default retry backoff: 30s -> 2m -> 10m. After 3 retries, the item becomes `dead_letter` and is no longer retried automatically.
+
 ## 4. Phase 2.5 Date/Time Contract (Canonical)
 
 ### 4.1 Allowed formats
