@@ -1,2 +1,1 @@
-export { default } from '../../../../src/screens/EditProfileScreen';
-
+export { default } from '../../../../../src/screens/EditProfileScreen';

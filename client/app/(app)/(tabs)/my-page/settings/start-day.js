@@ -1,2 +1,1 @@
-export { default } from '../../../../src/screens/settings/StartDaySettingsScreen';
-
+export { default } from '../../../../../src/screens/settings/StartDaySettingsScreen';

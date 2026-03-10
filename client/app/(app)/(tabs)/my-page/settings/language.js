@@ -1,2 +1,1 @@
-export { default } from '../../../../src/screens/settings/LanguageSettingsScreen';
-
+export { default } from '../../../../../src/screens/settings/LanguageSettingsScreen';

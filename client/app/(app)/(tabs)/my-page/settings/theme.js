@@ -1,2 +1,1 @@
-export { default } from '../../../../src/screens/settings/ThemeSettingsScreen';
-
+export { default } from '../../../../../src/screens/settings/ThemeSettingsScreen';

@@ -1,2 +1,1 @@
-export { default } from '../../../../src/screens/VerifyPasswordScreen';
-
+export { default } from '../../../../../src/screens/VerifyPasswordScreen';

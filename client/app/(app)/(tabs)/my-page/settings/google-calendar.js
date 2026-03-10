@@ -1,2 +1,1 @@
-export { default } from '../../../../src/screens/settings/GoogleCalendarSettingsScreen';
-
+export { default } from '../../../../../src/screens/settings/GoogleCalendarSettingsScreen';

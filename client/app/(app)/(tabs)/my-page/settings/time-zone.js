@@ -1,2 +1,1 @@
-export { default } from '../../../../src/screens/settings/TimeZoneSettingsScreen';
-
+export { default } from '../../../../../src/screens/settings/TimeZoneSettingsScreen';

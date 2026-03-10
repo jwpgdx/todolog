@@ -1,2 +1,1 @@
-export { default } from '../../../../src/screens/CategoryColorScreen';
-
+export { default } from '../../../../../src/screens/CategoryColorScreen';

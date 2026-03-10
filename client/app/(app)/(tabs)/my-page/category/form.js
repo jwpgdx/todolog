@@ -1,2 +1,1 @@
-export { default } from '../../../../src/screens/CategoryFormScreen';
-
+export { default } from '../../../../../src/screens/CategoryFormScreen';
