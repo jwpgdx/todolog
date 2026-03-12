@@ -12,7 +12,10 @@ import { Platform } from 'react-native';
  * - Android 에뮬레이터의 localhost는 에뮬레이터 자신을 가리키므로 10.0.2.2로 변환
  */
 const getBaseUrl = () => {
-  const envUrl = process.env.EXPO_PUBLIC_API_URL;
+  // Prefer the runtime env first so local wrappers can override stale `.env`
+  // values without changing app code or checked-in config files.
+  const runtimeEnvUrl = globalThis?.process?.env?.EXPO_PUBLIC_API_URL;
+  const envUrl = runtimeEnvUrl || process.env.EXPO_PUBLIC_API_URL;
 
   // 플랫폼 공통: 환경 변수가 있으면 최우선 사용
   if (envUrl) {

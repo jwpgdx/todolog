@@ -152,6 +152,7 @@ exports.getTodos = async (req, res) => {
     const completions = date
       ? await Completion.find({
         userId,
+        deletedAt: null,
         $or: [
           { date: date },      // 특정 날짜 완료 (일반 할일, 루틴)
           { date: null },      // 기간 할일 완료 (날짜 없음)

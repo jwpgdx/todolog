@@ -122,7 +122,19 @@ export function classifySyncError({ error, pendingType }) {
     };
   }
 
-  // 4) 4xx validation -> non-retry (dead-letter)
+  // 4) createCategory 409 -> 이미 서버에 생성된 것으로 보고 success-equivalent
+  if (status === 409 && pendingType === 'createCategory') {
+    return {
+      category: 'validation_4xx',
+      retryable: false,
+      successEquivalent: true,
+      reasonCode: 'category_create_duplicate_success_equivalent',
+      status,
+      message,
+    };
+  }
+
+  // 5) 4xx validation -> non-retry (dead-letter)
   if (typeof status === 'number' && status >= 400 && status < 500) {
     return {
       category: 'validation_4xx',

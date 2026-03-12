@@ -1,6 +1,8 @@
 import React, { useCallback } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
+import { CALENDAR_DAY_SUMMARY_EMPTY, useCalendarDaySummaryStore } from '../../calendar-day-summaries';
+
 function DayCell({
   date,
   dayNumber,
@@ -10,6 +12,12 @@ function DayCell({
   isToday,
   onPress,
 }) {
+  const summary =
+    useCalendarDaySummaryStore((state) => state.summariesByDate?.[date]) ||
+    CALENDAR_DAY_SUMMARY_EMPTY;
+  const dotColors = (summary.uniqueCategoryColors || CALENDAR_DAY_SUMMARY_EMPTY.uniqueCategoryColors).slice(0, 3);
+  const overflow = (summary.dotCount || 0) > 3;
+
   const handlePress = useCallback(() => {
     if (!date) return;
     onPress?.(date);
@@ -28,7 +36,12 @@ function DayCell({
         </Text>
       </View>
 
-      <View style={styles.dotRow} />
+      <View style={styles.dotRow}>
+        {dotColors.map((color) => (
+          <View key={`${date}-${color}`} style={[styles.dot, { backgroundColor: color }]} />
+        ))}
+        {overflow ? <Text style={styles.overflowText}>+</Text> : null}
+      </View>
     </Pressable>
   );
 }
@@ -82,6 +95,17 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
+    gap: 2,
+  },
+  dot: {
+    width: 4,
+    height: 4,
+    borderRadius: 2,
+  },
+  overflowText: {
+    fontSize: 8,
+    fontWeight: '700',
+    color: '#374151',
+    lineHeight: 8,
   },
 });
-

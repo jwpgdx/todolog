@@ -13,7 +13,8 @@ import BottomSheet from '../../ui/bottom-sheet';
 import ThemeSwitch from '../../ui/Switch'; // Import custom Switch
 import { useUpdateTodo } from '../../../hooks/queries/useUpdateTodo';
 import { useCreateTodo } from '../../../hooks/queries/useCreateTodo';
-import { useCategories, useCreateCategory } from '../../../hooks/queries/useCategories';
+import { useCategories } from '../hooks/queries/useCategories';
+import { useCreateCategory } from '../hooks/queries/useCreateCategory';
 import { Ionicons } from '@expo/vector-icons';
 import { convertToApiFormat } from '../../../utils/recurrenceUtils';
 import DateTimeSection from './DateTimeSection';

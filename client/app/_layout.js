@@ -58,10 +58,22 @@ function parseDateOnly(dateOnly) {
   return parsed;
 }
 
+function startOfMonth(date) {
+  return new Date(date.getFullYear(), date.getMonth(), 1);
+}
+
+function endOfMonth(date) {
+  return new Date(date.getFullYear(), date.getMonth() + 1, 0);
+}
+
 function buildPrewarmRange(anchorDateOnly) {
   const anchorDate = parseDateOnly(anchorDateOnly) || new Date();
-  const startDate = formatDateOnly(addDays(anchorDate, -90));
-  const endDate = formatDateOnly(addDays(anchorDate, 90));
+  const previousMonthStart = startOfMonth(new Date(anchorDate.getFullYear(), anchorDate.getMonth() - 1, 1));
+  const nextMonthEnd = endOfMonth(new Date(anchorDate.getFullYear(), anchorDate.getMonth() + 1, 1));
+
+  // Add a small buffer so weeks crossing month boundaries are already covered.
+  const startDate = formatDateOnly(addDays(previousMonthStart, -6));
+  const endDate = formatDateOnly(addDays(nextMonthEnd, 6));
   return { startDate, endDate };
 }
 

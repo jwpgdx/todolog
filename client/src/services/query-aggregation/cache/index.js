@@ -7,4 +7,7 @@ export {
   pruneOutsideDateRange as pruneRangeCacheOutsideDateRange,
   peekRange as peekRangeCache,
 } from './rangeCacheService';
-export { invalidateAllScreenCaches } from './cacheInvalidationService';
+export {
+  invalidateAllScreenCaches,
+  invalidateCompletionDependentCaches,
+} from './cacheInvalidationService';

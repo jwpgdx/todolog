@@ -1,7 +1,9 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, ScrollView, Text, TouchableOpacity, View } from 'react-native';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
-import { useCategories, useCreateCategory, useUpdateCategory } from '../hooks/queries/useCategories';
+import { useCategories } from '../hooks/queries/useCategories';
+import { useCreateCategory } from '../hooks/queries/useCreateCategory';
+import { useUpdateCategory } from '../hooks/queries/useUpdateCategory';
 import Toast from 'react-native-toast-message';
 import CategoryForm from '../components/domain/category/CategoryForm';
 import { DEFAULT_COLOR } from '../constants/categoryColors';

@@ -2148,6 +2148,13 @@ export default function DebugScreen() {
           <Text style={styles.buttonText}>⌨️ Quick Bar Native Test 열기</Text>
         </TouchableOpacity>
 
+        <TouchableOpacity
+          style={[styles.button, styles.testButton]}
+          onPress={() => router.push('/test/zeego-menu')}
+        >
+          <Text style={styles.buttonText}>🧾 Zeego Menu Test 열기</Text>
+        </TouchableOpacity>
+
         <View style={styles.divider} />
 
         <Text style={styles.sectionTitle}>📊 기본 상태 확인</Text>

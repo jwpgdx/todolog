@@ -182,8 +182,48 @@ npm run dev
 
 # client
 cd client
-npm start
+npm run dev
 ```
+
+Client launcher notes:
+
+- `cd client && npm run dev` opens an interactive Expo launcher menu.
+- The launcher auto-selects a free Metro port instead of assuming `8081`.
+- Default targets:
+  - `iOS Simulator` -> dev client + `localhost`
+  - `Android Emulator` -> dev client + `localhost`
+  - `Physical Device (Tunnel)` -> dev client + `tunnel`
+  - `Web`
+  - `Dev Client Server Only`
+- Raw Expo commands are still available:
+  - `npm run dev:expo`
+  - `npm run ios`
+  - `npm run android`
+  - `npm run web`
+
+Non-interactive examples:
+
+```bash
+cd client
+npm run dev -- --target ios-sim --non-interactive
+npm run dev -- --target device --non-interactive
+```
+
+Convenience shortcuts:
+
+```bash
+cd client
+npm run dev:ios:sim
+npm run dev:android:emu
+npm run dev:device
+npm run dev:web
+```
+
+Notes for parallel Codex sessions:
+
+- Separate launcher runs will choose separate Metro ports when possible.
+- Tunnel/device mode still depends on Expo tunnel behavior and current network state.
+- Multiple sessions can run separate Metro servers, but they should not try to control the same simulator or device UI at the same time.
 
 ### 5) Web E2E (Playwright)
 
@@ -255,6 +295,7 @@ If you are an AI agent, read in this order:
 - AI behavior and constraints: `.kiro/steering/requirements.md`
 - Current implementation truth: `PROJECT_CONTEXT.md`
 - Feature specs and task traceability: `.kiro/specs/`
+- Codex testing runbook: `CODEX_TESTING.md`
 - Milestones and future plan: `ROADMAP.md`
 
 ## Troubleshooting

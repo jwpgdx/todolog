@@ -141,6 +141,42 @@ export async function deleteCategory(id) {
 }
 
 /**
+ * Category 삭제를 로컬에서 즉시 cascade 반영
+ * - categories: tombstone
+ * - todos: tombstone
+ * - completions: hard delete
+ *
+ * @param {string} id
+ * @returns {Promise<void>}
+ */
+export async function deleteCategoryCascade(id) {
+    const db = getDatabase();
+    const now = new Date().toISOString();
+
+    await db.withTransactionAsync(async () => {
+        await db.runAsync(
+            'UPDATE categories SET deleted_at = ?, updated_at = ? WHERE _id = ?',
+            [now, now, id]
+        );
+
+        await db.runAsync(
+            `UPDATE todos
+             SET deleted_at = ?, updated_at = ?
+             WHERE category_id = ? AND deleted_at IS NULL`,
+            [now, now, id]
+        );
+
+        await db.runAsync(
+            `DELETE FROM completions
+             WHERE todo_id IN (
+               SELECT _id FROM todos WHERE category_id = ?
+             )`,
+            [id]
+        );
+    });
+}
+
+/**
  * Category Hard Delete
  * 
  * @param {string} id

@@ -1,14 +1,11 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { useAuthStore } from '../../store/authStore';
 import * as categoryApi from '../../api/categories';
 import {
   getAllCategories,
-  upsertCategory,
   upsertCategories,
-  deleteCategory as deleteCategoryFromDB,
 } from '../../services/db/categoryService';
 import { ensureDatabase } from '../../services/db/database';
-import { invalidateAllScreenCaches } from '../../services/query-aggregation/cache';
 
 /**
  * 카테고리 목록 조회 (SQLite 기반)
@@ -49,61 +46,4 @@ export const useCategories = () => {
   });
 
   return query;
-};
-
-/**
- * 카테고리 생성
- */
-export const useCreateCategory = () => {
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    mutationFn: categoryApi.createCategory,
-    onSuccess: async (newCategory) => {
-      await ensureDatabase();
-      await upsertCategory(newCategory);
-      invalidateAllScreenCaches({
-        queryClient,
-        reason: 'category:create',
-      });
-    },
-  });
-};
-
-/**
- * 카테고리 수정
- */
-export const useUpdateCategory = () => {
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    mutationFn: categoryApi.updateCategory,
-    onSuccess: async (updatedCategory) => {
-      await ensureDatabase();
-      await upsertCategory(updatedCategory);
-      invalidateAllScreenCaches({
-        queryClient,
-        reason: 'category:update',
-      });
-    },
-  });
-};
-
-/**
- * 카테고리 삭제
- */
-export const useDeleteCategory = () => {
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    mutationFn: categoryApi.deleteCategory,
-    onSuccess: async (_, deletedId) => {
-      await ensureDatabase();
-      await deleteCategoryFromDB(deletedId);
-      invalidateAllScreenCaches({
-        queryClient,
-        reason: 'category:delete',
-      });
-    },
-  });
 };

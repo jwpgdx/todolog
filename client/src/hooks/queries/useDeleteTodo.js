@@ -5,6 +5,7 @@ import { addPendingChange } from '../../services/db/pendingService';
 import { ensureDatabase } from '../../services/db/database';
 import { useTodoCalendarStore } from '../../features/todo-calendar/store/todoCalendarStore';
 import { invalidateTodoSummary } from '../../features/strip-calendar/services/stripCalendarDataAdapter';
+import { invalidateTodoSummary as invalidateDaySummariesTodo } from '../../features/calendar-day-summaries';
 import { useSyncContext } from '../../providers/SyncProvider';
 
 export const useDeleteTodo = () => {
@@ -105,6 +106,7 @@ export const useDeleteTodo = () => {
       }
 
       invalidateTodoSummary(variables);
+      invalidateDaySummariesTodo(variables);
 
       const successEndTime = performance.now();
       console.log(`⚡ [useDeleteTodo] onSuccess 완료: ${(successEndTime - successStartTime).toFixed(2)}ms`);

@@ -9,15 +9,11 @@ import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } 
 import { CSS } from '@dnd-kit/utilities';
 import Toast from 'react-native-toast-message';
 import * as Haptics from 'expo-haptics';
-import { useQueryClient } from '@tanstack/react-query';
 
-import { deleteCategory as deleteCategoryApi } from '../../../api/categories';
 import { useCategories } from '../../../hooks/queries/useCategories';
+import { useDeleteCategory } from '../../../hooks/queries/useDeleteCategory';
 import { useReorderCategory } from '../../../hooks/queries/useReorderCategory';
-import { deleteCategory as deleteCategoryFromDB } from '../../../services/db/categoryService';
-import { ensureDatabase } from '../../../services/db/database';
 import { useCategoryActionSheet } from '../../../hooks/useCategoryActionSheet';
-import { invalidateAllScreenCaches } from '../../../services/query-aggregation/cache';
 
 function blurActiveElementOnWeb() {
   if (Platform.OS !== 'web') return;
@@ -218,7 +214,7 @@ function WebCategoryList({
 export default function CategoryGroupList() {
   const router = useRouter();
   const { data: categories, isLoading } = useCategories();
-  const queryClient = useQueryClient();
+  const deleteMutation = useDeleteCategory();
   const reorderMutation = useReorderCategory();
   const isWeb = Platform.OS === 'web';
 
@@ -279,13 +275,7 @@ export default function CategoryGroupList() {
     }
 
     const doDelete = async () => {
-      await ensureDatabase();
-      await deleteCategoryApi(id);
-      await deleteCategoryFromDB(id);
-      invalidateAllScreenCaches({
-        queryClient,
-        reason: 'category:delete',
-      });
+      await deleteMutation.mutateAsync(id);
       setLocalCategories((prev) => prev.filter((cat) => cat?._id !== id));
     };
 
@@ -299,7 +289,7 @@ export default function CategoryGroupList() {
         Toast.show({
           type: 'error',
           text1: '삭제 실패',
-          text2: error.response?.data?.message || '다시 시도해주세요',
+          text2: error?.response?.data?.message || error?.message || '다시 시도해주세요',
         });
       }
       return;
@@ -321,7 +311,7 @@ export default function CategoryGroupList() {
               Toast.show({
                 type: 'error',
                 text1: '삭제 실패',
-                text2: error.response?.data?.message || '다시 시도해주세요',
+                text2: error?.response?.data?.message || error?.message || '다시 시도해주세요',
               });
             }
           },

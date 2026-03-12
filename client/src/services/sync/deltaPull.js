@@ -98,14 +98,57 @@ function pickLatestSyncTime(values) {
   return maxTs != null ? new Date(maxTs).toISOString() : null;
 }
 
+function normalizeCategoryComparable(category) {
+  if (!category?._id) return null;
+  return {
+    _id: String(category._id),
+    name: category.name || '',
+    color: category.color || null,
+    icon: category.icon || null,
+    order: category.order ?? category.order_index ?? 0,
+    systemKey: category.systemKey || category.system_key || null,
+    updatedAt: category.updatedAt || category.updated_at || null,
+  };
+}
+
 async function applyCategoryFullSnapshot(serverCategories) {
   const categories = Array.isArray(serverCategories) ? serverCategories : [];
+  const localActive = await getAllCategories();
+  const localMap = new Map(
+    localActive
+      .map(normalizeCategoryComparable)
+      .filter(Boolean)
+      .map(category => [category._id, category])
+  );
+  let updated = 0;
+
+  for (const rawCategory of categories) {
+    const normalized = normalizeCategoryComparable(rawCategory);
+    if (!normalized) continue;
+
+    const local = localMap.get(normalized._id);
+    if (!local) {
+      updated += 1;
+      continue;
+    }
+
+    const same =
+      local.name === normalized.name &&
+      local.color === normalized.color &&
+      local.icon === normalized.icon &&
+      local.order === normalized.order &&
+      local.systemKey === normalized.systemKey &&
+      local.updatedAt === normalized.updatedAt;
+
+    if (!same) {
+      updated += 1;
+    }
+  }
 
   if (categories.length > 0) {
     await upsertCategories(categories);
   }
 
-  const localActive = await getAllCategories();
   const serverIds = new Set(categories.map(cat => String(cat?._id)).filter(Boolean));
   const toDelete = localActive
     .filter(cat => cat?._id && !serverIds.has(String(cat._id)))
@@ -117,6 +160,9 @@ async function applyCategoryFullSnapshot(serverCategories) {
 
   return {
     pulled: categories.length,
+    updated,
+    deleted: toDelete.length,
+    changed: updated > 0 || toDelete.length > 0,
     softDeleted: toDelete.length,
   };
 }
@@ -124,7 +170,7 @@ async function applyCategoryFullSnapshot(serverCategories) {
 function buildFailureResult(message) {
   return {
     ok: false,
-    categories: { pulled: 0 },
+    categories: { pulled: 0, updated: 0, deleted: 0, changed: false },
     todos: { updated: 0, deleted: 0 },
     completions: { updated: 0, deleted: 0 },
     serverSyncTime: null,
@@ -204,7 +250,12 @@ export async function runDeltaPull(options = {}) {
 
     return {
       ok: true,
-      categories: { pulled: categoryResult.pulled },
+      categories: {
+        pulled: categoryResult.pulled,
+        updated: categoryResult.updated,
+        deleted: categoryResult.deleted,
+        changed: categoryResult.changed,
+      },
       todos: { updated: todoUpdated.length, deleted: todoDeleted.length },
       completions: { updated: completionUpdated.length, deleted: completionDeletedKeys.length },
       serverSyncTime,
@@ -215,4 +266,3 @@ export async function runDeltaPull(options = {}) {
     return buildFailureResult(error?.message || 'delta pull failed');
   }
 }
-

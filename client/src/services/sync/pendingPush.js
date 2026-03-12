@@ -270,6 +270,11 @@ export async function runPendingPush(options = {}) {
   let deferred = 0;
   let blockingFailure = false;
   let lastError = null;
+  const appliedByKind = {
+    todo: 0,
+    category: 0,
+    completion: 0,
+  };
 
   for (const pending of queue) {
     const normalizedType = normalizePendingType(pending.type);
@@ -287,6 +292,10 @@ export async function runPendingPush(options = {}) {
       idsToRemove.push(current.id);
       successfulIds.add(current.id);
       succeeded += 1;
+      const { kind } = getKindAndEntityKey(current);
+      if (kind && Object.prototype.hasOwnProperty.call(appliedByKind, kind)) {
+        appliedByKind[kind] += 1;
+      }
     } catch (error) {
       const classification = classifySyncError({
         error,
@@ -304,6 +313,10 @@ export async function runPendingPush(options = {}) {
         idsToRemove.push(current.id);
         successfulIds.add(current.id);
         succeeded += 1;
+        const { kind } = getKindAndEntityKey(current);
+        if (kind && Object.prototype.hasOwnProperty.call(appliedByKind, kind)) {
+          appliedByKind[kind] += 1;
+        }
         continue;
       }
 
@@ -343,5 +356,6 @@ export async function runPendingPush(options = {}) {
     ready: queue.length,
     blockingFailure,
     lastError,
+    appliedByKind,
   };
 }

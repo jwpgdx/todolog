@@ -71,7 +71,8 @@ npx expo run:android --device
 
 npm run ios
 npm run ios:device
-
+npm run android
+npm run android:device
 
 ## 웹 자동 E2E (Playwright)
 

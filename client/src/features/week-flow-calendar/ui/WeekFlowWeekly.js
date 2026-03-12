@@ -4,12 +4,13 @@ import { StyleSheet, Text, View } from "react-native";
 import { useDateStore } from "../../../store/dateStore";
 import { useTodayDate } from "../../../hooks/useTodayDate";
 import { useSettings } from "../../../hooks/queries/useSettings";
+import { useWeekFlowDaySummaryRange } from "../../calendar-day-summaries";
 import {
   formatHeaderYearMonth,
   getWeekdayLabels,
   resolveCalendarLanguage,
 } from "../utils/weekFlowLocaleUtils";
-import { addWeeks, toWeekStart } from "../utils/weekFlowDateUtils";
+import { addDays, addWeeks, toWeekStart } from "../utils/weekFlowDateUtils";
 
 import WeekFlowHeader from "./WeekFlowHeader";
 import WeekModeRow from "./WeekModeRow";
@@ -78,6 +79,24 @@ export default function WeekFlowWeekly({
     },
     [onVisibleWeekStartChange, setCurrentDate, startDayOfWeek],
   );
+
+  const activeRange = useMemo(() => {
+    if (!visibleWeekStart) return null;
+    const startDate = addDays(visibleWeekStart, -14);
+    const endDate = addDays(visibleWeekStart, 20);
+    if (!startDate || !endDate) return null;
+    return { startDate, endDate };
+  }, [visibleWeekStart]);
+
+  const getIsViewportSettled = useCallback(() => true, []);
+
+  useWeekFlowDaySummaryRange({
+    mode: "weekly",
+    activeRange,
+    retentionAnchorDate: visibleWeekStart,
+    viewportSettledToken: visibleWeekStart,
+    getIsViewportSettled,
+  });
 
   return (
     <View style={styles.container}>

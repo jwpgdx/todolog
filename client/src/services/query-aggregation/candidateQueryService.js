@@ -1,9 +1,10 @@
 import { ensureDatabase, getDatabase, getDatabaseInitDebugState } from '../db/database';
 import { normalizeDateOnlyString } from '../../utils/recurrenceEngine';
 
-const CANDIDATE_PERF_LOG_ENABLED = true;
+const CANDIDATE_PERF_LOG_ENABLED = false;
+const CANDIDATE_SLOW_PROBE_ENABLED = false;
 const CANDIDATE_SLOW_THRESHOLD_MS = 80;
-const CANDIDATE_EXPLAIN_ON_SLOW = true;
+const CANDIDATE_EXPLAIN_ON_SLOW = false;
 const CANDIDATE_ENSURE_DIAG_THRESHOLD_MS = 20;
 const SQL_PING = `SELECT 1 AS ok`;
 
@@ -632,7 +633,7 @@ export async function queryCandidatesForDate(targetDate, options = {}) {
     logCandidateExplainDetails({ mode: 'date', trigger: 'manual', explain });
   }
 
-  if (elapsedMs >= CANDIDATE_SLOW_THRESHOLD_MS) {
+  if (CANDIDATE_SLOW_PROBE_ENABLED && elapsedMs >= CANDIDATE_SLOW_THRESHOLD_MS) {
     const repeatPairProbe = await runParallelPairProbe({
       mode: 'date',
       normalizedDate,
@@ -777,7 +778,7 @@ export async function queryCandidatesForRange(startDate, endDate, options = {}) 
     logCandidateExplainDetails({ mode: 'range', trigger: 'manual', explain });
   }
 
-  if (elapsedMs >= CANDIDATE_SLOW_THRESHOLD_MS) {
+  if (CANDIDATE_SLOW_PROBE_ENABLED && elapsedMs >= CANDIDATE_SLOW_THRESHOLD_MS) {
     const repeatPairProbe = await runParallelPairProbe({
       mode: 'range',
       normalizedStartDate,

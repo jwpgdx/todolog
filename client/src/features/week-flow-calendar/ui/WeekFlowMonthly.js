@@ -5,19 +5,20 @@ import React, {
   useRef,
   useState,
 } from "react";
-import { StyleSheet, Text, View } from "react-native";
+import { Platform, StyleSheet, Text, View } from "react-native";
 import dayjs from "dayjs";
 import { FlashList } from "@shopify/flash-list";
 
 import { useDateStore } from "../../../store/dateStore";
 import { useTodayDate } from "../../../hooks/useTodayDate";
 import { useSettings } from "../../../hooks/queries/useSettings";
+import { useWeekFlowDaySummaryRange } from "../../calendar-day-summaries";
 import {
   formatHeaderYearMonth,
   getWeekdayLabels,
   resolveCalendarLanguage,
 } from "../utils/weekFlowLocaleUtils";
-import { addMonths, addWeeks, toWeekStart } from "../utils/weekFlowDateUtils";
+import { addDays, addMonths, addWeeks, toWeekStart } from "../utils/weekFlowDateUtils";
 import { WEEK_ROW_HEIGHT } from "../utils/weekFlowConstants";
 import { getWeekMeta } from "../utils/weekFlowWeekMetaCache";
 
@@ -40,6 +41,8 @@ const TRIM_HYSTERESIS_WEEKS = WINDOW_PAGE_WEEKS * 8; // 56w buffer
 const HARD_WINDOW_WEEKS = TARGET_WINDOW_WEEKS + TRIM_HYSTERESIS_WEEKS;
 const PREFETCH_EDGE_ROWS = 4; // how early we extend near edges (perf-first, small buffer)
 const MONTHLY_VISIBLE_WEEK_COUNT = 5;
+const SUMMARY_BUFFER_BEFORE_WEEKS = 4;
+const SUMMARY_BUFFER_AFTER_WEEKS = 4;
 
 function getMonthStartFromYmd(dateYmd) {
   if (!dateYmd || dateYmd.length < 7) return null;
@@ -107,6 +110,8 @@ export default function WeekFlowMonthly({
     getMonthStartFromYmd(initialWeekStart || currentDate),
   );
   const visibleMonthStartRef = useRef(visibleMonthStart);
+  const [settledTopWeekStart, setSettledTopWeekStart] = useState(() => initialWeekStart || null);
+  const [viewportSettledToken, setViewportSettledToken] = useState(0);
   const weekCountRef = useRef(weekStarts.length);
   const listRef = useRef(null);
   const hasHandledInitialViewabilityRef = useRef(false);
@@ -118,6 +123,7 @@ export default function WeekFlowMonthly({
   const lastExtendDirectionRef = useRef("down"); // 'down' | 'up'
   const pendingTrimDirectionRef = useRef(null); // 'down' | 'up'
   const scrollPhaseRef = useRef({ dragging: false, momentum: false });
+  const webIdleSettleTimerRef = useRef(null);
 
   const reportTopWeekStart = useCallback(
     (weekStart) => {
@@ -132,6 +138,10 @@ export default function WeekFlowMonthly({
   useEffect(() => {
     reportTopWeekStart(initialWeekStart);
   }, [initialWeekStart, reportTopWeekStart]);
+
+  useEffect(() => {
+    setSettledTopWeekStart(initialWeekStart || null);
+  }, [initialWeekStart]);
 
   useEffect(() => {
     visibleMonthStartRef.current = visibleMonthStart;
@@ -420,6 +430,21 @@ export default function WeekFlowMonthly({
   const onScroll = useCallback((e) => {
     const next = Number(e?.nativeEvent?.contentOffset?.y || 0);
     scrollOffsetRef.current = next;
+
+    // Web/no-momentum fallback: debounce an "idle settled" token after scroll inactivity.
+    // This does NOT call ensure directly; it only advances the settled token.
+    if (Platform.OS === "web") {
+      if (webIdleSettleTimerRef.current) {
+        clearTimeout(webIdleSettleTimerRef.current);
+      }
+      webIdleSettleTimerRef.current = setTimeout(() => {
+        const top = lastReportedTopWeekStartRef.current;
+        if (top) {
+          setSettledTopWeekStart(top);
+          setViewportSettledToken((value) => value + 1);
+        }
+      }, 120);
+    }
   }, []);
 
   const onScrollBeginDrag = useCallback(() => {
@@ -439,7 +464,45 @@ export default function WeekFlowMonthly({
   const onMomentumScrollEnd = useCallback(() => {
     scrollPhaseRef.current.momentum = false;
     requestAnimationFrame(() => flushTrimIfNeeded());
+
+    const top = lastReportedTopWeekStartRef.current;
+    if (top) {
+      setSettledTopWeekStart(top);
+      setViewportSettledToken((value) => value + 1);
+    }
   }, [flushTrimIfNeeded]);
+
+  useEffect(() => {
+    return () => {
+      if (webIdleSettleTimerRef.current) {
+        clearTimeout(webIdleSettleTimerRef.current);
+      }
+    };
+  }, []);
+
+  const activeRange = useMemo(() => {
+    if (!settledTopWeekStart) return null;
+    const startDate = addDays(settledTopWeekStart, -SUMMARY_BUFFER_BEFORE_WEEKS * 7);
+    const endDate = addDays(
+      settledTopWeekStart,
+      (MONTHLY_VISIBLE_WEEK_COUNT + SUMMARY_BUFFER_AFTER_WEEKS) * 7 - 1,
+    );
+    if (!startDate || !endDate) return null;
+    return { startDate, endDate };
+  }, [settledTopWeekStart]);
+
+  const getIsViewportSettled = useCallback(() => {
+    const phase = scrollPhaseRef.current;
+    return !phase.dragging && !phase.momentum;
+  }, []);
+
+  useWeekFlowDaySummaryRange({
+    mode: "monthly",
+    activeRange,
+    retentionAnchorDate: settledTopWeekStart,
+    viewportSettledToken,
+    getIsViewportSettled,
+  });
 
   const initialScrollIndex = useMemo(() => {
     if (!initialWeekStart) return 0;
@@ -484,6 +547,8 @@ export default function WeekFlowMonthly({
           initialScrollIndex={
             weekStarts.length ? initialScrollIndex : undefined
           }
+          onStartReached={prependWeeks}
+          onStartReachedThreshold={0.35}
           onEndReached={appendWeeks}
           onEndReachedThreshold={0.35}
           onViewableItemsChanged={onViewableItemsChanged}

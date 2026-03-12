@@ -7,6 +7,7 @@ import { ensureDatabase } from '../../services/db/database';
 import { generateId } from '../../utils/idGenerator';
 import { useTodoCalendarStore } from '../../features/todo-calendar/store/todoCalendarStore';
 import { invalidateTodoSummary } from '../../features/strip-calendar/services/stripCalendarDataAdapter';
+import { invalidateTodoSummary as invalidateDaySummariesTodo } from '../../features/calendar-day-summaries';
 import { useSyncContext } from '../../providers/SyncProvider';
 
 export const useCreateTodo = () => {
@@ -110,6 +111,7 @@ export const useCreateTodo = () => {
       }
 
       invalidateTodoSummary(data || variables);
+      invalidateDaySummariesTodo(data || variables);
       
       // 사용자 편의를 위한 마지막 사용 정보 저장
       try {

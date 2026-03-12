@@ -3,7 +3,10 @@ import { AppState } from 'react-native';
 import { useQueryClient } from '@tanstack/react-query';
 import NetInfo from '@react-native-community/netinfo';
 import { useAuthStore } from '../../store/authStore';
-import { invalidateAllScreenCaches } from '../query-aggregation/cache';
+import {
+  invalidateAllScreenCaches,
+  invalidateCompletionDependentCaches,
+} from '../query-aggregation/cache';
 import { ensureDatabase, getMetadata, setMetadata } from '../db/database';
 import { runPendingPush } from './pendingPush';
 import { runDeltaPull } from './deltaPull';
@@ -33,6 +36,7 @@ export const useSyncService = () => {
   const [lastSyncTime, setLastSyncTime] = useState(null);
   
   const isSyncingRef = useRef(false);
+  const needsResyncRef = useRef(false);
   const debounceTimerRef = useRef(null);
 
   // 앱 시작 시 마지막 성공 커서 로드 (stale 메타 주입용)
@@ -85,6 +89,7 @@ export const useSyncService = () => {
     
     // 이미 동기화 중
     if (isSyncingRef.current) {
+      needsResyncRef.current = true;
       console.log('⏭️ [useSyncService] 이미 동기화 중 - 스킵');
       return;
     }
@@ -144,20 +149,33 @@ export const useSyncService = () => {
       setLastSyncTime(nextCursor);
       console.log('🧭 [useSyncService] Cursor commit 완료:', { from: cursor, to: nextCursor });
 
-      const hasDataChange =
-        pushResult.succeeded > 0 ||
+      const categoryChanged =
+        (pushResult.appliedByKind?.category || 0) > 0 ||
+        Boolean(pullResult.categories?.changed);
+      const todoChanged =
+        (pushResult.appliedByKind?.todo || 0) > 0 ||
         pullResult.todos.updated > 0 ||
-        pullResult.todos.deleted > 0 ||
+        pullResult.todos.deleted > 0;
+      const completionChanged =
+        (pushResult.appliedByKind?.completion || 0) > 0 ||
         pullResult.completions.updated > 0 ||
         pullResult.completions.deleted > 0;
+      const hasBroadChange = categoryChanged || todoChanged;
+      const hasCompletionOnlyChange = completionChanged && !hasBroadChange;
 
       console.log('🔄 [useSyncService] 캐시 무효화 시작');
-      if (hasDataChange) {
+      if (hasBroadChange) {
         invalidateAllScreenCaches({
           queryClient,
           reason: 'sync:data-changed',
         });
         console.log('🧹 [useSyncService] 공통 캐시/스토어 무효화 완료 (변경 있음)');
+      } else if (hasCompletionOnlyChange) {
+        invalidateCompletionDependentCaches({
+          queryClient,
+          reason: 'sync:completion-only',
+        });
+        console.log('🧹 [useSyncService] completion 의존 캐시만 무효화 완료');
       } else {
         queryClient.invalidateQueries({ queryKey: ['todos'] });
         queryClient.invalidateQueries({ queryKey: ['categories'] });
@@ -173,6 +191,11 @@ export const useSyncService = () => {
     } finally {
       isSyncingRef.current = false;
       setIsSyncing(false);
+
+      if (needsResyncRef.current) {
+        needsResyncRef.current = false;
+        Promise.resolve().then(() => syncAll());
+      }
     }
   }, [isLoggedIn, queryClient]);
   

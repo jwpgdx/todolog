@@ -1,6 +1,6 @@
 # Todolog Project Context
 
-Last Updated: 2026-03-10
+Last Updated: 2026-03-13
 Status: Sync hardening complete (Pending Push -> Delta Pull), Phase 3 Step 1 recurrence engine complete/validated, Phase 3 Step 2 common query/aggregation complete/validated, Phase 3 Step 3 screen-adapter layer complete/validated, cache-policy unification complete/validated, Expo Router migration implemented (parity validation ongoing)
 
 ## 1. Purpose
@@ -214,7 +214,40 @@ Behavior:
 5. Server validates string contract and saves to Mongo.
 6. Optional Google sync runs using user timezone.
 
-### 6.2 Calendar read flow
+### 6.2 Category create/update/delete/reorder flow
+
+1. UI uses canonical category write hooks:
+   - `useCreateCategory`
+   - `useUpdateCategory`
+   - `useDeleteCategory`
+   - `useReorderCategory`
+2. Hook writes to SQLite first.
+3. Hook always enqueues a category pending change.
+4. If online, hook triggers `syncAll()` in the background and does not await server response.
+5. Category delete performs immediate local cascade:
+   - `categories`: tombstone
+   - `todos`: tombstone
+   - `completions`: hard delete
+6. Pending Push sends only the category mutation to server.
+   - delete replay relies on server-side Category -> Todo -> Completion cascade
+   - `createCategory` `409` is treated as success-equivalent during replay
+
+### 6.2.1 Completion toggle flow
+
+1. UI uses `useToggleCompletion`.
+2. Hook computes completion key as `todoId + "_" + (date || "null")`.
+3. Hook toggles SQLite first:
+   - complete -> local row insert
+   - incomplete -> local row hard delete
+4. Hook always enqueues a completion pending change:
+   - `createCompletion`
+   - `deleteCompletion`
+5. If online, hook triggers `syncAll()` in the background and does not await server response.
+6. Completion replay keeps explicit create/delete API routing. Toggle replay is not used.
+7. If `syncAll()` is already running, the new sync request is latched and re-run once after the current run finishes.
+8. Completion-only invalidation refreshes completion-dependent views (`todos`, todo-calendar, shared range cache) but must not clear strip/week-flow day-summary stores or request idle re-ensure.
+
+### 6.3 Calendar read flow
 
 1. Screen/hook requests date or range data (`TodoScreen`, `TodoCalendar`, `StripCalendar`).
 2. For range reads (`TodoCalendar`, `StripCalendar`), the shared range cache is the first hop:

@@ -1,22 +1,39 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { updateCategory } from '../../api/categories';
+import NetInfo from '@react-native-community/netinfo';
 import { invalidateAllScreenCaches } from '../../services/query-aggregation/cache';
 import { updateCategoryOrders } from '../../services/db/categoryService';
+import { addPendingChange } from '../../services/db/pendingService';
 import { ensureDatabase } from '../../services/db/database';
+import { useSyncContext } from '../../providers/SyncProvider';
 
 export const useReorderCategory = () => {
   const queryClient = useQueryClient();
+  const { syncAll } = useSyncContext();
 
   return useMutation({
-    mutationFn: ({ id, order }) => updateCategory({ id, data: { order } }),
+    mutationFn: async ({ id, order }) => {
+      await ensureDatabase();
+      await updateCategoryOrders([{ _id: id, order }]);
+      await addPendingChange({
+        type: 'updateCategory',
+        entityId: id,
+        data: { order },
+      });
+
+      try {
+        const netInfo = await NetInfo.fetch();
+        if (netInfo.isConnected) {
+          Promise.resolve(syncAll?.()).catch(() => { });
+        }
+      } catch { }
+
+      return { id, order };
+    },
     onMutate: async ({ id, order }) => {
-      // Cancel any outgoing refetches
       await queryClient.cancelQueries({ queryKey: ['categories'] });
 
-      // Snapshot the previous value
       const previousCategories = queryClient.getQueryData(['categories']);
 
-      // Optimistically update to the new value
       queryClient.setQueryData(['categories'], (old) => {
         if (!old) return [];
         return old.map((cat) => 
@@ -30,17 +47,15 @@ export const useReorderCategory = () => {
         });
       });
 
-      // Return a context object with the snapshotted value
       return { previousCategories };
     },
-    onError: (err, newTodo, context) => {
-      queryClient.setQueryData(['categories'], context.previousCategories);
+    onError: (_error, _variables, context) => {
+      if (context?.previousCategories) {
+        queryClient.setQueryData(['categories'], context.previousCategories);
+      }
+      queryClient.invalidateQueries({ queryKey: ['categories'] });
     },
-    onSuccess: async (_data, variables) => {
-      try {
-        await ensureDatabase();
-        await updateCategoryOrders([{ _id: variables.id, order: variables.order }]);
-      } catch {}
+    onSuccess: async () => {
       invalidateAllScreenCaches({
         queryClient,
         reason: 'category:reorder',
