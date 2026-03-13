@@ -7,7 +7,6 @@ import {
 import { ensureDatabase } from '../db/database';
 import {
   getPendingChanges,
-  getPendingReady,
   removePendingChanges,
   markPendingRetry,
   markPendingDeadLetter,
@@ -33,6 +32,15 @@ function normalizePendingType(type) {
 function parseCreatedAt(value) {
   const t = Date.parse(value);
   return Number.isNaN(t) ? 0 : t;
+}
+
+function isReplayEligibleStatus(status) {
+  return status === 'pending' || status === 'failed';
+}
+
+function isReadyForReplay(change, nowIso) {
+  if (!isReplayEligibleStatus(change?.status)) return false;
+  return !change?.nextRetryAt || change.nextRetryAt <= nowIso;
 }
 
 function buildNonRetryableError(message, reasonCode = 'non_retryable_local_validation') {
@@ -89,6 +97,46 @@ function getKindAndEntityKey(change) {
   }
 
   return { kind: null, entityKey: null };
+}
+
+function isCompletionType(type) {
+  return type === 'createCompletion' || type === 'deleteCompletion';
+}
+
+function compactCompletionPendingSnapshot(allPending, nowIso) {
+  const latestCompletionIdByKey = new Map();
+  const supersededIds = new Set();
+  const coalescedCompletionKeys = new Set();
+
+  for (const pending of allPending) {
+    const normalizedType = normalizePendingType(pending.type);
+    if (pending.status === 'dead_letter') continue;
+    if (!isCompletionType(normalizedType)) continue;
+
+    const current = { ...pending, type: normalizedType };
+    const entityKey = getKindAndEntityKey(current).entityKey;
+    if (!entityKey) continue;
+
+    const previousId = latestCompletionIdByKey.get(entityKey);
+    if (previousId) {
+      supersededIds.add(previousId);
+      coalescedCompletionKeys.add(entityKey);
+    }
+
+    latestCompletionIdByKey.set(entityKey, current.id);
+  }
+
+  const compactedSnapshot = allPending.filter((pending) => !supersededIds.has(pending.id));
+  const rawReadyRows = allPending.filter((pending) => isReadyForReplay(pending, nowIso));
+  const compactedReadyRows = compactedSnapshot.filter((pending) => isReadyForReplay(pending, nowIso));
+
+  return {
+    compactedSnapshot,
+    rawReadyRows,
+    compactedReadyRows,
+    supersededIds: [...supersededIds],
+    coalescedCompletionKeys: [...coalescedCompletionKeys],
+  };
 }
 
 function shouldDeferByPriorCreate({ current, allPending, successfulIds }) {
@@ -248,7 +296,11 @@ function stringifyFailureMessage({ classification, decision, error }) {
  *  removed: number,
  *  ready: number,
  *  blockingFailure: boolean,
- *  lastError: string|null
+ *  lastError: string|null,
+ *  rawReady: number,
+ *  compactedReady: number,
+ *  supersededRemoved: number,
+ *  coalescedCompletionKeys: string[]
  * }>}
  */
 export async function runPendingPush(options = {}) {
@@ -256,9 +308,16 @@ export async function runPendingPush(options = {}) {
 
   await ensureDatabase();
 
+  const nowIso = new Date().toISOString();
   const allPending = await getPendingChanges();
-  const readyPending = await getPendingReady();
-  const queue = readyPending.slice(0, Math.max(0, maxItems));
+  const {
+    compactedSnapshot,
+    rawReadyRows,
+    compactedReadyRows,
+    supersededIds,
+    coalescedCompletionKeys,
+  } = compactCompletionPendingSnapshot(allPending, nowIso);
+  const queue = compactedReadyRows.slice(0, Math.max(0, maxItems));
 
   const idsToRemove = [];
   const successfulIds = new Set();
@@ -276,11 +335,15 @@ export async function runPendingPush(options = {}) {
     completion: 0,
   };
 
+  if (supersededIds.length > 0) {
+    await removePendingChanges(supersededIds);
+  }
+
   for (const pending of queue) {
     const normalizedType = normalizePendingType(pending.type);
     const current = { ...pending, type: normalizedType };
 
-    if (shouldDeferByPriorCreate({ current, allPending, successfulIds })) {
+    if (shouldDeferByPriorCreate({ current, allPending: compactedSnapshot, successfulIds })) {
       deferred += 1;
       continue;
     }
@@ -354,6 +417,10 @@ export async function runPendingPush(options = {}) {
     deferred,
     removed: idsToRemove.length,
     ready: queue.length,
+    rawReady: rawReadyRows.length,
+    compactedReady: compactedReadyRows.length,
+    supersededRemoved: supersededIds.length,
+    coalescedCompletionKeys,
     blockingFailure,
     lastError,
     appliedByKind,

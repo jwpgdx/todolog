@@ -1,7 +1,7 @@
 # Todolog Project Context
 
-Last Updated: 2026-03-13
-Status: Sync hardening complete (Pending Push -> Delta Pull), Phase 3 Step 1 recurrence engine complete/validated, Phase 3 Step 2 common query/aggregation complete/validated, Phase 3 Step 3 screen-adapter layer complete/validated, cache-policy unification complete/validated, Expo Router migration implemented (parity validation ongoing)
+Last Updated: 2026-03-14
+Status: Sync hardening complete (Pending Push -> Delta Pull), Phase 3 Step 1 recurrence engine complete/validated, Phase 3 Step 2 common query/aggregation complete/validated, Phase 3 Step 3 screen-adapter layer complete/validated, category write unification complete/validated, completion write unification implemented/validated, completion coalescing implemented/validated, cache-policy unification complete/validated, Expo Router migration implemented (parity validation ongoing)
 
 ## 1. Purpose
 
@@ -39,6 +39,9 @@ Server:
 - Phase 3 recurrence engine core (Step 1): complete and validated
 - Phase 3 common query/aggregation layer (Step 2): complete and validated
 - Phase 3 screen-adapter layer (Step 3): complete and validated
+- Category write unification: complete and validated (`create/update/delete/reorder` local-first + pending + background sync)
+- Completion write unification: implemented and validated (`always-pending` toggle + sync rerun latch + completion-aware invalidation)
+- Completion coalescing: implemented and validated (sync-start full snapshot compaction + superseded completion pending retirement)
 - Cache-policy unification (Option A -> Option B): complete and validated (shared range cache + sync invalidation unification)
 - Cache retention (memory control): enabled (shared range cache + calendar L1 caches pruned to anchor ±6 months)
 - Strip-calendar foundation (weekly/monthly shell + anchor sync + debug instrumentation): active and integrated via adapter path
@@ -47,6 +50,7 @@ Server:
 - UI navigation: Expo Router groups `/(auth)` + `/(app)` with tabs under `client/app/(app)/(tabs)` (e.g. My Page: `/(app)/(tabs)/my-page`)
 - My Page subtree routing: My Page에서 여는 Settings/Profile/Category 화면은 `client/app/(app)/(tabs)/my-page/*` 아래로 push되어 iOS Large Title/back label UX를 유지
 - Modal/presentation test hub: `/(app)/test/modals` + `/(app)/test/form-sheet` (native-stack presentation 옵션별 플랫폼 동작 확인)
+- Real-server recovery web E2E: category/todo/completion recovery specs added; completion extended matrix (`rapid toggle`, `recurring`, `mixed queue`, `dead_letter`, `restart`) validated
 
 ## 3. Non-Negotiable Architecture Commitments
 
@@ -246,6 +250,11 @@ Behavior:
 6. Completion replay keeps explicit create/delete API routing. Toggle replay is not used.
 7. If `syncAll()` is already running, the new sync request is latched and re-run once after the current run finishes.
 8. Completion-only invalidation refreshes completion-dependent views (`todos`, todo-calendar, shared range cache) but must not clear strip/week-flow day-summary stores or request idle re-ensure.
+9. During Pending Push, completion rows are compacted by `completionKey` against the sync-start non-dead_letter snapshot:
+   - last intent wins
+   - superseded older completion rows are retired before replay
+   - older `failed` rows with future `next_retry_at` are also superseded if a newer intent exists
+10. This superseded-row retirement is a narrow exception to the generic pending queue rule (`remove on success / keep failed for retry`) and applies only to superseded non-dead_letter completion rows.
 
 ### 6.3 Calendar read flow
 

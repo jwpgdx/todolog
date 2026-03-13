@@ -2,6 +2,12 @@ const { test, expect } = require('@playwright/test');
 
 const REAL_API_BASE_URL = process.env.PW_REAL_API_BASE_URL;
 
+function addDays(dateString, days) {
+  const date = new Date(`${dateString}T00:00:00.000Z`);
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
+}
+
 function getTodayInSeoul() {
   return new Intl.DateTimeFormat('sv-SE', {
     timeZone: 'Asia/Seoul',
@@ -49,18 +55,33 @@ async function loginViaUi(page, { email, password }) {
 }
 
 async function openMyPage(page) {
-  const myPageTab = page.getByText(/My Page/i).first();
+  const myPageTab = page.getByRole('tab', { name: /My Page/i });
   await expect(myPageTab).toBeVisible();
-  await myPageTab.click();
+  await myPageTab.click({ force: true });
   await expect(page.getByText('카테고리 추가').first()).toBeVisible({ timeout: 15_000 });
   await expect(page.getByText('Inbox', { exact: true }).first()).toBeVisible({ timeout: 20_000 });
 }
 
+async function createCategory(page, name) {
+  await page.getByText('카테고리 추가').first().click();
+  await expect(page.getByText(/새 카테고리|카테고리 수정/).first()).toBeVisible({ timeout: 15_000 });
+  await page.getByPlaceholder('카테고리 이름을 입력하세요').fill(name);
+  await page.getByText('완료', { exact: true }).last().click();
+  await expect(page.getByText(name, { exact: true }).first()).toBeVisible({ timeout: 10_000 });
+}
+
 async function openHome(page) {
-  const homeTab = page.getByText(/홈|Home/i).first();
+  const homeTab = page.getByRole('tab', { name: /홈|Home/i });
   await expect(homeTab).toBeVisible();
-  await homeTab.click();
+  await homeTab.click({ force: true });
   await expect(page.getByText(/Form Sheet Test|등록된 할 일이 없습니다|완료:/).first()).toBeVisible({ timeout: 15_000 });
+}
+
+async function openDebug(page) {
+  const debugTab = page.getByRole('tab', { name: /디버그/i });
+  await expect(debugTab).toBeVisible();
+  await debugTab.click({ force: true });
+  await expect(page.getByText('🔧 Debug Screen (SQLite)').first()).toBeVisible({ timeout: 15_000 });
 }
 
 async function ensureInboxCategorySelected(page) {
@@ -120,6 +141,37 @@ async function fetchAllTodosFromServer(token) {
 
   if (!response.ok) {
     throw new Error(`getAllTodos failed: ${response.status} ${await response.text()}`);
+  }
+
+  return response.json();
+}
+
+async function fetchCategoriesFromServer(token) {
+  const response = await fetch(`${REAL_API_BASE_URL}/categories`, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error(`getCategories failed: ${response.status} ${await response.text()}`);
+  }
+
+  return response.json();
+}
+
+async function createTodoOnServer(token, data) {
+  const response = await fetch(`${REAL_API_BASE_URL}/todos`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(data),
+  });
+
+  if (!response.ok) {
+    throw new Error(`createTodo failed: ${response.status} ${await response.text()}`);
   }
 
   return response.json();
@@ -258,5 +310,360 @@ test.describe('Completion Recovery Real Server', () => {
         return todos.some((item) => item?._id === todoId && item?.completed === false);
       }, { timeout: 20_000 })
       .toBeTruthy();
+  });
+
+  test('future-retry failed completion create는 더 최신 intent에 의해 supersede되어 재생되지 않는다', async ({ page }) => {
+    test.slow();
+    test.setTimeout(180_000);
+
+    const auth = await registerFreshUser();
+    const today = getTodayInSeoul();
+    const todoTitle = `Completion Coalesce Todo ${Date.now()}`;
+
+    await loginViaUi(page, auth);
+    await openMyPage(page);
+    await openHome(page);
+    await createTodo(page, todoTitle);
+
+    let todoId = null;
+    await expect
+      .poll(async () => {
+        const todos = await fetchAllTodosFromServer(auth.token);
+        const matched = todos.find((item) => item?.title === todoTitle);
+        todoId = matched?._id || null;
+        return !!todoId;
+      }, { timeout: 20_000 })
+      .toBeTruthy();
+
+    let abortedCreateSeen = false;
+    let resolveAbortedCreate = null;
+    const abortedCreatePromise = new Promise((resolve) => {
+      resolveAbortedCreate = resolve;
+    });
+
+    const abortFirstCreateCompletion = async (route) => {
+      const request = route.request();
+      if (!abortedCreateSeen && request.method() === 'POST') {
+        abortedCreateSeen = true;
+        resolveAbortedCreate?.();
+        await route.abort('internetdisconnected');
+        return;
+      }
+      await route.continue();
+    };
+
+    await page.route('**/api/completions', abortFirstCreateCompletion);
+
+    await toggleCompletionByTitle(page, todoTitle);
+    await expect(page.getByText('완료: ✅').first()).toBeVisible({ timeout: 10_000 });
+    await abortedCreatePromise;
+    await page.waitForTimeout(500);
+
+    await toggleCompletionByTitle(page, todoTitle);
+    await expect(page.getByText('완료: ❌').first()).toBeVisible({ timeout: 10_000 });
+
+    await page.unroute('**/api/completions', abortFirstCreateCompletion);
+
+    await expect
+      .poll(async () => {
+        const todos = await fetchTodosByDateFromServer(auth.token, today);
+        return todos.some((item) => item?._id === todoId && item?.completed === false);
+      }, { timeout: 20_000 })
+      .toBeTruthy();
+
+    await waitForPendingRetryWindow(page);
+    await openHome(page);
+
+    await expect
+      .poll(async () => {
+        const todos = await fetchTodosByDateFromServer(auth.token, today);
+        return todos.some((item) => item?._id === todoId && item?.completed === false);
+      }, { timeout: 20_000 })
+      .toBeTruthy();
+  });
+
+  test('raw ready 200개를 넘는 same-key completion backlog도 마지막 intent 1개로 압축되어 첫 성공 run에 수렴한다', async ({ page }) => {
+    test.slow();
+    test.setTimeout(360_000);
+
+    const auth = await registerFreshUser();
+    const today = getTodayInSeoul();
+    const todoTitle = `Completion Backlog Todo ${Date.now()}`;
+    const abortApi = (route) => route.abort('internetdisconnected');
+
+    await loginViaUi(page, auth);
+    await openMyPage(page);
+    await openHome(page);
+    await createTodo(page, todoTitle);
+
+    let todoId = null;
+    await expect
+      .poll(async () => {
+        const todos = await fetchAllTodosFromServer(auth.token);
+        const matched = todos.find((item) => item?.title === todoTitle);
+        todoId = matched?._id || null;
+        return !!todoId;
+      }, { timeout: 20_000 })
+      .toBeTruthy();
+
+    await page.route('**/api/**', abortApi);
+
+    let expectCompleted = false;
+    for (let index = 0; index < 201; index += 1) {
+      expectCompleted = !expectCompleted;
+      await toggleCompletionByTitle(page, todoTitle);
+      await expect(page.getByText(expectCompleted ? '완료: ✅' : '완료: ❌').first()).toBeVisible({ timeout: 10_000 });
+    }
+
+    await page.unroute('**/api/**', abortApi);
+    await waitForPendingRetryWindow(page);
+    await openHome(page);
+
+    await expect
+      .poll(async () => {
+        const todos = await fetchTodosByDateFromServer(auth.token, today);
+        return todos.some((item) => item?._id === todoId && item?.completed === true);
+      }, { timeout: 20_000 })
+      .toBeTruthy();
+  });
+
+  test('반복 completion은 같은 todo라도 날짜 key가 다르면 서로 coalescing되지 않는다', async ({ page }) => {
+    test.slow();
+    test.setTimeout(120_000);
+
+    const auth = await registerFreshUser();
+    const today = getTodayInSeoul();
+    const tomorrow = addDays(today, 1);
+    const todoTitle = `Recurring Split Todo ${Date.now()}`;
+
+    await loginViaUi(page, auth);
+    await openDebug(page);
+
+    const categories = await fetchCategoriesFromServer(auth.token);
+    const inboxCategoryId = categories[0]?._id;
+    expect(inboxCategoryId).toBeTruthy();
+
+    const recurringTodo = await createTodoOnServer(auth.token, {
+      title: todoTitle,
+      categoryId: inboxCategoryId,
+      startDate: today,
+      endDate: today,
+      isAllDay: true,
+      recurrence: ['RRULE:FREQ=DAILY'],
+      recurrenceEndDate: addDays(today, 7),
+    });
+
+    await page.getByText('초기화', { exact: true }).click();
+    page.once('dialog', (dialog) => dialog.accept(recurringTodo._id));
+    await page.getByText('🧪 반복 split pending seed', { exact: true }).click();
+
+    await page.getByText('⏳ Pending Changes 확인', { exact: true }).click();
+    await expect(page.getByText('✅ Completion Pending: 2개').first()).toBeVisible({ timeout: 10_000 });
+
+    await page.getByText('🚀 Pending Push 1회 실행', { exact: true }).click();
+    await expect(page.getByText('succeeded=2').first()).toBeVisible({ timeout: 15_000 });
+
+    await expect
+      .poll(async () => {
+        const [todayTodos, tomorrowTodos] = await Promise.all([
+          fetchTodosByDateFromServer(auth.token, today),
+          fetchTodosByDateFromServer(auth.token, tomorrow),
+        ]);
+
+        return {
+          todayCompleted: todayTodos.some((item) => item?._id === recurringTodo._id && item?.completed === true),
+          tomorrowCompleted: tomorrowTodos.some((item) => item?._id === recurringTodo._id && item?.completed === true),
+        };
+      }, { timeout: 20_000 })
+      .toEqual({
+        todayCompleted: true,
+        tomorrowCompleted: true,
+      });
+  });
+
+  test('todo/category/completion mixed queue에서도 completion만 compaction되고 다른 pending은 정상 수렴한다', async ({ page }) => {
+    test.slow();
+    test.setTimeout(240_000);
+
+    const auth = await registerFreshUser();
+    const today = getTodayInSeoul();
+    const existingTodoTitle = `Mixed Queue Base Todo ${Date.now()}`;
+    const offlineTodoTitle = `Mixed Queue Pending Todo ${Date.now()}`;
+    const offlineCategoryName = `Mixed Queue Category ${Date.now()}`;
+    const abortApi = (route) => route.abort('internetdisconnected');
+
+    await loginViaUi(page, auth);
+    await openMyPage(page);
+    await openHome(page);
+    await createTodo(page, existingTodoTitle);
+
+    let existingTodoId = null;
+    await expect
+      .poll(async () => {
+        const todos = await fetchAllTodosFromServer(auth.token);
+        const matched = todos.find((item) => item?.title === existingTodoTitle);
+        existingTodoId = matched?._id || null;
+        return !!existingTodoId;
+      }, { timeout: 20_000 })
+      .toBeTruthy();
+
+    await page.route('**/api/**', abortApi);
+
+    await openMyPage(page);
+    await createCategory(page, offlineCategoryName);
+
+    await openHome(page);
+    await createTodo(page, offlineTodoTitle);
+    await toggleCompletionByTitle(page, existingTodoTitle);
+    await expect(page.getByText('완료: ✅').first()).toBeVisible({ timeout: 10_000 });
+
+    await page.unroute('**/api/**', abortApi);
+    await waitForPendingRetryWindow(page);
+    await openHome(page);
+
+    await expect
+      .poll(async () => {
+        const [todos, categories] = await Promise.all([
+          fetchTodosByDateFromServer(auth.token, today),
+          fetchCategoriesFromServer(auth.token),
+        ]);
+
+        const baseTodo = todos.find((item) => item?._id === existingTodoId);
+        const pendingTodo = todos.find((item) => item?.title === offlineTodoTitle);
+        const pendingCategory = categories.find((item) => item?.name === offlineCategoryName);
+
+        return {
+          baseCompleted: baseTodo?.completed === true,
+          pendingTodo: Boolean(pendingTodo),
+          pendingCategory: Boolean(pendingCategory),
+        };
+      }, { timeout: 20_000 })
+      .toEqual({
+        baseCompleted: true,
+        pendingTodo: true,
+        pendingCategory: true,
+      });
+  });
+
+  test('dead_letter completion row가 있어도 신규 ready row는 그대로 replay되고 dead_letter는 유지된다', async ({ page }) => {
+    test.slow();
+    test.setTimeout(120_000);
+
+    const auth = await registerFreshUser();
+    const today = getTodayInSeoul();
+    const todoTitle = `Dead Letter Coexist Todo ${Date.now()}`;
+
+    await loginViaUi(page, auth);
+    await openDebug(page);
+
+    const categories = await fetchCategoriesFromServer(auth.token);
+    const inboxCategoryId = categories[0]?._id;
+    expect(inboxCategoryId).toBeTruthy();
+
+    const todo = await createTodoOnServer(auth.token, {
+      title: todoTitle,
+      categoryId: inboxCategoryId,
+      startDate: today,
+      endDate: today,
+      isAllDay: true,
+    });
+
+    await page.getByText('초기화', { exact: true }).click();
+    page.once('dialog', (dialog) => dialog.accept(todo._id));
+    await page.getByText('🧪 dead_letter coexist seed', { exact: true }).click();
+
+    await page.getByText('⏳ Pending Changes 확인', { exact: true }).click();
+    await expect(page.getByText('📊 상태 요약: pending=1, failed=0, dead_letter=1').first()).toBeVisible({ timeout: 10_000 });
+
+    await page.getByText('🚀 Pending Push 1회 실행', { exact: true }).click();
+    await expect(page.getByText('succeeded=1').first()).toBeVisible({ timeout: 15_000 });
+
+    await page.getByText('⏳ Pending Changes 확인', { exact: true }).click();
+    await expect(page.getByText('📊 상태 요약: pending=0, failed=0, dead_letter=1').first()).toBeVisible({ timeout: 10_000 });
+
+    await expect
+      .poll(async () => {
+        const todos = await fetchTodosByDateFromServer(auth.token, today);
+        return todos.some((item) => item?._id === todo._id && item?.completed === true);
+      }, { timeout: 20_000 })
+      .toBeTruthy();
+  });
+
+  test('superseded cleanup 이후 retained replay 전 재시작해도 마지막 intent가 유지된다', async ({ page }) => {
+    test.slow();
+    test.setTimeout(240_000);
+
+    const auth = await registerFreshUser();
+    const today = getTodayInSeoul();
+    const todoTitle = `Completion Restart Todo ${Date.now()}`;
+
+    await loginViaUi(page, auth);
+    await openMyPage(page);
+    await openHome(page);
+    await createTodo(page, todoTitle);
+
+    let todoId = null;
+    await expect
+      .poll(async () => {
+        const todos = await fetchAllTodosFromServer(auth.token);
+        const matched = todos.find((item) => item?.title === todoTitle);
+        todoId = matched?._id || null;
+        return !!todoId;
+      }, { timeout: 20_000 })
+      .toBeTruthy();
+
+    let abortedCreateSeen = false;
+    let resolveAbortedCreate = null;
+    const abortedCreatePromise = new Promise((resolve) => {
+      resolveAbortedCreate = resolve;
+    });
+
+    const abortFirstCreateCompletion = async (route) => {
+      if (!abortedCreateSeen && route.request().method() === 'POST') {
+        abortedCreateSeen = true;
+        resolveAbortedCreate?.();
+        await route.abort('internetdisconnected');
+        return;
+      }
+      await route.continue();
+    };
+
+    let resolveDeleteStarted = null;
+    const deleteStartedPromise = new Promise((resolve) => {
+      resolveDeleteStarted = resolve;
+    });
+    let deleteRequestCount = 0;
+
+    const delayDeleteCompletion = async (route) => {
+      deleteRequestCount += 1;
+      resolveDeleteStarted?.();
+      await new Promise((resolve) => setTimeout(resolve, 60_000));
+      await route.continue();
+    };
+
+    await page.route('**/api/completions', abortFirstCreateCompletion);
+    await toggleCompletionByTitle(page, todoTitle);
+    await expect(page.getByText('완료: ✅').first()).toBeVisible({ timeout: 10_000 });
+    await abortedCreatePromise;
+    await page.unroute('**/api/completions', abortFirstCreateCompletion);
+
+    await page.route(`**/api/completions/${todoId}**`, delayDeleteCompletion);
+    await toggleCompletionByTitle(page, todoTitle);
+    await expect(page.getByText('완료: ❌').first()).toBeVisible({ timeout: 10_000 });
+    await deleteStartedPromise;
+
+    await page.reload();
+    await page.unroute(`**/api/completions/${todoId}**`, delayDeleteCompletion);
+    await waitForPendingRetryWindow(page);
+    await openHome(page);
+
+    await expect
+      .poll(async () => {
+        const todos = await fetchTodosByDateFromServer(auth.token, today);
+        return todos.some((item) => item?._id === todoId && item?.completed === false);
+      }, { timeout: 20_000 })
+      .toBeTruthy();
+
+    expect(deleteRequestCount).toBeGreaterThan(0);
   });
 });

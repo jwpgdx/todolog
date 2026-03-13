@@ -1,6 +1,6 @@
 # Todolog Roadmap
 
-Last Updated: 2026-03-10
+Last Updated: 2026-03-14
 Owner: Product + Engineering
 
 ## 1. Purpose
@@ -23,6 +23,9 @@ Current state:
 - Phase 3 recurrence engine core (Step 1) is complete/validated
 - Phase 3 common query/aggregation layer (Step 2) is complete/validated
 - Phase 3 screen-adapter layer (Step 3) is complete/validated
+- Category write unification is complete/validated
+- Completion write unification is implemented; primary recovery/rerun-latch validation is complete
+- Completion coalescing is implemented and validated
 - Cache-policy unification (Option A -> Option B) is complete/validated
 - Strip-calendar legacy module remains in stabilization/debugging phase
 - Week Flow Calendar rewrite prototype is active (bounded weekly/monthly shell); spec remains SOT for the full replacement plan
@@ -314,6 +317,47 @@ Evidence:
   - shared screen에서 상대 라우팅(`./...`)을 사용해 root stack / My Page stack 양쪽에서 동작하도록 정리
 - Modal/page-sheet/form-sheet presentation 옵션 비교용 test routes 확장 (`/(app)/test/modals`)
 - Week Flow Calendar rewrite prototype test screen 추가 (`/(app)/(tabs)/week-flow`)
+
+### 2026-03-13
+
+- Category write unification completed
+  - `create/update/delete/reorder`를 local-first + pending + background sync 경로로 통일
+  - category delete의 local cascade와 `createCategory 409` success-equivalent replay 처리 반영
+- Completion write unification implemented
+  - completion toggle을 always-pending으로 전환
+  - sync in-flight rerun latch와 completion-aware invalidation 분기 추가
+- Recovery validation and testing workflow expanded
+  - Web real-server recovery specs 추가 (`category`, `todo`, `completion`)
+  - Codex web/Playwright wrapper scripts + runbook 정리
+
+Evidence:
+
+- `.kiro/specs/category-write-unification/tasks.md`
+- `.kiro/specs/completion-write-unification/tasks.md`
+- `client/e2e/category-recovery.real.spec.js`
+- `client/e2e/todo-recovery.real.spec.js`
+- `client/e2e/completion-recovery.real.spec.js`
+- `client/src/services/sync/index.js`
+- `client/src/services/query-aggregation/cache/cacheInvalidationService.js`
+- `CODEX_TESTING.md`
+
+### 2026-03-14
+
+- Completion coalescing implemented
+  - Pending Push now compacts completion rows by sync-start full non-dead_letter snapshot
+  - last-intent wins for the same `completionKey`
+  - superseded older completion rows, including future-retry failed rows, are retired before replay
+- Targeted recovery validation added
+  - future-retry failed completion create is superseded by newer intent and does not replay later
+  - recurring different dates remain isolated by key and both replay
+  - dead_letter completion rows stay excluded while newer ready rows still replay
+  - mixed queue / raw-200 / restart-after-cleanup scenarios pass in the real-server matrix
+
+Evidence:
+
+- `.kiro/specs/completion-coalescing/tasks.md`
+- `client/src/services/sync/pendingPush.js`
+- `client/e2e/completion-recovery.real.spec.js`
 
 ## 4. Next Milestones (Planned)
 

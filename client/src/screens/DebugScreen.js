@@ -26,13 +26,14 @@ import {
   clearPendingChanges as sqliteClearPendingChanges,
   getPendingChangesCount,
   getPendingReady,
+  markPendingDeadLetter,
 } from '../services/db/pendingService';
 import { runPendingPush } from '../services/sync/pendingPush';
+import { generateId } from '../utils/idGenerator';
 import { runCommonQueryForDate, runCommonQueryForRange } from '../services/query-aggregation';
 import {
   adaptTodoScreenFromDateHandoff,
   adaptTodoCalendarFromRangeHandoff,
-  adaptStripCalendarFromRangeHandoff,
 } from '../services/query-aggregation/adapters';
 import {
   getOrLoadRange,
@@ -40,8 +41,11 @@ import {
   invalidateAllRangeCache,
   invalidateAllScreenCaches,
 } from '../services/query-aggregation/cache';
-import { useStripCalendarStore } from '../features/strip-calendar/store/stripCalendarStore';
 import { useTodoCalendarStore } from '../features/todo-calendar/store/todoCalendarStore';
+import {
+  adaptDaySummariesFromRangeHandoff,
+  useCalendarDaySummaryStore,
+} from '../features/calendar-day-summaries';
 import { addDaysDateOnly } from '../utils/recurrenceEngine';
 import {
   getAllCategories as sqliteGetAllCategories,
@@ -235,19 +239,19 @@ export default function DebugScreen() {
     addLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
   };
 
-  const printStripL1CacheStats = () => {
-    const stripState = useStripCalendarStore.getState();
-    const summaryDates = Object.keys(stripState.summariesByDate || {});
+  const printDaySummaryL1CacheStats = () => {
+    const summaryState = useCalendarDaySummaryStore.getState();
+    const summaryDates = Object.keys(summaryState.summariesByDate || {});
     const sortedSummaryDates = [...summaryDates].sort();
 
     addLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-    addLog('🧩 Strip L1 Cache 상태');
+    addLog('🧩 Day Summary L1 Cache 상태');
     addLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-    addLog(`loadedRanges=${stripState.loadedRanges.length}, summariesByDate=${sortedSummaryDates.length}`);
+    addLog(`loadedRanges=${summaryState.loadedRanges.length}, summariesByDate=${sortedSummaryDates.length}`);
 
-    if (stripState.loadedRanges.length > 0) {
-      addLog('📦 strip loadedRanges:');
-      stripState.loadedRanges.forEach((range, index) => {
+    if (summaryState.loadedRanges.length > 0) {
+      addLog('📦 day-summary loadedRanges:');
+      summaryState.loadedRanges.forEach((range, index) => {
         addLog(`  [${index + 1}] ${range.startDate} ~ ${range.endDate}`);
       });
     }
@@ -307,139 +311,8 @@ export default function DebugScreen() {
     addLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
     addLog('🧠 Shared Range Cache만 클리어');
     addLog(`ok=${result.ok}, removedEntries=${result.removedEntries}, reason=${result.reason}`);
-    addLog('ℹ️ Strip/TodoCalendar L1 store는 유지됩니다');
+    addLog('ℹ️ DaySummary/TodoCalendar L1 store는 유지됩니다');
     addLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-  };
-
-  const setStripMonthlyPolicyLegacy = () => {
-    useStripCalendarStore.getState().setMonthlyRangePolicy('legacy_9week');
-    addLog('⚙️ Strip 월간 정책 변경: legacy_9week (-14 ~ +48일)');
-  };
-
-  const setStripMonthlyPolicyThreeMonth = () => {
-    useStripCalendarStore.getState().setMonthlyRangePolicy('three_month');
-    addLog('⚙️ Strip 월간 정책 변경: three_month (월 기준 -1M ~ +1M)');
-  };
-
-  const setStripMonthlyPolicySixMonth = () => {
-    useStripCalendarStore.getState().setMonthlyRangePolicy('six_month');
-    addLog('⚙️ Strip 월간 정책 변경: six_month (월 기준 -2M ~ +3M)');
-  };
-
-  const printStripMonthlyPolicy = () => {
-    const policy = useStripCalendarStore.getState().monthlyRangePolicy;
-    addLog(`ℹ️ Strip 월간 정책 현재값: ${policy}`);
-  };
-
-  const buildMonthlyRangeByPolicy = (anchorDate, policy) => {
-    if (policy === 'legacy_9week') {
-      return {
-        startDate: dayjs(anchorDate).subtract(14, 'day').format('YYYY-MM-DD'),
-        endDate: dayjs(anchorDate).add(48, 'day').format('YYYY-MM-DD'),
-      };
-    }
-    const monthStart = dayjs(anchorDate).startOf('month');
-    if (policy === 'six_month') {
-      return {
-        startDate: monthStart.subtract(2, 'month').format('YYYY-MM-DD'),
-        endDate: monthStart.add(3, 'month').endOf('month').format('YYYY-MM-DD'),
-      };
-    }
-    return {
-      startDate: monthStart.subtract(1, 'month').format('YYYY-MM-DD'),
-      endDate: monthStart.add(1, 'month').endOf('month').format('YYYY-MM-DD'),
-    };
-  };
-
-  const buildMonthlyAnchorSequence = (baseDate, count = 6) => {
-    const normalized = dayjs(baseDate).startOf('month');
-    return Array.from({ length: count }, (_, index) =>
-      normalized.add(index, 'month').format('YYYY-MM-DD')
-    );
-  };
-
-  const runOptionABenchmark = async () => {
-    const syncStatus = { isSyncing, error: syncError, lastSyncTime };
-    const anchors = buildMonthlyAnchorSequence(selectedDate, 6);
-
-    const benchmarkPolicy = async (policy) => {
-      invalidateAllRangeCache({ reason: `debug:option-a-benchmark:${policy}` });
-      useStripCalendarStore.getState().clearRangeCache();
-      const before = getRangeCacheDebugStats();
-      const startedAt = performance.now();
-
-      for (const anchor of anchors) {
-        const range = buildMonthlyRangeByPolicy(anchor, policy);
-        const result = await getOrLoadRange({
-          startDate: range.startDate,
-          endDate: range.endDate,
-          sourceTag: `option-a-benchmark:${policy}`,
-          syncStatus,
-        });
-
-        if (!result.ok) {
-          throw new Error(`${policy} load failed @ ${anchor}: ${result.error || 'unknown'}`);
-        }
-      }
-
-      const after = getRangeCacheDebugStats();
-      const elapsedMs = Number((performance.now() - startedAt).toFixed(2));
-      return {
-        policy,
-        elapsedMs,
-        missDelta: after.miss - before.miss,
-        hitDelta: after.hit - before.hit,
-        loadsDelta: after.loads - before.loads,
-      };
-    };
-
-    addLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-    addLog(`🧪 Option A 정량 벤치마크 시작 (base=${selectedDate}, months=${anchors.length})`);
-    addLog(`anchors=${anchors.join(', ')}`);
-    addLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-
-    try {
-      const legacy = await benchmarkPolicy('legacy_9week');
-      const threeMonth = await benchmarkPolicy('three_month');
-      const sixMonth = await benchmarkPolicy('six_month');
-
-      const elapsedImprovement =
-        legacy.elapsedMs > 0 ? ((legacy.elapsedMs - threeMonth.elapsedMs) / legacy.elapsedMs) * 100 : 0;
-      const missImprovement =
-        legacy.missDelta > 0 ? ((legacy.missDelta - threeMonth.missDelta) / legacy.missDelta) * 100 : 0;
-
-      addLog(
-        `legacy_9week: elapsed=${legacy.elapsedMs}ms, missΔ=${legacy.missDelta}, hitΔ=${legacy.hitDelta}, loadsΔ=${legacy.loadsDelta}`
-      );
-      addLog(
-        `three_month: elapsed=${threeMonth.elapsedMs}ms, missΔ=${threeMonth.missDelta}, hitΔ=${threeMonth.hitDelta}, loadsΔ=${threeMonth.loadsDelta}`
-      );
-      addLog(
-        `six_month: elapsed=${sixMonth.elapsedMs}ms, missΔ=${sixMonth.missDelta}, hitΔ=${sixMonth.hitDelta}, loadsΔ=${sixMonth.loadsDelta}`
-      );
-      addLog(`improvement(elapsed)=${elapsedImprovement.toFixed(1)}%`);
-      addLog(`improvement(miss)=${missImprovement.toFixed(1)}%`);
-
-      const sixVsThreeElapsed =
-        threeMonth.elapsedMs > 0 ? ((sixMonth.elapsedMs - threeMonth.elapsedMs) / threeMonth.elapsedMs) * 100 : 0;
-      const sixVsThreeMiss =
-        threeMonth.missDelta > 0 ? ((sixMonth.missDelta - threeMonth.missDelta) / threeMonth.missDelta) * 100 : 0;
-      addLog(`six_month vs three_month(elapsed)=${sixVsThreeElapsed.toFixed(1)}%`);
-      addLog(`six_month vs three_month(miss)=${sixVsThreeMiss.toFixed(1)}%`);
-
-      if (elapsedImprovement >= 30 || missImprovement >= 30) {
-        addLog('✅ PASS [option-a-benchmark]: 30%+ 개선 충족');
-      } else {
-        addLog('❌ FAIL [option-a-benchmark]: 30% 개선 미달');
-      }
-    } catch (error) {
-      addLog(`❌ 예외 [option-a-benchmark]: ${error.message}`);
-    } finally {
-      // benchmark 종료 후 기본 정책 복구
-      useStripCalendarStore.getState().setMonthlyRangePolicy('three_month');
-      addLog('ℹ️ Strip 월간 정책 자동 복구: three_month');
-      addLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-    }
   };
 
   const runRangeCacheHitSmoke = async () => {
@@ -887,6 +760,95 @@ export default function DebugScreen() {
       }
     } catch (error) {
       addLog(`❌ 오류: ${error.message}`);
+    }
+
+    addLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+  };
+
+  const seedRecurringSplitPending = async () => {
+    addLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    addLog('🧪 반복 split pending seed');
+    addLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+
+    if (Platform.OS !== 'web' || typeof window === 'undefined' || typeof window.prompt !== 'function') {
+      addLog('⚠️ 웹 prompt 환경에서만 지원됩니다.');
+      addLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      return;
+    }
+
+    const rawTodoId = window.prompt('반복 split seed용 todoId를 입력하세요', '');
+    const todoId = rawTodoId?.trim();
+    if (!todoId) {
+      addLog('❌ todoId가 필요합니다');
+      addLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      return;
+    }
+
+    const nextDate = addDaysDateOnly(selectedDate, 1) || dayjs(selectedDate).add(1, 'day').format('YYYY-MM-DD');
+
+    try {
+      const firstId = generateId();
+      const secondId = generateId();
+
+      await addPendingChange({
+        type: 'createCompletion',
+        entityId: `${todoId}_${selectedDate}`,
+        data: { _id: firstId, todoId, date: selectedDate, isRecurring: true },
+      });
+      await addPendingChange({
+        type: 'createCompletion',
+        entityId: `${todoId}_${nextDate}`,
+        data: { _id: secondId, todoId, date: nextDate, isRecurring: true },
+      });
+
+      addLog(`✅ seed 완료: ${todoId}_${selectedDate}, ${todoId}_${nextDate}`);
+    } catch (error) {
+      addLog(`❌ seed 실패: ${error.message}`);
+    }
+
+    addLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+  };
+
+  const seedDeadLetterCoexistPending = async () => {
+    addLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    addLog('🧪 dead_letter coexist seed');
+    addLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+
+    if (Platform.OS !== 'web' || typeof window === 'undefined' || typeof window.prompt !== 'function') {
+      addLog('⚠️ 웹 prompt 환경에서만 지원됩니다.');
+      addLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      return;
+    }
+
+    const rawTodoId = window.prompt('dead_letter coexist seed용 todoId를 입력하세요', '');
+    const todoId = rawTodoId?.trim();
+    if (!todoId) {
+      addLog('❌ todoId가 필요합니다');
+      addLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      return;
+    }
+
+    try {
+      const completionKey = `${todoId}_null`;
+      const deadLetterId = await addPendingChange({
+        type: 'createCompletion',
+        entityId: completionKey,
+        data: { _id: generateId(), todoId, date: null, isRecurring: false },
+      });
+
+      await markPendingDeadLetter(deadLetterId, { lastError: 'manual dead letter seed' });
+
+      const readyId = await addPendingChange({
+        type: 'createCompletion',
+        entityId: completionKey,
+        data: { _id: generateId(), todoId, date: null, isRecurring: false },
+      });
+
+      addLog(`✅ dead_letter seed 완료: key=${completionKey}`);
+      addLog(`  - deadLetterId=${deadLetterId}`);
+      addLog(`  - readyId=${readyId}`);
+    } catch (error) {
+      addLog(`❌ dead_letter seed 실패: ${error.message}`);
     }
 
     addLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
@@ -1620,10 +1582,10 @@ export default function DebugScreen() {
         monthRanges: [{ id: 'compare-range', startDate: selectedDate, endDate }],
         visibleLimit: 3,
       });
-      const stripCalendar = adaptStripCalendarFromRangeHandoff(rangeResult, { maxDots: 3 });
+      const daySummaryAdapter = adaptDaySummariesFromRangeHandoff(rangeResult, { maxDots: 3 });
 
-      if (!todoScreen.ok || !todoCalendar.ok || !stripCalendar.ok) {
-        const error = todoScreen.error || todoCalendar.error || stripCalendar.error || 'adapter failed';
+      if (!todoScreen.ok || !todoCalendar.ok || !daySummaryAdapter.ok) {
+        const error = todoScreen.error || todoCalendar.error || daySummaryAdapter.error || 'adapter failed';
         addLog(`❌ FAIL [screen-compare]: adapter 실패 (${error})`);
         recordValidation('screenCompare', {
           ok: false,
@@ -1637,7 +1599,7 @@ export default function DebugScreen() {
 
       const todoScreenItems = todoScreen.items || [];
       const calendarDateItems = todoCalendar.itemsByDate?.[selectedDate] || [];
-      const stripSummary = stripCalendar.summariesByDate?.[selectedDate] || {
+      const daySummary = daySummaryAdapter.summariesByDate?.[selectedDate] || {
         date: selectedDate,
         hasTodo: false,
         uniqueCategoryColors: [],
@@ -1656,10 +1618,10 @@ export default function DebugScreen() {
       addLog(`TodoScreen: count=${todoScreenItems.length}`);
       addLog(`TodoCalendar(date): count=${calendarDateItems.length}`);
       addLog(
-        `StripCalendar(date): hasTodo=${stripSummary.hasTodo ? 'Y' : 'N'}, ` +
-        `dotCount=${stripSummary.dotCount}, overflow=${stripSummary.overflowCount || 0}`
+        `DaySummary(date): hasTodo=${daySummary.hasTodo ? 'Y' : 'N'}, ` +
+        `dotCount=${daySummary.dotCount}, overflow=${daySummary.overflowCount || 0}`
       );
-      addLog(`Strip colors: ${stripSummary.uniqueCategoryColors.join(', ') || '(none)'}`);
+      addLog(`DaySummary colors: ${daySummary.uniqueCategoryColors.join(', ') || '(none)'}`);
       addLog(
         `ID diff: onlyTodoScreen=${onlyTodoScreenCount}, ` +
         `onlyTodoCalendar=${onlyTodoCalendarCount}`
@@ -1805,11 +1767,11 @@ export default function DebugScreen() {
     addLog(`💡 앱을 재시작하여 초기 로딩 테스트`);
   };
 
-  const clearStripL1CacheOnly = () => {
-    useStripCalendarStore.getState().clearRangeCache();
+  const clearDaySummaryL1CacheOnly = () => {
+    useCalendarDaySummaryStore.getState().clear();
     addLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-    addLog('🧹 Strip L1 캐시만 클리어');
-    addLog('✅ stripCalendarStore loadedRanges/summariesByDate 초기화 완료');
+    addLog('🧹 Day Summary L1 캐시만 클리어');
+    addLog('✅ calendarDaySummaryStore loadedRanges/summariesByDate 초기화 완료');
     addLog('ℹ️ shared range cache(hit/miss/loadedRanges)는 유지됩니다');
     addLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
   };
@@ -2148,13 +2110,6 @@ export default function DebugScreen() {
           <Text style={styles.buttonText}>⌨️ Quick Bar Native Test 열기</Text>
         </TouchableOpacity>
 
-        <TouchableOpacity
-          style={[styles.button, styles.testButton]}
-          onPress={() => router.push('/test/zeego-menu')}
-        >
-          <Text style={styles.buttonText}>🧾 Zeego Menu Test 열기</Text>
-        </TouchableOpacity>
-
         <View style={styles.divider} />
 
         <Text style={styles.sectionTitle}>📊 기본 상태 확인</Text>
@@ -2177,6 +2132,14 @@ export default function DebugScreen() {
 
         <TouchableOpacity style={[styles.button, styles.testButton]} onPress={checkPendingChanges}>
           <Text style={styles.buttonText}>⏳ Pending Changes 확인</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity style={[styles.button, styles.testButton]} onPress={seedRecurringSplitPending}>
+          <Text style={styles.buttonText}>🧪 반복 split pending seed</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity style={[styles.button, styles.testButton]} onPress={seedDeadLetterCoexistPending}>
+          <Text style={styles.buttonText}>🧪 dead_letter coexist seed</Text>
         </TouchableOpacity>
 
         <TouchableOpacity style={[styles.button, styles.testButton]} onPress={runPendingPushOnce}>
@@ -2235,8 +2198,8 @@ export default function DebugScreen() {
           <Text style={styles.buttonText}>🧠 Shared Range 캐시만 클리어</Text>
         </TouchableOpacity>
 
-        <TouchableOpacity style={[styles.button, styles.warningButton]} onPress={clearStripL1CacheOnly}>
-          <Text style={styles.buttonText}>🧹 Strip L1 캐시만 클리어</Text>
+        <TouchableOpacity style={[styles.button, styles.warningButton]} onPress={clearDaySummaryL1CacheOnly}>
+          <Text style={styles.buttonText}>🧹 Day Summary L1 캐시만 클리어</Text>
         </TouchableOpacity>
 
         <TouchableOpacity style={[styles.button, styles.warningButton]} onPress={clearPending}>
@@ -2317,9 +2280,9 @@ export default function DebugScreen() {
 
         <TouchableOpacity
           style={[styles.button, styles.primaryButton]}
-          onPress={printStripL1CacheStats}
+          onPress={printDaySummaryL1CacheStats}
         >
-          <Text style={styles.buttonText}>🧩 Strip L1 상태 출력</Text>
+          <Text style={styles.buttonText}>🧩 Day Summary L1 상태 출력</Text>
         </TouchableOpacity>
 
         <TouchableOpacity
@@ -2330,45 +2293,10 @@ export default function DebugScreen() {
         </TouchableOpacity>
 
         <TouchableOpacity
-          style={[styles.button, styles.primaryButton]}
-          onPress={printStripMonthlyPolicy}
-        >
-          <Text style={styles.buttonText}>ℹ️ Strip 월간 정책 상태</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={[styles.button, styles.warningButton]}
-          onPress={setStripMonthlyPolicyLegacy}
-        >
-          <Text style={styles.buttonText}>⚙️ Strip 월간 정책: legacy 9주</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={[styles.button, styles.actionButton]}
-          onPress={setStripMonthlyPolicyThreeMonth}
-        >
-          <Text style={styles.buttonText}>⚙️ Strip 월간 정책: 3개월</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={[styles.button, styles.actionButton]}
-          onPress={setStripMonthlyPolicySixMonth}
-        >
-          <Text style={styles.buttonText}>⚙️ Strip 월간 정책: 6개월</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
           style={[styles.button, styles.actionButton]}
           onPress={runRangeCacheHitSmoke}
         >
           <Text style={styles.buttonText}>🧪 Range Cache hit 스모크</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={[styles.button, styles.actionButton]}
-          onPress={runOptionABenchmark}
-        >
-          <Text style={styles.buttonText}>🧪 Option A 정량 벤치마크</Text>
         </TouchableOpacity>
 
         <TouchableOpacity

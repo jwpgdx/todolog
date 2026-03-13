@@ -18,7 +18,7 @@ Todolog is designed to work fully offline, then sync safely to server and Google
 
 ## Current Status
 
-As of 2026-03-10:
+As of 2026-03-14:
 
 - Phase 1-2 calendar integration: complete
 - Phase 2.5 data normalization (floating date/time string contract): complete
@@ -26,6 +26,11 @@ As of 2026-03-10:
 - Phase 3 recurrence engine core (Step 1): complete and validated
 - Phase 3 common query/aggregation layer (Step 2): complete and validated
 - Phase 3 screen-adapter layer (Step 3): complete and validated
+- Category write unification: complete and validated (local-first + pending + background sync)
+- Completion write unification: implemented and primary recovery validated (always-pending toggle + rerun latch + completion-aware invalidation)
+- Completion coalescing: implemented and validated (sync-start full-snapshot compaction + last-intent replay)
+- Web real-server recovery specs: added for `category`, `todo`, `completion`
+  - completion matrix validated for `rapid toggle`, `recurring`, `mixed queue`, `dead_letter`, `restart`
 - Strip-calendar stabilization/debugging: ongoing hardening (adapter path already active)
 - Expo Router migration: implemented (file-based routing under `client/app/`)
 
@@ -242,6 +247,21 @@ Optional (headed):
 cd client
 npm run e2e:web:headed
 ```
+
+Codex wrapper scripts:
+
+```bash
+cd client
+npm run codex:test:smoke
+npm run codex:test:real:category
+npm run codex:test:real:todo
+npm run codex:test:real:completion
+```
+
+Notes:
+
+- `codex:test:real:*` wrappers assume the API server is reachable and use the environment/bootstrap rules documented in `CODEX_TESTING.md`.
+- Use `CODEX_TESTING.md` when running parallel Codex sessions or when you need the standardized local web + Playwright launch flow.
 
 ## Key Runtime Paths
 

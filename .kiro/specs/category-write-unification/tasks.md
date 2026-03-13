@@ -12,63 +12,63 @@
 
 ## Task List
 
-- [ ] 1. 스펙 Freeze
+- [x] 1. 스펙 Freeze
   - requirements/design/tasks 상호 링크 정리
   - must-decide(Out of Scope 포함) 항목 합의
 
-- [ ] 2. Client: `useCategories`를 read-only로 정리
+- [x] 2. Client: `useCategories`를 read-only로 정리
   - `client/src/hooks/queries/useCategories.js`에서 mutation exports 제거
   - 관련 import 에러가 나지 않도록 사용처를 모두 canonical hooks로 마이그레이션
 
-- [ ] 3. Client: Category write hooks를 “항상 pending + non-blocking”으로 통일
+- [x] 3. Client: Category write hooks를 “항상 pending + non-blocking”으로 통일
   - `client/src/hooks/queries/useCreateCategory.js`
   - `client/src/hooks/queries/useUpdateCategory.js`
   - `client/src/hooks/queries/useDeleteCategory.js`
   - 공통: SQLite write → `addPendingChange` 항상 enqueue → 온라인이면 `syncAll` background trigger
   - deleteCategory: 로컬에서 Category -> Todo -> Completion cascade를 즉시 반영 (서버 대기 없음)
 
-- [ ] 4. Client: CategoryFormScreen 경로 통일
+- [x] 4. Client: CategoryFormScreen 경로 통일
   - `client/src/screens/CategoryFormScreen.js`에서
     - create/update를 canonical hooks로 import
     - server-first 경로 제거
 
-- [ ] 5. Client: CategoryGroupList에서 direct API 호출 제거
+- [x] 5. Client: CategoryGroupList에서 direct API 호출 제거
   - `client/src/components/domain/category/CategoryGroupList.js`
     - deleteCategoryApi 직접 호출 제거
     - canonical `useDeleteCategory` 사용으로 전환
     - 삭제 성공/실패 토스트 동작 점검 (local-first 기준)
 
-- [ ] 5.1. Direct API(write) 잔존 여부 검색/제거
+- [x] 5.1. Direct API(write) 잔존 여부 검색/제거
   - `rg "from '../../api/categories'" client/src`
   - `rg "api/categories" client/src`
 
-- [ ] 6. Client: Reorder를 offline-first로 전환
+- [x] 6. Client: Reorder를 offline-first로 전환
   - `client/src/hooks/queries/useReorderCategory.js`
     - SQLite `order_index` 즉시 업데이트
     - pending `updateCategory` enqueue
     - 온라인이면 sync 백그라운드 트리거
 
-- [ ] 7. Sync: `createCategory` 409 success-equivalent 처리
+- [x] 7. Sync: `createCategory` 409 success-equivalent 처리
   - `client/src/services/sync/syncErrorPolicy.js`에 특례 추가
 
-- [ ] 8. 문서 업데이트(구현 반영)
+- [x] 8. 문서 업데이트(구현 반영)
   - `PROJECT_CONTEXT.md`에 “Category write 통합”과 409 정책 반영
   - 필요 시 관련 spec 링크 갱신
 
-- [ ] 9. Manual Validation (필수 시나리오)
+- [x] 9. Manual Validation (필수 시나리오)
   - 아래 Validation Scenarios 실행 후 로그/동작 확인
 
 ## Checkpoints
 
-- [ ] Checkpoint A: Hook/API 경로 정리
+- [x] Checkpoint A: Hook/API 경로 정리
   - Tasks 2~6 완료
   - 더 이상 Category write에서 UI direct API / server-first 경로가 남지 않음
 
-- [ ] Checkpoint B: Pending replay 안정화
+- [x] Checkpoint B: Pending replay 안정화
   - Task 7 완료
   - createCategory 409가 dead_letter로 남지 않음
 
-- [ ] Checkpoint C: End-to-end 수동 검증
+- [x] Checkpoint C: End-to-end 수동 검증
   - Task 9 완료
   - 오프라인/온라인 전환 포함 시나리오 PASS
 
