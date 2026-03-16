@@ -1,7 +1,7 @@
 # Todolog Project Context
 
-Last Updated: 2026-03-14
-Status: Sync hardening complete (Pending Push -> Delta Pull), Phase 3 Step 1 recurrence engine complete/validated, Phase 3 Step 2 common query/aggregation complete/validated, Phase 3 Step 3 screen-adapter layer complete/validated, category write unification complete/validated, completion write unification implemented/validated, completion coalescing implemented/validated, cache-policy unification complete/validated, Expo Router migration implemented (parity validation ongoing)
+Last Updated: 2026-03-17
+Status: Sync hardening complete (Pending Push -> Delta Pull), Phase 3 Step 1 recurrence engine complete/validated, Phase 3 Step 2 common query/aggregation complete/validated, Phase 3 Step 3 screen-adapter layer complete/validated, category write unification complete/validated, completion write unification implemented/validated, completion coalescing implemented/validated, cache-policy unification complete/validated, Expo Router migration implemented (parity validation ongoing), Expo SDK 55 upgrade complete/validated
 
 ## 1. Purpose
 
@@ -16,10 +16,10 @@ If this document conflicts with a feature spec, the feature spec under `.kiro/sp
 
 Client:
 
-- React Native `0.81.5`
-- Expo `54.0.33`
-- Expo Router `~6.0.23`
-- React `19.1.0`
+- React Native `0.83.2`
+- Expo `55.0.6`
+- Expo Router `55.0.5`
+- React `19.2.0`
 - Zustand `5.x`
 - React Query `5.x`
 - SQLite via `expo-sqlite`
@@ -42,6 +42,8 @@ Server:
 - Category write unification: complete and validated (`create/update/delete/reorder` local-first + pending + background sync)
 - Completion write unification: implemented and validated (`always-pending` toggle + sync rerun latch + completion-aware invalidation)
 - Completion coalescing: implemented and validated (sync-start full snapshot compaction + superseded completion pending retirement)
+- Expo SDK 55 upgrade: complete and validated (`expo` `55.0.6`, `react-native` `0.83.2`, React Compiler enabled, unused `zeego`/native-menu deps removed)
+- Native validation after SDK 55 upgrade: Android `assembleDebug` + emulator launch succeeded; iOS simulator build/launch succeeded; `expo-doctor` now leaves only the `react-native-wheel-pick` New Architecture metadata warning
 - Cache-policy unification (Option A -> Option B): complete and validated (shared range cache + sync invalidation unification)
 - Cache retention (memory control): enabled (shared range cache + calendar L1 caches pruned to anchor ±6 months)
 - Strip-calendar foundation (weekly/monthly shell + anchor sync + debug instrumentation): active and integrated via adapter path
@@ -51,6 +53,12 @@ Server:
 - My Page subtree routing: My Page에서 여는 Settings/Profile/Category 화면은 `client/app/(app)/(tabs)/my-page/*` 아래로 push되어 iOS Large Title/back label UX를 유지
 - Modal/presentation test hub: `/(app)/test/modals` + `/(app)/test/form-sheet` (native-stack presentation 옵션별 플랫폼 동작 확인)
 - Real-server recovery web E2E: category/todo/completion recovery specs added; completion extended matrix (`rapid toggle`, `recurring`, `mixed queue`, `dead_letter`, `restart`) validated
+
+### 2.3 Tooling and upgrade notes
+
+- Tracked native upgrade config now lives in `client/app.json` via `expo-build-properties`; `ios.buildReactNativeFromSource: true` is required because `client/ios` and `client/android` are gitignored local outputs and the iOS simulator build hit React Native prebuilt header/symbol mismatch under SDK 55.
+- `react-native-wheel-pick` is still present and is the only known non-blocking `expo-doctor` warning after the SDK 55 upgrade; replacement is planned with a native implementation later.
+- Codex local skill `upgrading-expo` is installed and listed in `AGENTS.md` for future Expo SDK upgrade work.
 
 ## 3. Non-Negotiable Architecture Commitments
 

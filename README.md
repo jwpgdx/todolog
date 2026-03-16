@@ -18,7 +18,7 @@ Todolog is designed to work fully offline, then sync safely to server and Google
 
 ## Current Status
 
-As of 2026-03-14:
+As of 2026-03-17:
 
 - Phase 1-2 calendar integration: complete
 - Phase 2.5 data normalization (floating date/time string contract): complete
@@ -33,6 +33,12 @@ As of 2026-03-14:
   - completion matrix validated for `rapid toggle`, `recurring`, `mixed queue`, `dead_letter`, `restart`
 - Strip-calendar stabilization/debugging: ongoing hardening (adapter path already active)
 - Expo Router migration: implemented (file-based routing under `client/app/`)
+- Expo SDK 55 upgrade: complete and validated
+  - client stack now resolves to Expo `55.0.6`, React Native `0.83.2`, React `19.2.0`
+  - React Compiler is enabled in `client/app.json`
+  - iOS prebuild now opts into React Native source build through `expo-build-properties`
+  - Android emulator and iOS simulator smoke runs both passed on 2026-03-17
+  - the only remaining non-blocking Expo doctor warning is `react-native-wheel-pick` New Architecture metadata
 
 See `ROADMAP.md` for dated milestones and next steps.
 
@@ -57,10 +63,10 @@ Core principles:
 
 Client:
 
-- React Native `0.81.5`
-- Expo `54.0.33`
-- Expo Router `~6.0.23`
-- React `19.1.0`
+- React Native `0.83.2`
+- Expo `55.0.6`
+- Expo Router `55.0.5`
+- React `19.2.0`
 - Zustand `5.x`
 - React Query `5.x`
 - `expo-sqlite`

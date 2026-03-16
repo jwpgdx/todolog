@@ -1,6 +1,6 @@
 # Todolog Roadmap
 
-Last Updated: 2026-03-14
+Last Updated: 2026-03-17
 Owner: Product + Engineering
 
 ## 1. Purpose
@@ -30,6 +30,8 @@ Current state:
 - Strip-calendar legacy module remains in stabilization/debugging phase
 - Week Flow Calendar rewrite prototype is active (bounded weekly/monthly shell); spec remains SOT for the full replacement plan
 - Expo Router migration is complete/validated (file-based routing under `client/app/`)
+- Expo SDK 55 upgrade is complete/validated; Android emulator + iOS simulator smoke both passed
+- `react-native-wheel-pick` remains as the only non-blocking Expo doctor warning and is slated for later native replacement
 
 Immediate objective:
 
@@ -39,6 +41,7 @@ Immediate objective:
 - finalize Week Flow Calendar rewrite spec and use it as the new source of truth for calendar UI replacement
 - prepare next feature track on top of common layer + screen-adapter contracts
 - post Expo Router migration: ensure deep-link/push route parity and keep legacy navigation deps at 0
+- replace `react-native-wheel-pick` with native UI after the SDK 55 stabilization window
 
 ## 3. Dated Milestones (Completed)
 
@@ -358,6 +361,26 @@ Evidence:
 - `.kiro/specs/completion-coalescing/tasks.md`
 - `client/src/services/sync/pendingPush.js`
 - `client/e2e/completion-recovery.real.spec.js`
+
+### 2026-03-17
+
+- Expo SDK 55 upgrade completed and validated
+  - tracked app config now targets Expo `55.0.6`, React Native `0.83.2`, React `19.2.0`
+  - `client/app.json` enables React Compiler and configures `expo-build-properties` `ios.buildReactNativeFromSource: true`
+  - unused `zeego` / native-menu dependency path was removed
+  - Android `assembleDebug` + emulator smoke and iOS simulator build/launch smoke both passed
+- Codex Expo upgrade workflow documented
+  - local Codex skill `upgrading-expo` is available through `AGENTS.md`
+  - project docs were refreshed to reflect SDK 55 and the remaining `react-native-wheel-pick` warning
+
+Evidence:
+
+- `client/package.json`
+- `client/package-lock.json`
+- `client/app.json`
+- `PROJECT_CONTEXT.md`
+- `README.md`
+- `AGENTS.md`
 
 ## 4. Next Milestones (Planned)
 
