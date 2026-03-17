@@ -1092,13 +1092,49 @@ exports.migrateGuestData = async (req, res) => {
     
     // 4. Completions 삽입
     const Completion = require('../models/Completion');
+    const completionValidationErrors = [];
     const completionsToInsert = guestData.completions.map(comp => ({
+      _id: comp._id,
       key: comp.key,
       todoId: comp.todoId,
       userId: user._id,
       date: comp.date,
       completedAt: comp.completedAt,
     }));
+
+    completionsToInsert.forEach((completion, index) => {
+      const rowErrors = [];
+
+      if (typeof completion._id !== 'string' || !completion._id.trim()) {
+        rowErrors.push('_id is required');
+      }
+      if (typeof completion.key !== 'string' || !completion.key.trim()) {
+        rowErrors.push('key is required');
+      }
+      if (typeof completion.todoId !== 'string' || !completion.todoId.trim()) {
+        rowErrors.push('todoId is required');
+      }
+      if (!completion.completedAt) {
+        rowErrors.push('completedAt is required');
+      }
+
+      if (rowErrors.length > 0) {
+        completionValidationErrors.push({
+          index,
+          _id: completion?._id ?? null,
+          errors: rowErrors,
+        });
+      }
+    });
+
+    if (completionValidationErrors.length > 0) {
+      await session.abortTransaction();
+      return res.status(400).json({
+        success: false,
+        message: 'guestData.completions 형식 검증 실패',
+        errors: completionValidationErrors.slice(0, 20),
+      });
+    }
     
     if (completionsToInsert.length > 0) {
       await Completion.insertMany(completionsToInsert, { session });

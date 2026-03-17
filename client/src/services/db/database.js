@@ -66,7 +66,7 @@ function snapshotInitDebugState() {
 }
 
 // 현재 마이그레이션 버전
-const MIGRATION_VERSION = 7;
+const MIGRATION_VERSION = 8;
 const SYNC_CURSOR_METADATA_KEY = 'sync.last_success_at';
 
 // ============================================================
@@ -127,11 +127,14 @@ CREATE TABLE IF NOT EXISTS completions (
   todo_id TEXT NOT NULL,
   date TEXT,
   completed_at TEXT NOT NULL,
+  deleted_at TEXT,
   FOREIGN KEY (todo_id) REFERENCES todos(_id) ON DELETE CASCADE
 );
 
 CREATE INDEX IF NOT EXISTS idx_completions_date ON completions(date);
 CREATE INDEX IF NOT EXISTS idx_completions_todo ON completions(todo_id);
+CREATE INDEX IF NOT EXISTS idx_completions_active_date ON completions(date) WHERE deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_completions_active_todo ON completions(todo_id) WHERE deleted_at IS NULL;
 
 CREATE TABLE IF NOT EXISTS pending_changes (
   id TEXT PRIMARY KEY,
@@ -268,6 +271,11 @@ export async function initDatabase() {
                 // v7: categories에 system_key 컬럼 추가 + partial unique index
                 if (currentVersion < 7) {
                     await migrateV7AddCategorySystemKey();
+                }
+
+                // v8: completions에 deleted_at 컬럼 추가 + active partial index
+                if (currentVersion < 8) {
+                    await migrateV8AddCompletionDeletedAt();
                 }
 
                 await setMetadata('migration_version', String(MIGRATION_VERSION));
@@ -837,6 +845,33 @@ async function migrateV7AddCategorySystemKey() {
         console.log('✅ [Migration v7] Created uniq_categories_system_key_active index');
     } catch (error) {
         console.error('❌ [Migration v7] Failed:', error);
+        throw error;
+    }
+}
+
+async function migrateV8AddCompletionDeletedAt() {
+    console.log('🔄 [Migration v8] Adding deleted_at column to completions...');
+
+    try {
+        const tableInfo = await db.getAllAsync("PRAGMA table_info(completions)");
+        const hasDeletedAt = tableInfo.some(col => col.name === 'deleted_at');
+
+        if (!hasDeletedAt) {
+            await db.runAsync('ALTER TABLE completions ADD COLUMN deleted_at TEXT');
+            console.log('✅ [Migration v8] Added deleted_at column');
+        } else {
+            console.log('✅ [Migration v8] deleted_at column already exists');
+        }
+
+        await db.runAsync(
+            'CREATE INDEX IF NOT EXISTS idx_completions_active_date ON completions(date) WHERE deleted_at IS NULL'
+        );
+        await db.runAsync(
+            'CREATE INDEX IF NOT EXISTS idx_completions_active_todo ON completions(todo_id) WHERE deleted_at IS NULL'
+        );
+        console.log('✅ [Migration v8] Created active completion indexes');
+    } catch (error) {
+        console.error('❌ [Migration v8] Failed:', error);
         throw error;
     }
 }

@@ -144,7 +144,7 @@ export async function deleteCategory(id) {
  * Category 삭제를 로컬에서 즉시 cascade 반영
  * - categories: tombstone
  * - todos: tombstone
- * - completions: hard delete
+ * - completions: tombstone
  *
  * @param {string} id
  * @returns {Promise<void>}
@@ -167,11 +167,13 @@ export async function deleteCategoryCascade(id) {
         );
 
         await db.runAsync(
-            `DELETE FROM completions
-             WHERE todo_id IN (
-               SELECT _id FROM todos WHERE category_id = ?
-             )`,
-            [id]
+            `UPDATE completions
+             SET deleted_at = ?
+             WHERE deleted_at IS NULL
+               AND todo_id IN (
+                 SELECT _id FROM todos WHERE category_id = ?
+               )`,
+            [now, id]
         );
     });
 }

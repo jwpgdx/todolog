@@ -5,6 +5,60 @@
  */
 
 import { getDatabase } from './database';
+import { generateId } from '../../utils/idGenerator';
+
+function buildCompletionKey(todoId, date) {
+    return `${todoId}_${date || 'null'}`;
+}
+
+function mapCompletionRow(row) {
+    return {
+        _id: row._id,
+        key: row.key,
+        todoId: row.todo_id,
+        date: row.date,
+        completedAt: row.completed_at,
+        deletedAt: row.deleted_at ?? null,
+    };
+}
+
+function mapCompletionRowsToObject(rows) {
+    const map = {};
+    rows.forEach(row => {
+        map[row.key] = mapCompletionRow(row);
+    });
+    return map;
+}
+
+async function getCompletionRowByKey(db, key) {
+    return db.getFirstAsync('SELECT * FROM completions WHERE key = ?', [key]);
+}
+
+async function insertCompletionRow(db, { _id, key, todoId, date, completedAt }) {
+    await db.runAsync(
+        'INSERT INTO completions (_id, key, todo_id, date, completed_at, deleted_at) VALUES (?, ?, ?, ?, ?, NULL)',
+        [_id, key, todoId, date, completedAt]
+    );
+}
+
+async function restoreCompletionRow(db, { key, completedAt, todoId = null, date = null }) {
+    await db.runAsync(
+        `UPDATE completions
+         SET todo_id = COALESCE(?, todo_id),
+             date = ?,
+             completed_at = ?,
+             deleted_at = NULL
+         WHERE key = ?`,
+        [todoId, date, completedAt, key]
+    );
+}
+
+async function softDeleteCompletionByKey(db, key, deletedAt = new Date().toISOString()) {
+    await db.runAsync(
+        'UPDATE completions SET deleted_at = ? WHERE key = ? AND deleted_at IS NULL',
+        [deletedAt, key]
+    );
+}
 
 // ============================================================
 // 조회
@@ -36,23 +90,14 @@ export async function getCompletionsByDate(date) {
     const startQuery = performance.now();
     // 해당 날짜 + date=null (기간 일정) 모두 조회
     const result = await db.getAllAsync(
-        'SELECT * FROM completions WHERE date = ? OR date IS NULL',
+        'SELECT * FROM completions WHERE deleted_at IS NULL AND (date = ? OR date IS NULL)',
         [date]
     );
     const endQuery = performance.now();
 
     console.log(`🔍 [DEBUG] 쿼리 결과: ${result.length}개 (date=${JSON.stringify(date)} OR date IS NULL)`);
 
-    // Map 형태로 변환 (기존 형식 호환)
-    const map = {};
-    result.forEach(row => {
-        map[row.key] = {
-            _id: row._id,
-            todoId: row.todo_id,
-            date: row.date,
-            completedAt: row.completed_at,
-        };
-    });
+    const map = mapCompletionRowsToObject(result);
     const endTotal = performance.now();
 
     console.log(`⏱️ [getCompletionsByDate] ${(endTotal - startTotal).toFixed(2)}ms | Query: ${(endQuery - startQuery).toFixed(2)}ms | Rows: ${result.length}`);
@@ -77,21 +122,11 @@ export async function getCompletionsByMonth(year, month) {
 
     const pattern = `${year}-${String(month).padStart(2, '0')}%`;
     const result = await db.getAllAsync(
-        'SELECT * FROM completions WHERE date LIKE ?',
+        'SELECT * FROM completions WHERE deleted_at IS NULL AND date LIKE ?',
         [pattern]
     );
 
-    const map = {};
-    result.forEach(row => {
-        map[row.key] = {
-            _id: row._id,
-            todoId: row.todo_id,
-            date: row.date,
-            completedAt: row.completed_at,
-        };
-    });
-
-    return map;
+    return mapCompletionRowsToObject(result);
 }
 
 /**
@@ -105,21 +140,11 @@ export async function getCompletionsByRange(startDate, endDate) {
     const db = getDatabase();
 
     const result = await db.getAllAsync(
-        'SELECT * FROM completions WHERE date >= ? AND date <= ?',
+        'SELECT * FROM completions WHERE deleted_at IS NULL AND date >= ? AND date <= ?',
         [startDate, endDate]
     );
 
-    const map = {};
-    result.forEach(row => {
-        map[row.key] = {
-            _id: row._id,
-            todoId: row.todo_id,
-            date: row.date,
-            completedAt: row.completed_at,
-        };
-    });
-
-    return map;
+    return mapCompletionRowsToObject(result);
 }
 
 /**
@@ -132,17 +157,11 @@ export async function getCompletionsByTodoId(todoId) {
     const db = getDatabase();
 
     const result = await db.getAllAsync(
-        'SELECT * FROM completions WHERE todo_id = ? ORDER BY date ASC',
+        'SELECT * FROM completions WHERE todo_id = ? AND deleted_at IS NULL ORDER BY date ASC',
         [todoId]
     );
 
-    return result.map(row => ({
-        _id: row._id,
-        key: row.key,
-        todoId: row.todo_id,
-        date: row.date,
-        completedAt: row.completed_at,
-    }));
+    return result.map(mapCompletionRow);
 }
 
 /**
@@ -155,17 +174,7 @@ export async function getAllCompletions() {
 
     const result = await db.getAllAsync('SELECT * FROM completions');
 
-    const map = {};
-    result.forEach(row => {
-        map[row.key] = {
-            _id: row._id,
-            todoId: row.todo_id,
-            date: row.date,
-            completedAt: row.completed_at,
-        };
-    });
-
-    return map;
+    return mapCompletionRowsToObject(result);
 }
 
 /**
@@ -182,7 +191,7 @@ export async function getCompletionStats(year, month) {
     const result = await db.getAllAsync(`
     SELECT date, COUNT(*) as count
     FROM completions
-    WHERE date LIKE ?
+    WHERE deleted_at IS NULL AND date LIKE ?
     GROUP BY date
     ORDER BY date ASC
   `, [pattern]);
@@ -199,10 +208,10 @@ export async function getCompletionStats(year, month) {
  */
 export async function hasCompletion(todoId, date) {
     const db = getDatabase();
-    const key = `${todoId}_${date || 'null'}`;
+    const key = buildCompletionKey(todoId, date);
 
     const result = await db.getFirstAsync(
-        'SELECT 1 FROM completions WHERE key = ?',
+        'SELECT 1 FROM completions WHERE key = ? AND deleted_at IS NULL',
         [key]
     );
 
@@ -220,39 +229,59 @@ export async function hasCompletion(todoId, date) {
  * @param {string} todoId
  * @param {string|null} date - null for period todo
  * @param {string} completionId - UUID (클라이언트 생성)
- * @returns {Promise<boolean>} - 새 완료 상태
+ * @returns {Promise<{ completed: boolean, effectiveCompletionId: string }>} - 새 완료 상태와 실제 completion ID
  */
 export async function toggleCompletion(todoId, date, completionId) {
     const db = getDatabase();
-    const key = `${todoId}_${date || 'null'}`;
+    const key = buildCompletionKey(todoId, date);
 
     console.log(`🔄 [toggleCompletion] 시작: key=${key}, date=${JSON.stringify(date)}`);
 
-    const existing = await db.getFirstAsync(
-        'SELECT * FROM completions WHERE key = ?',
-        [key]
-    );
+    const existing = await getCompletionRowByKey(db, key);
 
     console.log(`🔄 [toggleCompletion] 기존 데이터:`, existing ? `있음 (${existing.key})` : '없음');
 
-    if (existing) {
-        // 완료 → 미완료 (삭제)
-        await db.runAsync('DELETE FROM completions WHERE key = ?', [key]);
+    if (existing && !existing.deleted_at) {
+        await softDeleteCompletionByKey(db, key);
         console.log(`🔄 [toggleCompletion] 삭제 완료 → 미완료 상태로 전환`);
 
         // 삭제 후 확인
-        const afterDelete = await db.getAllAsync('SELECT key, date FROM completions WHERE todo_id = ?', [todoId]);
+        const afterDelete = await db.getAllAsync('SELECT key, date, deleted_at FROM completions WHERE todo_id = ?', [todoId]);
         console.log(`🔄 [toggleCompletion] 삭제 후 해당 todo의 completions:`, afterDelete);
 
-        return false;
+        return {
+            completed: false,
+            effectiveCompletionId: existing._id,
+        };
+    }
+
+    if (existing && existing.deleted_at) {
+        const completedAt = new Date().toISOString();
+        await restoreCompletionRow(db, {
+            key,
+            todoId,
+            date,
+            completedAt,
+        });
+        console.log(`🔄 [toggleCompletion] 복구 완료 → 완료 상태로 전환`);
+        return {
+            completed: true,
+            effectiveCompletionId: existing._id,
+        };
     } else {
-        // 미완료 → 완료 (생성)
-        await db.runAsync(
-            'INSERT INTO completions (_id, key, todo_id, date, completed_at) VALUES (?, ?, ?, ?, ?)',
-            [completionId, key, todoId, date, new Date().toISOString()]
-        );
+        const completedAt = new Date().toISOString();
+        await insertCompletionRow(db, {
+            _id: completionId,
+            key,
+            todoId,
+            date,
+            completedAt,
+        });
         console.log(`🔄 [toggleCompletion] 생성 완료 → 완료 상태로 전환`);
-        return true;
+        return {
+            completed: true,
+            effectiveCompletionId: completionId,
+        };
     }
 }
 
@@ -262,16 +291,35 @@ export async function toggleCompletion(todoId, date, completionId) {
  * @param {string} todoId
  * @param {string|null} date
  * @param {string} completionId - UUID (클라이언트 생성)
- * @returns {Promise<void>}
+ * @returns {Promise<string>} - 실제 사용된 completion ID
  */
-export async function createCompletion(todoId, date, completionId) {
+export async function createCompletion(todoId, date, completionId = generateId()) {
     const db = getDatabase();
-    const key = `${todoId}_${date || 'null'}`;
+    const key = buildCompletionKey(todoId, date);
+    const existing = await getCompletionRowByKey(db, key);
 
-    await db.runAsync(
-        'INSERT OR REPLACE INTO completions (_id, key, todo_id, date, completed_at) VALUES (?, ?, ?, ?, ?)',
-        [completionId, key, todoId, date, new Date().toISOString()]
-    );
+    if (existing && !existing.deleted_at) {
+        return existing._id;
+    }
+
+    if (existing && existing.deleted_at) {
+        await restoreCompletionRow(db, {
+            key,
+            todoId,
+            date,
+            completedAt: new Date().toISOString(),
+        });
+        return existing._id;
+    }
+
+    await insertCompletionRow(db, {
+        _id: completionId,
+        key,
+        todoId,
+        date,
+        completedAt: new Date().toISOString(),
+    });
+    return completionId;
 }
 
 /**
@@ -283,9 +331,9 @@ export async function createCompletion(todoId, date, completionId) {
  */
 export async function deleteCompletion(todoId, date) {
     const db = getDatabase();
-    const key = `${todoId}_${date || 'null'}`;
+    const key = buildCompletionKey(todoId, date);
 
-    await db.runAsync('DELETE FROM completions WHERE key = ?', [key]);
+    await softDeleteCompletionByKey(db, key);
 }
 
 /**
@@ -296,7 +344,7 @@ export async function deleteCompletion(todoId, date) {
  */
 export async function deleteCompletionByKey(key) {
     const db = getDatabase();
-    await db.runAsync('DELETE FROM completions WHERE key = ?', [key]);
+    await softDeleteCompletionByKey(db, key);
 }
 
 /**
@@ -307,7 +355,10 @@ export async function deleteCompletionByKey(key) {
  */
 export async function deleteCompletionsByTodoId(todoId) {
     const db = getDatabase();
-    await db.runAsync('DELETE FROM completions WHERE todo_id = ?', [todoId]);
+    await db.runAsync(
+        'UPDATE completions SET deleted_at = ? WHERE todo_id = ? AND deleted_at IS NULL',
+        [new Date().toISOString(), todoId]
+    );
 }
 
 /**
@@ -320,9 +371,13 @@ export async function deleteCompletionsByKeys(keys) {
     if (!Array.isArray(keys) || keys.length === 0) return;
 
     const db = getDatabase();
+    const deletedAt = new Date().toISOString();
     await db.withTransactionAsync(async () => {
         for (const key of keys) {
-            await db.runAsync('DELETE FROM completions WHERE key = ?', [key]);
+            await db.runAsync(
+                'UPDATE completions SET deleted_at = ? WHERE key = ? AND deleted_at IS NULL',
+                [deletedAt, key]
+            );
         }
     });
 }
@@ -338,11 +393,27 @@ export async function upsertCompletions(completions) {
 
     await db.withTransactionAsync(async () => {
         for (const comp of completions) {
-            const key = `${comp.todoId}_${comp.date || 'null'}`;
-            await db.runAsync(
-                'INSERT OR REPLACE INTO completions (_id, key, todo_id, date, completed_at) VALUES (?, ?, ?, ?, ?)',
-                [comp._id, key, comp.todoId, comp.date, comp.completedAt]
+            const key = buildCompletionKey(comp.todoId, comp.date);
+            const updateResult = await db.runAsync(
+                `UPDATE completions
+                 SET _id = ?,
+                     todo_id = ?,
+                     date = ?,
+                     completed_at = ?,
+                     deleted_at = NULL
+                 WHERE key = ?`,
+                [comp._id, comp.todoId, comp.date, comp.completedAt, key]
             );
+
+            if (!updateResult?.changes) {
+                await insertCompletionRow(db, {
+                    _id: comp._id,
+                    key,
+                    todoId: comp.todoId,
+                    date: comp.date,
+                    completedAt: comp.completedAt,
+                });
+            }
         }
     });
 }
@@ -367,7 +438,7 @@ export async function clearAllCompletions() {
 export async function getCompletionCount() {
     const db = getDatabase();
     const result = await db.getFirstAsync(
-        'SELECT COUNT(*) as count FROM completions'
+        'SELECT COUNT(*) as count FROM completions WHERE deleted_at IS NULL'
     );
     return result?.count || 0;
 }
@@ -378,7 +449,7 @@ export async function getCompletionCount() {
 export async function getCompletionCountByDate(date) {
     const db = getDatabase();
     const result = await db.getFirstAsync(
-        'SELECT COUNT(*) as count FROM completions WHERE date = ?',
+        'SELECT COUNT(*) as count FROM completions WHERE deleted_at IS NULL AND date = ?',
         [date]
     );
     return result?.count || 0;
@@ -392,7 +463,7 @@ export async function getCompletionCountByDate(date) {
 export async function getAllCompletionsArray() {
     const db = getDatabase();
 
-    const result = await db.getAllAsync('SELECT * FROM completions');
+    const result = await db.getAllAsync('SELECT * FROM completions WHERE deleted_at IS NULL');
 
     return result.map(row => ({
         _id: row._id,

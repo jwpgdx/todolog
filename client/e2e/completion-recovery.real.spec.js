@@ -8,6 +8,10 @@ function addDays(dateString, days) {
   return date.toISOString().slice(0, 10);
 }
 
+function escapeRegExp(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 function getTodayInSeoul() {
   return new Intl.DateTimeFormat('sv-SE', {
     timeZone: 'Asia/Seoul',
@@ -177,6 +181,23 @@ async function createTodoOnServer(token, data) {
   return response.json();
 }
 
+async function updateTodoOnServer(token, todoId, data) {
+  const response = await fetch(`${REAL_API_BASE_URL}/todos/${todoId}`, {
+    method: 'PUT',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(data),
+  });
+
+  if (!response.ok) {
+    throw new Error(`updateTodo failed: ${response.status} ${await response.text()}`);
+  }
+
+  return response.json();
+}
+
 async function waitForPendingRetryWindow(page) {
   await page.waitForTimeout(31_000);
   await page.reload();
@@ -184,6 +205,24 @@ async function waitForPendingRetryWindow(page) {
 
 async function toggleCompletionByTitle(page, title) {
   await page.getByText(title, { exact: true }).first().click();
+}
+
+async function deleteFirstTodo(page) {
+  await page.getByText('🗑️').first().click();
+}
+
+async function getCategoryRow(page, name) {
+  return page.getByRole('button', { name: new RegExp(escapeRegExp(name)) }).first();
+}
+
+async function clickDeleteHotspot(page, name) {
+  const row = await getCategoryRow(page, name);
+  const rowBox = await row.boundingBox();
+  if (!rowBox) {
+    throw new Error(`Could not resolve delete hotspot for category: ${name}`);
+  }
+
+  await page.mouse.click(rowBox.x + 18, rowBox.y + (rowBox.height / 2));
 }
 
 test.describe('Completion Recovery Real Server', () => {
@@ -425,6 +464,255 @@ test.describe('Completion Recovery Real Server', () => {
         return todos.some((item) => item?._id === todoId && item?.completed === true);
       }, { timeout: 20_000 })
       .toBeTruthy();
+  });
+
+  test('기간 일정은 완료 후 삭제해도 전체 기간에서 제거되고 완료 상태가 되살아나지 않는다', async ({ page }) => {
+    test.slow();
+    test.setTimeout(120_000);
+
+    const auth = await registerFreshUser();
+    const today = getTodayInSeoul();
+    const tomorrow = addDays(today, 1);
+    const todoTitle = `Period Completion Delete Todo ${Date.now()}`;
+
+    await loginViaUi(page, auth);
+    await openMyPage(page);
+
+    const categories = await fetchCategoriesFromServer(auth.token);
+    const inboxCategoryId = categories.find((item) => item?.systemKey === 'inbox')?._id || categories[0]?._id;
+    expect(inboxCategoryId).toBeTruthy();
+
+    const todo = await createTodoOnServer(auth.token, {
+      title: todoTitle,
+      categoryId: inboxCategoryId,
+      startDate: today,
+      endDate: tomorrow,
+      isAllDay: true,
+    });
+
+    await page.reload();
+    await openHome(page);
+    await expect(page.getByText(todoTitle, { exact: true }).first()).toBeVisible({ timeout: 15_000 });
+
+    await toggleCompletionByTitle(page, todoTitle);
+    await expect(page.getByText('완료: ✅').first()).toBeVisible({ timeout: 10_000 });
+
+    await expect
+      .poll(async () => {
+        const [todayTodos, tomorrowTodos] = await Promise.all([
+          fetchTodosByDateFromServer(auth.token, today),
+          fetchTodosByDateFromServer(auth.token, tomorrow),
+        ]);
+
+        return {
+          todayCompleted: todayTodos.some((item) => item?._id === todo._id && item?.completed === true),
+          tomorrowCompleted: tomorrowTodos.some((item) => item?._id === todo._id && item?.completed === true),
+        };
+      }, { timeout: 20_000 })
+      .toEqual({
+        todayCompleted: true,
+        tomorrowCompleted: true,
+      });
+
+    await deleteFirstTodo(page);
+    await expect(page.getByText(todoTitle, { exact: true }).first()).toBeHidden({ timeout: 15_000 });
+
+    await expect
+      .poll(async () => {
+        const [todayTodos, tomorrowTodos] = await Promise.all([
+          fetchTodosByDateFromServer(auth.token, today),
+          fetchTodosByDateFromServer(auth.token, tomorrow),
+        ]);
+
+        return {
+          todayPresent: todayTodos.some((item) => item?._id === todo._id),
+          tomorrowPresent: tomorrowTodos.some((item) => item?._id === todo._id),
+        };
+      }, { timeout: 20_000 })
+      .toEqual({
+        todayPresent: false,
+        tomorrowPresent: false,
+      });
+  });
+
+  test('시간 일정은 완료 후 시간/제목 수정에도 완료 상태를 유지한다', async ({ page }) => {
+    test.slow();
+    test.setTimeout(120_000);
+
+    const auth = await registerFreshUser();
+    const today = getTodayInSeoul();
+    const todoTitle = `Timed Completion Update Todo ${Date.now()}`;
+    const updatedTitle = `${todoTitle} Updated`;
+
+    await loginViaUi(page, auth);
+    await openMyPage(page);
+
+    const categories = await fetchCategoriesFromServer(auth.token);
+    const inboxCategoryId = categories.find((item) => item?.systemKey === 'inbox')?._id || categories[0]?._id;
+    expect(inboxCategoryId).toBeTruthy();
+
+    const todo = await createTodoOnServer(auth.token, {
+      title: todoTitle,
+      categoryId: inboxCategoryId,
+      startDate: today,
+      endDate: today,
+      isAllDay: false,
+      startTime: '09:00',
+      endTime: '10:00',
+    });
+
+    await page.reload();
+    await openHome(page);
+    await expect(page.getByText(todoTitle, { exact: true }).first()).toBeVisible({ timeout: 15_000 });
+
+    await toggleCompletionByTitle(page, todoTitle);
+    await expect(page.getByText('완료: ✅').first()).toBeVisible({ timeout: 10_000 });
+
+    await updateTodoOnServer(auth.token, todo._id, {
+      title: updatedTitle,
+      startTime: '10:30',
+      endTime: '11:30',
+    });
+
+    await page.reload();
+    await openHome(page);
+    await expect(page.getByText(updatedTitle, { exact: true }).first()).toBeVisible({ timeout: 15_000 });
+
+    await expect
+      .poll(async () => {
+        const todos = await fetchTodosByDateFromServer(auth.token, today);
+        const matched = todos.find((item) => item?._id === todo._id);
+        return {
+          title: matched?.title || null,
+          completed: matched?.completed === true,
+          startTime: matched?.startTime || null,
+          endTime: matched?.endTime || null,
+        };
+      }, { timeout: 20_000 })
+      .toEqual({
+        title: updatedTitle,
+        completed: true,
+        startTime: '10:30',
+        endTime: '11:30',
+      });
+  });
+
+  test('카테고리 추가 후 완료된 일정의 카테고리를 바꿔도 completion 상태는 유지된다', async ({ page }) => {
+    test.slow();
+    test.setTimeout(120_000);
+
+    const auth = await registerFreshUser();
+    const today = getTodayInSeoul();
+    const sourceCategoryName = `Completion Source Category ${Date.now()}`;
+    const targetCategoryName = `Completion Target Category ${Date.now()}`;
+    const todoTitle = `Completion Category Change Todo ${Date.now()}`;
+
+    await loginViaUi(page, auth);
+    await openMyPage(page);
+    await createCategory(page, sourceCategoryName);
+    await createCategory(page, targetCategoryName);
+
+    const categories = await fetchCategoriesFromServer(auth.token);
+    const sourceCategory = categories.find((item) => item?.name === sourceCategoryName);
+    const targetCategory = categories.find((item) => item?.name === targetCategoryName);
+    expect(sourceCategory?._id).toBeTruthy();
+    expect(targetCategory?._id).toBeTruthy();
+
+    const todo = await createTodoOnServer(auth.token, {
+      title: todoTitle,
+      categoryId: sourceCategory._id,
+      startDate: today,
+      endDate: today,
+      isAllDay: true,
+    });
+
+    await page.reload();
+    await openHome(page);
+    await expect(page.getByText(todoTitle, { exact: true }).first()).toBeVisible({ timeout: 15_000 });
+
+    await toggleCompletionByTitle(page, todoTitle);
+    await expect(page.getByText('완료: ✅').first()).toBeVisible({ timeout: 10_000 });
+
+    await updateTodoOnServer(auth.token, todo._id, {
+      categoryId: targetCategory._id,
+    });
+
+    await page.reload();
+    await openHome(page);
+    await expect(page.getByText(todoTitle, { exact: true }).first()).toBeVisible({ timeout: 15_000 });
+
+    await expect
+      .poll(async () => {
+        const todos = await fetchTodosByDateFromServer(auth.token, today);
+        const matched = todos.find((item) => item?._id === todo._id);
+        return {
+          categoryId: matched?.categoryId || null,
+          completed: matched?.completed === true,
+        };
+      }, { timeout: 20_000 })
+      .toEqual({
+        categoryId: targetCategory._id,
+        completed: true,
+      });
+  });
+
+  test('완료된 일정이 들어있는 카테고리를 삭제하면 todo와 completion이 함께 사라진다', async ({ page }) => {
+    test.slow();
+    test.setTimeout(120_000);
+
+    const auth = await registerFreshUser();
+    const today = getTodayInSeoul();
+    const categoryName = `Cascade Completion Category ${Date.now()}`;
+    const todoTitle = `Cascade Completion Todo ${Date.now()}`;
+
+    await loginViaUi(page, auth);
+    await openMyPage(page);
+    await createCategory(page, categoryName);
+
+    const categories = await fetchCategoriesFromServer(auth.token);
+    const targetCategory = categories.find((item) => item?.name === categoryName);
+    expect(targetCategory?._id).toBeTruthy();
+
+    const todo = await createTodoOnServer(auth.token, {
+      title: todoTitle,
+      categoryId: targetCategory._id,
+      startDate: today,
+      endDate: today,
+      isAllDay: true,
+    });
+
+    await page.reload();
+    await openHome(page);
+    await expect(page.getByText(todoTitle, { exact: true }).first()).toBeVisible({ timeout: 15_000 });
+
+    await toggleCompletionByTitle(page, todoTitle);
+    await expect(page.getByText('완료: ✅').first()).toBeVisible({ timeout: 10_000 });
+
+    await openMyPage(page);
+    await page.getByText('편집', { exact: true }).click();
+    page.once('dialog', (dialog) => dialog.accept());
+    await clickDeleteHotspot(page, categoryName);
+    await expect(page.getByText(categoryName, { exact: true }).first()).toBeHidden({ timeout: 15_000 });
+
+    await openHome(page);
+    await expect(page.getByText(todoTitle, { exact: true }).first()).toBeHidden({ timeout: 15_000 });
+
+    await expect
+      .poll(async () => {
+        const [todayTodos, liveCategories] = await Promise.all([
+          fetchTodosByDateFromServer(auth.token, today),
+          fetchCategoriesFromServer(auth.token),
+        ]);
+
+        return {
+          todoPresent: todayTodos.some((item) => item?._id === todo._id),
+          categoryPresent: liveCategories.some((item) => item?._id === targetCategory._id),
+        };
+      }, { timeout: 20_000 })
+      .toEqual({
+        todoPresent: false,
+        categoryPresent: false,
+      });
   });
 
   test('반복 completion은 같은 todo라도 날짜 key가 다르면 서로 coalescing되지 않는다', async ({ page }) => {

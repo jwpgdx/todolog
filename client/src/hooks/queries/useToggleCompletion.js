@@ -36,17 +36,20 @@ export const useToggleCompletion = () => {
       const completionId = generateId();
 
       // 1. SQLite 초기화 보장 후 토글 (Optimistic)
-      let optimisticState;
+      let toggleResult;
       try {
         await ensureDatabase();
-        optimisticState = await sqliteToggleCompletion(todoId, completionDate, completionId);
+        toggleResult = await sqliteToggleCompletion(todoId, completionDate, completionId);
       } catch (error) {
         console.error('❌ [useToggleCompletion] SQLite 토글 실패:', error.message);
         throw error;
       }
 
+      const optimisticState = toggleResult.completed;
+      const effectiveCompletionId = toggleResult.effectiveCompletionId;
+
       const pendingData = optimisticState
-        ? { _id: completionId, todoId, date: completionDate, isRecurring }
+        ? { _id: effectiveCompletionId, todoId, date: completionDate, isRecurring }
         : { todoId, date: completionDate, isRecurring };
 
       await addPendingChange({
@@ -69,6 +72,7 @@ export const useToggleCompletion = () => {
         isRecurring,
         completionKey,
         completionDate,
+        effectiveCompletionId,
       };
     },
     onSuccess: (data, variables) => {

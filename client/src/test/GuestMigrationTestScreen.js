@@ -13,6 +13,7 @@ import {
   createScenario1Data,
   createScenario3Data,
   createScenario6Data,
+  createTodoCalendarV2ScenarioData,
   getGuestDataStats,
   cleanupGuestData,
   createTestAccount,
@@ -142,6 +143,28 @@ export default function GuestMigrationTestScreen({ navigation }) {
         },
       ]
     );
+  };
+
+  const handleTodoCalendarV2Scenario = async () => {
+    try {
+      setIsLoading(true);
+      await createTodoCalendarV2ScenarioData();
+      await refreshStats();
+      Toast.show({
+        type: 'success',
+        text1: 'TC2 시나리오 완료',
+        text2: 'span / overflow / recurring 검증용 데이터 생성',
+      });
+    } catch (error) {
+      console.error('TC2 scenario failed:', error);
+      Toast.show({
+        type: 'error',
+        text1: 'TC2 시나리오 실패',
+        text2: error.message,
+      });
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   // 게스트 데이터 확인 (authStore 메서드 테스트)
@@ -403,6 +426,14 @@ export default function GuestMigrationTestScreen({ navigation }) {
             onPress={handleScenario6}
             disabled={isLoading}
             color="purple"
+          />
+
+          <TestButton
+            title="Scenario 7: TC2 검증 데이터"
+            description="span, overflow, recurring, adjacent-month 검증"
+            onPress={handleTodoCalendarV2Scenario}
+            disabled={isLoading}
+            color="indigo"
           />
         </View>
 

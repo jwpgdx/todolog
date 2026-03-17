@@ -236,11 +236,19 @@ export async function upsertTodos(todos) {
  */
 export async function deleteTodo(id) {
   const db = getDatabase();
+  const now = new Date().toISOString();
 
-  await db.runAsync(
-    'UPDATE todos SET deleted_at = ?, updated_at = ? WHERE _id = ?',
-    [new Date().toISOString(), new Date().toISOString(), id]
-  );
+  await db.withTransactionAsync(async () => {
+    await db.runAsync(
+      'UPDATE todos SET deleted_at = ?, updated_at = ? WHERE _id = ?',
+      [now, now, id]
+    );
+
+    await db.runAsync(
+      'UPDATE completions SET deleted_at = ? WHERE todo_id = ? AND deleted_at IS NULL',
+      [now, id]
+    );
+  });
 }
 
 /**
@@ -258,6 +266,11 @@ export async function deleteTodos(ids) {
       await db.runAsync(
         'UPDATE todos SET deleted_at = ?, updated_at = ? WHERE _id = ?',
         [now, now, id]
+      );
+
+      await db.runAsync(
+        'UPDATE completions SET deleted_at = ? WHERE todo_id = ? AND deleted_at IS NULL',
+        [now, id]
       );
     }
   });
