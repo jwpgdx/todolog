@@ -33,7 +33,6 @@ import { generateId } from '../utils/idGenerator';
 import { runCommonQueryForDate, runCommonQueryForRange } from '../services/query-aggregation';
 import {
   adaptTodoScreenFromDateHandoff,
-  adaptTodoCalendarFromRangeHandoff,
 } from '../services/query-aggregation/adapters';
 import {
   getOrLoadRange,
@@ -41,7 +40,6 @@ import {
   invalidateAllRangeCache,
   invalidateAllScreenCaches,
 } from '../services/query-aggregation/cache';
-import { useTodoCalendarStore } from '../features/todo-calendar/store/todoCalendarStore';
 import {
   adaptDaySummariesFromRangeHandoff,
   useCalendarDaySummaryStore,
@@ -80,7 +78,6 @@ export default function DebugScreen() {
     date: null,
     range: null,
     syncSmoke: null,
-    screenCompare: null,
     perfProbe: null,
   });
   const queryClient = useQueryClient();
@@ -169,7 +166,6 @@ export default function DebugScreen() {
       { key: 'date', label: 'common-date', value: validationSummary.date },
       { key: 'range', label: 'common-range', value: validationSummary.range },
       { key: 'syncSmoke', label: 'sync-smoke', value: validationSummary.syncSmoke },
-      { key: 'screenCompare', label: 'screen-compare', value: validationSummary.screenCompare },
       { key: 'perfProbe', label: 'perf-probe', value: validationSummary.perfProbe },
     ];
 
@@ -265,53 +261,12 @@ export default function DebugScreen() {
     addLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
   };
 
-  const printTodoCalendarL1CacheStats = () => {
-    const state = useTodoCalendarStore.getState();
-    const todoMonthIds = Object.keys(state.todosByMonth || {}).sort();
-    const completionMonthIds = Object.keys(state.completionsByMonth || {}).sort();
-    const unionMonthIds = Array.from(new Set([...todoMonthIds, ...completionMonthIds])).sort();
-
-    let totalTodos = 0;
-    for (const monthId of todoMonthIds) {
-      const list = state.todosByMonth?.[monthId];
-      if (Array.isArray(list)) totalTodos += list.length;
-    }
-
-    let totalCompletions = 0;
-    for (const monthId of completionMonthIds) {
-      const map = state.completionsByMonth?.[monthId];
-      if (map && typeof map === 'object') totalCompletions += Object.keys(map).length;
-    }
-
-    addLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-    addLog('📅 TodoCalendar L1 Cache 상태');
-    addLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-    addLog(
-      `todosByMonth=${todoMonthIds.length}, completionsByMonth=${completionMonthIds.length}, union=${unionMonthIds.length}`
-    );
-    addLog(`items(total): todos=${totalTodos}, completions=${totalCompletions}`);
-
-    if (unionMonthIds.length > 0) {
-      addLog(`🗓️ month 범위(키 기준): ${unionMonthIds[0]} ~ ${unionMonthIds[unionMonthIds.length - 1]}`);
-    }
-
-    // Keep output readable when users scroll a lot.
-    if (unionMonthIds.length > 0) {
-      const head = unionMonthIds.slice(0, 8);
-      const tail = unionMonthIds.length > 12 ? unionMonthIds.slice(-4) : [];
-      const sample = tail.length > 0 ? [...head, '...', ...tail] : head;
-      addLog(`📦 cached months(sample): ${sample.join(', ')}`);
-    }
-
-    addLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-  };
-
   const clearSharedRangeCacheOnly = () => {
     const result = invalidateAllRangeCache({ reason: 'debug:manual-clear-shared-range-cache' });
     addLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
     addLog('🧠 Shared Range Cache만 클리어');
     addLog(`ok=${result.ok}, removedEntries=${result.removedEntries}, reason=${result.reason}`);
-    addLog('ℹ️ DaySummary/TodoCalendar L1 store는 유지됩니다');
+    addLog('ℹ️ DaySummary/TC2 layout store는 유지됩니다');
     addLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
   };
 
@@ -1523,137 +1478,6 @@ export default function DebugScreen() {
     }
   };
 
-  const toCompletionKeySet = (items, targetDate) => {
-    const list = Array.isArray(items) ? items : [];
-    const set = new Set();
-    list.forEach((item) => {
-      const fallbackKey = `${item?.todoId || item?._id || 'unknown'}_${targetDate}`;
-      set.add(item?.completionKey || fallbackKey);
-    });
-    return set;
-  };
-
-  const sampleDiff = (leftSet, rightSet, max = 5) => {
-    const diff = [];
-    for (const key of leftSet) {
-      if (!rightSet.has(key)) diff.push(key);
-      if (diff.length >= max) break;
-    }
-    return diff;
-  };
-
-  const diffCount = (leftSet, rightSet) => {
-    let count = 0;
-    for (const key of leftSet) {
-      if (!rightSet.has(key)) count += 1;
-    }
-    return count;
-  };
-
-  const runScreenAdapterCompare = async () => {
-    const endDate = addDaysDateOnly(selectedDate, 6) || selectedDate;
-
-    addLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-    addLog(`🧪 화면 결과 비교: ${selectedDate} (range ~ ${endDate})`);
-    addLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-
-    try {
-      const syncStatus = { isSyncing, error: syncError, lastSyncTime };
-      const [dateResult, rangeResult] = await Promise.all([
-        runCommonQueryForDate({ targetDate: selectedDate, syncStatus }),
-        runCommonQueryForRange({ startDate: selectedDate, endDate, syncStatus }),
-      ]);
-
-      if (!dateResult.ok || !rangeResult.ok) {
-        const error = dateResult.ok ? rangeResult.error : dateResult.error;
-        addLog(`❌ FAIL [screen-compare]: common-layer 실패 (${error})`);
-        recordValidation('screenCompare', {
-          ok: false,
-          stage: { candidate: 0, decided: 0, aggregated: 0 },
-          elapsed: { totalMs: 0, candidateMs: 0, decisionMs: 0, aggregationMs: 0 },
-          meta: { isStale: true, staleReason: 'sync_failed', lastSyncTime: lastSyncTime || null },
-          error,
-        });
-        return;
-      }
-
-      const todoScreen = adaptTodoScreenFromDateHandoff(dateResult);
-      const todoCalendar = adaptTodoCalendarFromRangeHandoff(rangeResult, {
-        monthRanges: [{ id: 'compare-range', startDate: selectedDate, endDate }],
-        visibleLimit: 3,
-      });
-      const daySummaryAdapter = adaptDaySummariesFromRangeHandoff(rangeResult, { maxDots: 3 });
-
-      if (!todoScreen.ok || !todoCalendar.ok || !daySummaryAdapter.ok) {
-        const error = todoScreen.error || todoCalendar.error || daySummaryAdapter.error || 'adapter failed';
-        addLog(`❌ FAIL [screen-compare]: adapter 실패 (${error})`);
-        recordValidation('screenCompare', {
-          ok: false,
-          stage: rangeResult.stage,
-          elapsed: rangeResult.elapsed,
-          meta: rangeResult.meta,
-          error,
-        });
-        return;
-      }
-
-      const todoScreenItems = todoScreen.items || [];
-      const calendarDateItems = todoCalendar.itemsByDate?.[selectedDate] || [];
-      const daySummary = daySummaryAdapter.summariesByDate?.[selectedDate] || {
-        date: selectedDate,
-        hasTodo: false,
-        uniqueCategoryColors: [],
-        dotCount: 0,
-        overflowCount: 0,
-      };
-
-      const todoScreenKeys = toCompletionKeySet(todoScreenItems, selectedDate);
-      const todoCalendarKeys = toCompletionKeySet(calendarDateItems, selectedDate);
-      const onlyTodoScreenCount = diffCount(todoScreenKeys, todoCalendarKeys);
-      const onlyTodoCalendarCount = diffCount(todoCalendarKeys, todoScreenKeys);
-      const onlyTodoScreen = sampleDiff(todoScreenKeys, todoCalendarKeys);
-      const onlyTodoCalendar = sampleDiff(todoCalendarKeys, todoScreenKeys);
-      const parity = onlyTodoScreenCount === 0 && onlyTodoCalendarCount === 0;
-
-      addLog(`TodoScreen: count=${todoScreenItems.length}`);
-      addLog(`TodoCalendar(date): count=${calendarDateItems.length}`);
-      addLog(
-        `DaySummary(date): hasTodo=${daySummary.hasTodo ? 'Y' : 'N'}, ` +
-        `dotCount=${daySummary.dotCount}, overflow=${daySummary.overflowCount || 0}`
-      );
-      addLog(`DaySummary colors: ${daySummary.uniqueCategoryColors.join(', ') || '(none)'}`);
-      addLog(
-        `ID diff: onlyTodoScreen=${onlyTodoScreenCount}, ` +
-        `onlyTodoCalendar=${onlyTodoCalendarCount}`
-      );
-
-      if (!parity) {
-        if (onlyTodoScreen.length > 0) addLog(`  sample onlyTodoScreen: ${onlyTodoScreen.join(', ')}`);
-        if (onlyTodoCalendar.length > 0) addLog(`  sample onlyTodoCalendar: ${onlyTodoCalendar.join(', ')}`);
-      }
-
-      addLog(parity ? '✅ PASS [screen-compare]' : '⚠️ WARN [screen-compare]: ID diff 존재');
-      recordValidation('screenCompare', {
-        ok: parity,
-        stage: rangeResult.stage,
-        elapsed: rangeResult.elapsed,
-        meta: rangeResult.meta,
-        error: parity ? null : 'todo-screen vs todo-calendar id diff',
-      });
-    } catch (error) {
-      addLog(`❌ 예외: ${error.message}`);
-      recordValidation('screenCompare', {
-        ok: false,
-        stage: { candidate: 0, decided: 0, aggregated: 0 },
-        elapsed: { totalMs: 0, candidateMs: 0, decisionMs: 0, aggregationMs: 0 },
-        meta: { isStale: true, staleReason: 'sync_failed', lastSyncTime: lastSyncTime || null },
-        error: error.message,
-      });
-    } finally {
-      addLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-    }
-  };
-
   // ========== SQLite 조회 테스트 ==========
 
   const sqlite_TodosByDate = async () => {
@@ -2258,13 +2082,6 @@ export default function DebugScreen() {
         </TouchableOpacity>
 
         <TouchableOpacity
-          style={[styles.button, styles.actionButton]}
-          onPress={runScreenAdapterCompare}
-        >
-          <Text style={styles.buttonText}>🧪 화면 결과 비교</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
           style={[styles.button, styles.primaryButton]}
           onPress={printValidationSummary}
         >
@@ -2286,13 +2103,6 @@ export default function DebugScreen() {
         </TouchableOpacity>
 
         <TouchableOpacity
-          style={[styles.button, styles.primaryButton]}
-          onPress={printTodoCalendarL1CacheStats}
-        >
-          <Text style={styles.buttonText}>📅 TodoCalendar L1 상태 출력</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
           style={[styles.button, styles.actionButton]}
           onPress={runRangeCacheHitSmoke}
         >
@@ -2310,7 +2120,7 @@ export default function DebugScreen() {
           style={[styles.button, styles.testButton]}
           onPress={() => router.push('/(app)/(tabs)/test')}
         >
-          <Text style={styles.buttonText}>📅 Calendar Service Test</Text>
+          <Text style={styles.buttonText}>📅 TC2 Readiness Test</Text>
         </TouchableOpacity>
 
         <TouchableOpacity

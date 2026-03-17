@@ -306,6 +306,180 @@ export async function createScenario6Data() {
 }
 
 /**
+ * Scenario 7: Todo Calendar V2 line-monthly validation data
+ * - current anchor month centered data (2026-03)
+ * - includes:
+ *   - adjacent-month cross-month span
+ *   - row-segmented cross-week span
+ *   - timed multi-day span
+ *   - recurring single-day occurrence
+ *   - overflow on one day (`...`)
+ *
+ * @returns {Promise<Object>} - { categories, todos, completionCount }
+ */
+export async function createTodoCalendarV2ScenarioData() {
+  console.log('📦 [Test] Creating Scenario 7 data (todo-calendar-v2)...');
+
+  await clearAllData();
+  await initDatabase();
+
+  const workCategory = await createCategory({
+    name: 'Work',
+    color: '#EF4444',
+    order: 0,
+  });
+
+  const travelCategory = await createCategory({
+    name: 'Travel',
+    color: '#2563EB',
+    order: 1,
+  });
+
+  const personalCategory = await createCategory({
+    name: 'Personal',
+    color: '#16A34A',
+    order: 2,
+  });
+
+  const now = new Date().toISOString();
+  const todos = [
+    {
+      _id: Crypto.randomUUID(),
+      title: 'Month Bridge',
+      startDate: '2026-02-27',
+      endDate: '2026-03-02',
+      date: null,
+      recurrence: null,
+      recurrenceEndDate: null,
+      categoryId: travelCategory._id,
+      isAllDay: true,
+      startTime: null,
+      endTime: null,
+      createdAt: now,
+      updatedAt: now,
+    },
+    {
+      _id: Crypto.randomUUID(),
+      title: 'Quarter Sprint',
+      startDate: '2026-03-10',
+      endDate: '2026-03-12',
+      date: null,
+      recurrence: null,
+      recurrenceEndDate: null,
+      categoryId: workCategory._id,
+      isAllDay: true,
+      startTime: null,
+      endTime: null,
+      createdAt: now,
+      updatedAt: now,
+    },
+    {
+      _id: Crypto.randomUUID(),
+      title: 'Client Workshop',
+      startDate: '2026-03-11',
+      endDate: '2026-03-13',
+      date: null,
+      recurrence: null,
+      recurrenceEndDate: null,
+      categoryId: travelCategory._id,
+      isAllDay: false,
+      startTime: '09:00',
+      endTime: '17:00',
+      createdAt: now,
+      updatedAt: now,
+    },
+    {
+      _id: Crypto.randomUUID(),
+      title: 'Read Briefing',
+      startDate: '2026-03-11',
+      endDate: '2026-03-11',
+      date: '2026-03-11',
+      recurrence: null,
+      recurrenceEndDate: null,
+      categoryId: workCategory._id,
+      isAllDay: true,
+      startTime: null,
+      endTime: null,
+      createdAt: now,
+      updatedAt: now,
+    },
+    {
+      _id: Crypto.randomUUID(),
+      title: 'Doctor Visit',
+      startDate: '2026-03-11',
+      endDate: '2026-03-11',
+      date: '2026-03-11',
+      recurrence: null,
+      recurrenceEndDate: null,
+      categoryId: personalCategory._id,
+      isAllDay: false,
+      startTime: '08:30',
+      endTime: '09:00',
+      createdAt: now,
+      updatedAt: now,
+    },
+    {
+      _id: Crypto.randomUUID(),
+      title: 'Lunch with Sam',
+      startDate: '2026-03-11',
+      endDate: '2026-03-11',
+      date: '2026-03-11',
+      recurrence: null,
+      recurrenceEndDate: null,
+      categoryId: personalCategory._id,
+      isAllDay: false,
+      startTime: '12:30',
+      endTime: '13:30',
+      createdAt: now,
+      updatedAt: now,
+    },
+    {
+      _id: Crypto.randomUUID(),
+      title: 'Daily Stretch',
+      startDate: '2026-03-10',
+      endDate: null,
+      date: null,
+      recurrence: 'RRULE:FREQ=DAILY;UNTIL=20260314',
+      recurrenceEndDate: '2026-03-14',
+      categoryId: personalCategory._id,
+      isAllDay: true,
+      startTime: null,
+      endTime: null,
+      createdAt: now,
+      updatedAt: now,
+    },
+    {
+      _id: Crypto.randomUUID(),
+      title: 'Release Freeze',
+      startDate: '2026-03-27',
+      endDate: '2026-04-02',
+      date: null,
+      recurrence: null,
+      recurrenceEndDate: null,
+      categoryId: workCategory._id,
+      isAllDay: true,
+      startTime: null,
+      endTime: null,
+      createdAt: now,
+      updatedAt: now,
+    },
+  ];
+
+  for (const todo of todos) {
+    await upsertTodo(todo);
+    console.log(`✅ [Test] TC2 Scenario Todo created: ${todo.title} (${todo._id})`);
+  }
+
+  console.log('✅ [Test] Scenario 7 data created successfully');
+
+  return {
+    categories: [workCategory, travelCategory, personalCategory],
+    todos,
+    completionCount: 0,
+  };
+}
+
+/**
  * 빈 게스트 데이터 생성 (Scenario 3용)
  * - 모든 데이터 삭제
  * 

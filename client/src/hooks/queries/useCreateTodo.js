@@ -5,14 +5,12 @@ import { upsertTodo } from '../../services/db/todoService';
 import { addPendingChange } from '../../services/db/pendingService';
 import { ensureDatabase } from '../../services/db/database';
 import { generateId } from '../../utils/idGenerator';
-import { useTodoCalendarStore } from '../../features/todo-calendar/store/todoCalendarStore';
-import { invalidateTodoSummary } from '../../features/strip-calendar/services/stripCalendarDataAdapter';
 import { invalidateTodoSummary as invalidateDaySummariesTodo } from '../../features/calendar-day-summaries';
+import { invalidateTodoCalendarV2Layouts } from '../../features/todo-calendar-v2/services/todoCalendarV2InvalidationService';
 import { useSyncContext } from '../../providers/SyncProvider';
 
 export const useCreateTodo = () => {
   const queryClient = useQueryClient();
-  const invalidateAdjacentMonths = useTodoCalendarStore(state => state.invalidateAdjacentMonths);
   const { syncAll } = useSyncContext();
 
   return useMutation({
@@ -102,16 +100,11 @@ export const useCreateTodo = () => {
       // 모든 todos 캐시 무효화 (단순화)
       queryClient.invalidateQueries({ queryKey: ['todos'] });
       
-      // Phase 2: 캘린더 캐시 무효화
-      if (data?.date || data?.startDate) {
-        const dateStr = data.date || data.startDate;
-        const [year, month] = dateStr.split('-').map(Number);
-        invalidateAdjacentMonths(year, month);
-        console.log(`📅 [useCreateTodo] Calendar cache invalidated for ${year}-${month}`);
-      }
-
-      invalidateTodoSummary(data || variables);
       invalidateDaySummariesTodo(data || variables);
+      invalidateTodoCalendarV2Layouts({
+        todo: data || variables,
+        reason: 'create-todo',
+      });
       
       // 사용자 편의를 위한 마지막 사용 정보 저장
       try {

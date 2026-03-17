@@ -35,12 +35,13 @@ export default function TabsLayout() {
         }}
       />
       <Tabs.Screen
-        name="strip"
+        name="todo-calendar-v2"
         options={{
-          title: '스트립',
-          tabBarLabel: '스트립',
+          href: null,
+          title: 'Calendar V2',
+          tabBarLabel: 'TC2',
           tabBarIcon: ({ color, size }) => (
-            <Ionicons name="calendar-number-outline" size={size} color={color} />
+            <Ionicons name="calendar-clear-outline" size={size} color={color} />
           ),
         }}
       />

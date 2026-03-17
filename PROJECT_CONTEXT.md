@@ -1,7 +1,7 @@
 # Todolog Project Context
 
 Last Updated: 2026-03-17
-Status: Sync hardening complete (Pending Push -> Delta Pull), Phase 3 Step 1 recurrence engine complete/validated, Phase 3 Step 2 common query/aggregation complete/validated, Phase 3 Step 3 screen-adapter layer complete/validated, category write unification complete/validated, completion write unification implemented/validated, completion coalescing implemented/validated, cache-policy unification complete/validated, Expo Router migration implemented (parity validation ongoing), Expo SDK 55 upgrade complete/validated
+Status: Sync hardening complete (Pending Push -> Delta Pull), Phase 3 Step 1 recurrence engine complete/validated, Phase 3 Step 2 common query/aggregation complete/validated, Phase 3 Step 3 screen-adapter layer complete/validated, category write unification complete/validated, completion write unification implemented/validated, completion coalescing implemented/validated, completion local tombstone implemented/validated, cache-policy unification complete/validated, Expo Router migration implemented (parity validation ongoing), Expo SDK 55 upgrade complete/validated, Todo Calendar V2 line-monthly baseline complete, readiness complete, and primary monthly tab cutover implemented (post-cutover promoted native smoke pending)
 
 ## 1. Purpose
 
@@ -42,17 +42,20 @@ Server:
 - Category write unification: complete and validated (`create/update/delete/reorder` local-first + pending + background sync)
 - Completion write unification: implemented and validated (`always-pending` toggle + sync rerun latch + completion-aware invalidation)
 - Completion coalescing: implemented and validated (sync-start full snapshot compaction + superseded completion pending retirement)
-- Expo SDK 55 upgrade: complete and validated (`expo` `55.0.6`, `react-native` `0.83.2`, React Compiler enabled, unused `zeego`/native-menu deps removed)
-- Native validation after SDK 55 upgrade: Android `assembleDebug` + emulator launch succeeded; iOS simulator build/launch succeeded; `expo-doctor` now leaves only the `react-native-wheel-pick` New Architecture metadata warning
+- Completion local tombstone: implemented and validated (`completions.deleted_at`, restore-aware local writes, todo/category cascade tombstone, guest migration `_id` preservation)
 - Cache-policy unification (Option A -> Option B): complete and validated (shared range cache + sync invalidation unification)
 - Cache retention (memory control): enabled (shared range cache + calendar L1 caches pruned to anchor ±6 months)
+- Expo SDK 55 upgrade: complete and validated (`expo` `55.0.6`, `react-native` `0.83.2`, React Compiler enabled, unused `zeego`/native-menu deps removed)
+- Native validation after SDK 55 upgrade: Android `assembleDebug` + emulator launch succeeded; iOS simulator build/launch succeeded; `expo-doctor` now leaves only the `react-native-wheel-pick` New Architecture metadata warning
+- Todo Calendar V2 (`client/src/features/todo-calendar-v2/`): line-monthly baseline complete; `calendar` tab now renders TC2 as the primary monthly calendar path, adjacent-month cells stay in the 42-day grid but their labels/lines/overflow are hidden, completion glyphs remain out of scope in the frozen baseline, and the old `todo-calendar` runtime has been retired
 - Strip-calendar foundation (weekly/monthly shell + anchor sync + debug instrumentation): active and integrated via adapter path
 - Week Flow Calendar (rewrite prototype): bounded calendar UI shell under `client/src/features/week-flow-calendar/`, exposed via tabs `/(app)/(tabs)/week-flow` for side-by-side evaluation (not production default yet)
 - Expo Router migration: implemented (file-based routes under `client/app/`, entry via `expo-router/entry`); parity validation ongoing (Back/Modal/deep-link)
 - UI navigation: Expo Router groups `/(auth)` + `/(app)` with tabs under `client/app/(app)/(tabs)` (e.g. My Page: `/(app)/(tabs)/my-page`)
 - My Page subtree routing: My Page에서 여는 Settings/Profile/Category 화면은 `client/app/(app)/(tabs)/my-page/*` 아래로 push되어 iOS Large Title/back label UX를 유지
 - Modal/presentation test hub: `/(app)/test/modals` + `/(app)/test/form-sheet` (native-stack presentation 옵션별 플랫폼 동작 확인)
-- Real-server recovery web E2E: category/todo/completion recovery specs added; completion extended matrix (`rapid toggle`, `recurring`, `mixed queue`, `dead_letter`, `restart`) validated
+- Real-server recovery web E2E: category/todo/completion recovery specs validated; completion extended matrix (`rapid toggle`, `recurring`, `mixed queue`, `dead_letter`, `restart`) validated
+- Guest migration server validation: completion import preserves exported active `_id`
 
 ### 2.3 Tooling and upgrade notes
 
@@ -146,7 +149,7 @@ Validation and rejection logic:
 
 File: `client/src/services/db/database.js`
 
-- `MIGRATION_VERSION = 7`
+- `MIGRATION_VERSION = 8`
 - `todos` key columns:
   - `_id TEXT PRIMARY KEY`
   - `date TEXT` (legacy compatibility column; runtime contract uses start/end date)
@@ -170,8 +173,17 @@ File: `client/src/services/db/database.js`
     - `lastUsedCategoryId` if valid
     - else first category in the current list ordering
     - server also blocks deleting the last active category
+- `completions` key columns:
+  - `_id TEXT PRIMARY KEY`
+  - `key TEXT NOT NULL UNIQUE`
+  - `todo_id TEXT NOT NULL`
+  - `date TEXT`
+  - `completed_at TEXT NOT NULL`
+  - `deleted_at TEXT NULL`
 - Key index:
   - `idx_todos_recurrence_window(start_date, recurrence_end_date)`
+  - `idx_completions_active_date(date) WHERE deleted_at IS NULL`
+  - `idx_completions_active_todo(todo_id) WHERE deleted_at IS NULL`
 - Pending queue v5 additions:
   - `retry_count INTEGER NOT NULL DEFAULT 0`
   - `last_error TEXT NULL`
@@ -239,7 +251,7 @@ Behavior:
 5. Category delete performs immediate local cascade:
    - `categories`: tombstone
    - `todos`: tombstone
-   - `completions`: hard delete
+   - `completions`: tombstone
 6. Pending Push sends only the category mutation to server.
    - delete replay relies on server-side Category -> Todo -> Completion cascade
    - `createCategory` `409` is treated as success-equivalent during replay
@@ -249,25 +261,27 @@ Behavior:
 1. UI uses `useToggleCompletion`.
 2. Hook computes completion key as `todoId + "_" + (date || "null")`.
 3. Hook toggles SQLite first:
-   - complete -> local row insert
-   - incomplete -> local row hard delete
+   - complete -> local row insert or tombstoned row restore
+   - incomplete -> local row tombstone (`deleted_at`)
 4. Hook always enqueues a completion pending change:
    - `createCompletion`
    - `deleteCompletion`
+   - create pending uses `effectiveCompletionId` from the restored-or-created local row
 5. If online, hook triggers `syncAll()` in the background and does not await server response.
 6. Completion replay keeps explicit create/delete API routing. Toggle replay is not used.
 7. If `syncAll()` is already running, the new sync request is latched and re-run once after the current run finishes.
-8. Completion-only invalidation refreshes completion-dependent views (`todos`, todo-calendar, shared range cache) but must not clear strip/week-flow day-summary stores or request idle re-ensure.
+8. Completion-only invalidation refreshes completion-dependent views (`todos`, shared range cache) but must not broad-invalidate TC2 or clear strip/week-flow day-summary stores.
 9. During Pending Push, completion rows are compacted by `completionKey` against the sync-start non-dead_letter snapshot:
    - last intent wins
    - superseded older completion rows are retired before replay
    - older `failed` rows with future `next_retry_at` are also superseded if a newer intent exists
 10. This superseded-row retirement is a narrow exception to the generic pending queue rule (`remove on success / keep failed for retry`) and applies only to superseded non-dead_letter completion rows.
+11. Guest-data migration exports only active completion rows and server import preserves the exported completion `_id`.
 
 ### 6.3 Calendar read flow
 
-1. Screen/hook requests date or range data (`TodoScreen`, `TodoCalendar`, `StripCalendar`).
-2. For range reads (`TodoCalendar`, `StripCalendar`), the shared range cache is the first hop:
+1. Screen/hook requests date or range data (`TodoScreen`, `TodoCalendarV2`, `StripCalendar`).
+2. For range reads (`TodoCalendarV2`, `StripCalendar`), the shared range cache is the first hop:
    - cache hit: return cached handoff payload (`itemsByDate`)
    - cache miss: load uncovered sub-ranges via common query/aggregation and merge into cache
 3. Common query/aggregation layer runs on SQLite-only path (direct for date reads, miss-only for range reads):
@@ -275,8 +289,10 @@ Behavior:
    - occurrence decision (non-recurring + recurring via `recurrenceEngine`)
    - aggregation (`todo + completion + category`)
 4. Screen adapters transform handoff DTO into screen-specific shapes.
+   - `TodoCalendarV2`: fixed 6-week month layouts via `fetchMonthLayoutsForMonths` -> `adaptMonthLayoutsFromRangeHandoff`
+   - `StripCalendar`: dot summaries via `stripCalendarAdapter`
 5. Screen stores cache adapter outputs when needed:
-   - `todoCalendarStore` (`todosByMonth`/`completionsByMonth`)
+   - `useTodoCalendarV2Store` (`monthLayoutsById` / `visibleContext` / `reensureSeq`)
    - `stripCalendarStore` (`summariesByDate`)
 6. UI components render from adapted shape and cache selectors.
 
@@ -287,6 +303,16 @@ Shared range cache implementation:
   - supports overlap/adjacent merge, in-flight dedupe, invalidate, and retention prune
 - `client/src/services/query-aggregation/cache/cacheInvalidationService.js`
   - unified invalidate entrypoint (called by sync) + TodoScreen React Query co-fire
+
+### 6.3.1 Todo Calendar V2 monthly flow
+
+1. `calendar` tab renders `TodoCalendarV2Screen` as the primary monthly calendar path.
+2. TC2 uses a vertical `FlashList` month list with a fixed 6-week grid per month.
+3. Visible loading is bounded to the visible month range plus `±1 month`, and projected month layouts are pruned to anchor `±6 months`.
+4. Adjacent-month cells remain structural slots in the fixed 42-day grid, but baseline UI hides their date labels, event lines, and overflow indicators.
+5. Non-recurring multi-day events render as row-local span segments; recurring events render as single-day lines only.
+6. Todo create/update/delete and coarse cache invalidation paths can invalidate bounded TC2 month layouts and request idle re-ensure through the TC2 invalidation bridge.
+7. Completion-only changes do not broad-invalidate or blank the mounted TC2 surface because completion glyphs are not part of the frozen baseline.
 
 ### 6.3 Selected date flow
 
@@ -417,19 +443,24 @@ Common query/aggregation layer:
 Screen adapters:
 
 - `client/src/services/query-aggregation/adapters/todoScreenAdapter.js`
-- `client/src/services/query-aggregation/adapters/todoCalendarAdapter.js`
 - `client/src/services/query-aggregation/adapters/stripCalendarAdapter.js`
 - `client/src/services/query-aggregation/adapters/types.js`
 
-Calendar module:
+Todo Calendar V2 module (primary monthly path):
 
-- `client/src/features/todo-calendar/hooks/useTodoCalendarData.js`
-- `client/src/features/todo-calendar/services/calendarTodoService.js`
-- `client/src/features/todo-calendar/store/todoCalendarStore.js`
-- `client/src/features/todo-calendar/ui/*`
+- `client/src/features/todo-calendar-v2/adapters/adaptMonthLayoutsFromRangeHandoff.js`
+- `client/src/features/todo-calendar-v2/hooks/useTodoCalendarV2Data.js`
+- `client/src/features/todo-calendar-v2/hooks/useTodoCalendarV2InfiniteMonths.js`
+- `client/src/features/todo-calendar-v2/services/fetchMonthLayouts.js`
+- `client/src/features/todo-calendar-v2/services/todoCalendarV2InvalidationService.js`
+- `client/src/features/todo-calendar-v2/store/useTodoCalendarV2Store.js`
+- `client/src/features/todo-calendar-v2/ui/*`
+- `client/src/utils/calendarMonthHelpers.js`
 - UI geometry defaults:
-  - week row / day cell height: `88px` (see `CalendarList` + `DayCell`)
-  - month height estimation: `TITLE_HEIGHT + (6 * WEEK_ROW_HEIGHT)`
+  - day cell height: `88px`
+  - event lane height: `14px`
+  - month container height: `TC2_MONTH_TITLE_HEIGHT + (6 * TC2_DAY_CELL_HEIGHT)`
+  - adjacent-month cells remain structural only; baseline UI hides their content
 
 Strip calendar module:
 

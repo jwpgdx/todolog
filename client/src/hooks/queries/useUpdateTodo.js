@@ -3,14 +3,12 @@ import NetInfo from '@react-native-community/netinfo';
 import { upsertTodo, getTodoById } from '../../services/db/todoService';
 import { addPendingChange } from '../../services/db/pendingService';
 import { ensureDatabase } from '../../services/db/database';
-import { useTodoCalendarStore } from '../../features/todo-calendar/store/todoCalendarStore';
-import { invalidateTodoSummary } from '../../features/strip-calendar/services/stripCalendarDataAdapter';
 import { invalidateTodoSummary as invalidateDaySummariesTodo } from '../../features/calendar-day-summaries';
+import { invalidateTodoCalendarV2Layouts } from '../../features/todo-calendar-v2/services/todoCalendarV2InvalidationService';
 import { useSyncContext } from '../../providers/SyncProvider';
 
 export const useUpdateTodo = () => {
   const queryClient = useQueryClient();
-  const invalidateAdjacentMonths = useTodoCalendarStore(state => state.invalidateAdjacentMonths);
   const { syncAll } = useSyncContext();
 
   return useMutation({
@@ -165,32 +163,18 @@ export const useUpdateTodo = () => {
       // 모든 todos 캐시 무효화 (단순화)
       queryClient.invalidateQueries({ queryKey: ['todos'] });
       
-      // Phase 2: 캘린더 캐시 무효화
-      // 새 날짜 무효화
-      if (data?.date || data?.startDate) {
-        const dateStr = data.date || data.startDate;
-        const [year, month] = dateStr.split('-').map(Number);
-        invalidateAdjacentMonths(year, month);
-        console.log(`📅 [useUpdateTodo] Calendar cache invalidated for new date ${year}-${month}`);
-      }
-      
-      // 날짜 변경 시: 이전 날짜도 무효화
       const oldTodo = context?.oldTodo;
-      if (oldTodo) {
-        const oldDateStr = oldTodo.date || oldTodo.startDate;
-        const newDateStr = data?.date || data?.startDate;
-        
-        if (oldDateStr && newDateStr && oldDateStr !== newDateStr) {
-          const [oldYear, oldMonth] = oldDateStr.split('-').map(Number);
-          invalidateAdjacentMonths(oldYear, oldMonth);
-          console.log(`📅 [useUpdateTodo] Calendar cache invalidated for old date ${oldYear}-${oldMonth}`);
-        }
-      }
 
-      invalidateTodoSummary(oldTodo);
-      invalidateTodoSummary(data || { ...oldTodo, ...updateData });
       invalidateDaySummariesTodo(oldTodo);
       invalidateDaySummariesTodo(data || { ...oldTodo, ...updateData });
+      invalidateTodoCalendarV2Layouts({
+        todo: oldTodo,
+        reason: 'update-todo:old',
+      });
+      invalidateTodoCalendarV2Layouts({
+        todo: data || { ...oldTodo, ...updateData },
+        reason: 'update-todo:new',
+      });
 
       const successEndTime = performance.now();
       console.log(`⚡ [useUpdateTodo] onSuccess 완료: ${(successEndTime - successStartTime).toFixed(2)}ms`);

@@ -3,14 +3,12 @@ import NetInfo from '@react-native-community/netinfo';
 import { deleteTodo } from '../../services/db/todoService';
 import { addPendingChange } from '../../services/db/pendingService';
 import { ensureDatabase } from '../../services/db/database';
-import { useTodoCalendarStore } from '../../features/todo-calendar/store/todoCalendarStore';
-import { invalidateTodoSummary } from '../../features/strip-calendar/services/stripCalendarDataAdapter';
 import { invalidateTodoSummary as invalidateDaySummariesTodo } from '../../features/calendar-day-summaries';
+import { invalidateTodoCalendarV2Layouts } from '../../features/todo-calendar-v2/services/todoCalendarV2InvalidationService';
 import { useSyncContext } from '../../providers/SyncProvider';
 
 export const useDeleteTodo = () => {
   const queryClient = useQueryClient();
-  const invalidateAdjacentMonths = useTodoCalendarStore(state => state.invalidateAdjacentMonths);
   const { syncAll } = useSyncContext();
 
   return useMutation({
@@ -97,16 +95,11 @@ export const useDeleteTodo = () => {
       // 2. 서버 데이터 재검증
       queryClient.invalidateQueries({ queryKey: ['todos'] });
       
-      // Phase 2: 캘린더 캐시 무효화
-      if (variables?.date || variables?.startDate) {
-        const dateStr = variables.date || variables.startDate;
-        const [year, month] = dateStr.split('-').map(Number);
-        invalidateAdjacentMonths(year, month);
-        console.log(`📅 [useDeleteTodo] Calendar cache invalidated for ${year}-${month}`);
-      }
-
-      invalidateTodoSummary(variables);
       invalidateDaySummariesTodo(variables);
+      invalidateTodoCalendarV2Layouts({
+        todo: variables,
+        reason: 'delete-todo',
+      });
 
       const successEndTime = performance.now();
       console.log(`⚡ [useDeleteTodo] onSuccess 완료: ${(successEndTime - successStartTime).toFixed(2)}ms`);

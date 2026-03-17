@@ -163,16 +163,6 @@ export default function SettingsScreen() {
                     />
                 </View>
 
-                {/* 개발자 테스트 */}
-                {/* Archived: Phase 1 테스트 완료 - 이제 Bottom Tab에서 캘린더 접근 가능 */}
-                {/* <SectionHeader title="개발자 테스트" />
-                <View className="bg-white dark:bg-gray-800">
-                    <SettingsRow
-                        title="무한 스크롤 캘린더 테스트"
-                        onPress={() => router.push('/(app)/todo-calendar')}
-                    />
-                </View> */}
-
             </ScrollView>
         </SafeAreaView>
     );

@@ -59,7 +59,7 @@
  * @property {string|null} recurrenceEndDate
  * @property {string|null} memo
  * @property {string|null} categoryId
- * @property {{_id:string|null,name:string|null,color:string|null,icon:string|null}|null} category
+ * @property {{_id:string|null,name:string|null,color:string|null,icon:string|null,order?:number|null}|null} category
  * @property {string} completionKey
  * @property {boolean} completed
  * @property {string|null} completionId
@@ -82,7 +82,7 @@
  * @property {string} completionKey
  * @property {string|null} completionId
  * @property {string|null} categoryId
- * @property {{_id:string|null,name:string|null,color:string|null,icon:string|null}|null} category
+ * @property {{_id:string|null,name:string|null,color:string|null,icon:string|null,order?:number|null}|null} category
  * @property {string|null} date
  * @property {string|null} startDate
  * @property {string|null} endDate
@@ -107,21 +107,4 @@
  * @property {Record<string, {visibleLimit:number,totalCount:number,overflowCount:number}>} dayMetaByDate
  * @property {Record<string, Array<Object>>} todosByMonth
  * @property {Record<string, Record<string, Object>>} completionsByMonth
- */
-
-/**
- * StripCalendar adapter 출력 계약
- *
- * @typedef {Object} StripDaySummary
- * @property {string} date
- * @property {boolean} hasTodo
- * @property {Array<string>} uniqueCategoryColors
- * @property {number} dotCount
- * @property {number} [maxDots]
- * @property {number} [overflowCount]
- */
-
-/**
- * @typedef {Object} StripCalendarAdapterResult
- * @property {Record<string, StripDaySummary>} summariesByDate
  */

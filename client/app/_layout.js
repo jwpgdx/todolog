@@ -32,6 +32,9 @@ const queryClient = new QueryClient();
 setQueryClient(queryClient);
 
 let hasRunCommonRangePrewarm = false;
+const PUBLIC_ROUTE_SEGMENTS = new Set([
+  'native-list-interactions',
+]);
 
 function addDays(date, days) {
   const next = new Date(date.getTime());
@@ -192,16 +195,17 @@ export default function RootLayout() {
 
     const isInAuthGroup = rootSegment === '(auth)';
     const isInAppGroup = rootSegment === '(app)';
+    const isInPublicRoute = PUBLIC_ROUTE_SEGMENTS.has(rootSegment);
 
     if (!user) {
       const target = shouldShowLogin ? '/(auth)/login' : '/(auth)/welcome';
-      if (!isInAuthGroup) {
+      if (!isInAuthGroup && !isInPublicRoute) {
         router.replace(target);
       }
       return;
     }
 
-    if (!isInAppGroup) {
+    if (!isInAppGroup && !isInPublicRoute) {
       router.replace('/(app)/(tabs)');
     }
   }, [isLoading, user, shouldShowLogin, rootSegment, router]);

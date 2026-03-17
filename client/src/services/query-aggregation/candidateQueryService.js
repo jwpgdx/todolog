@@ -57,7 +57,8 @@ const SQL_TODOS_DATE = `
     t.*,
     c.name as category_name,
     c.color as category_color,
-    c.icon as category_icon
+    c.icon as category_icon,
+    c.order_index as category_order_index
   FROM candidate_ids ids
   JOIN todos t ON t._id = ids._id
   LEFT JOIN categories c ON t.category_id = c._id
@@ -115,7 +116,8 @@ const SQL_TODOS_RANGE = `
     t.*,
     c.name as category_name,
     c.color as category_color,
-    c.icon as category_icon
+    c.icon as category_icon,
+    c.order_index as category_order_index
   FROM candidate_ids ids
   JOIN todos t ON t._id = ids._id
   LEFT JOIN categories c ON t.category_id = c._id
@@ -123,15 +125,15 @@ const SQL_TODOS_RANGE = `
 `;
 
 const SQL_COMPLETIONS_DATE = `
-  SELECT * FROM completions WHERE date = ?
+  SELECT * FROM completions WHERE deleted_at IS NULL AND date = ?
   UNION ALL
-  SELECT * FROM completions WHERE date IS NULL
+  SELECT * FROM completions WHERE deleted_at IS NULL AND date IS NULL
 `;
 
 const SQL_COMPLETIONS_RANGE = `
-  SELECT * FROM completions WHERE date >= ? AND date <= ?
+  SELECT * FROM completions WHERE deleted_at IS NULL AND date >= ? AND date <= ?
   UNION ALL
-  SELECT * FROM completions WHERE date IS NULL
+  SELECT * FROM completions WHERE deleted_at IS NULL AND date IS NULL
 `;
 
 function buildTodoDateParams(targetDate) {
@@ -471,6 +473,7 @@ function deserializeTodoCandidate(row) {
         name: row.category_name,
         color: row.category_color,
         icon: row.category_icon,
+        order: row.category_order_index,
       }
       : null,
   };

@@ -26,7 +26,11 @@ Current state:
 - Category write unification is complete/validated
 - Completion write unification is implemented; primary recovery/rerun-latch validation is complete
 - Completion coalescing is implemented and validated
+- Completion local tombstone is implemented and validated
 - Cache-policy unification (Option A -> Option B) is complete/validated
+- Todo Calendar V2 readiness is complete/validated on web and native baseline checks
+- Todo Calendar V2 cutover + legacy retirement landed: `calendar` tab now points to TC2, duplicate `TC2` tab is hidden, and the old monthly calendar runtime has been removed from active app code
+- Post-cutover promoted native smoke is still pending before any legacy-retirement decision
 - Strip-calendar legacy module remains in stabilization/debugging phase
 - Week Flow Calendar rewrite prototype is active (bounded weekly/monthly shell); spec remains SOT for the full replacement plan
 - Expo Router migration is complete/validated (file-based routing under `client/app/`)
@@ -37,6 +41,7 @@ Immediate objective:
 
 - maintain sync operational stability (retry/dead-letter/throughput monitoring)
 - reduce runtime debug log noise after Phase 3 integration
+- finish post-cutover promoted native smoke for Todo Calendar V2 and decide legacy monthly-calendar retirement timing
 - stabilize strip-calendar weekly/monthly settle behavior and mode-anchor consistency
 - finalize Week Flow Calendar rewrite spec and use it as the new source of truth for calendar UI replacement
 - prepare next feature track on top of common layer + screen-adapter contracts
@@ -361,6 +366,44 @@ Evidence:
 - `.kiro/specs/completion-coalescing/tasks.md`
 - `client/src/services/sync/pendingPush.js`
 - `client/e2e/completion-recovery.real.spec.js`
+
+### 2026-03-15
+
+- Todo Calendar V2 line-monthly baseline, cutover, and legacy retirement advanced
+  - `calendar` tab now renders TC2 as the primary monthly calendar path
+  - duplicate `TC2` tab was hidden from active bottom navigation
+  - old legacy monthly calendar route/runtime was retired from active app code
+  - TC2 readiness harness verified mounted create/update/delete refresh and coarse invalidate recovery on web
+  - adjacent-month cells remain in the fixed 42-day grid, but their labels/lines/overflow are hidden in the baseline UI
+
+Evidence:
+
+- `.kiro/specs/todo-calendar-v2-line-monthly/tasks.md`
+- `.kiro/specs/todo-calendar-v2-cutover-readiness/tasks.md`
+- `.kiro/specs/todo-calendar-v2-cutover/tasks.md`
+- `.kiro/specs/todo-calendar-legacy-retirement/tasks.md`
+- `client/e2e/todo-calendar-v2-readiness.spec.js`
+- `client/e2e/todo-calendar-v2-cutover.spec.js`
+
+### 2026-03-16
+
+- Completion local tombstone implemented
+  - SQLite `completions` now uses `deleted_at` for normal delete flow
+  - local completion restore reuses existing `_id`
+  - todo/category local delete cascades now tombstone completions instead of hard delete
+- Validation expanded
+  - full web + real-server E2E suite passed under Codex localhost wrapper
+  - guest migration completion import preserves exported `_id`
+
+Evidence:
+
+- `.kiro/specs/completion-local-tombstone/tasks.md`
+- `client/src/services/db/database.js`
+- `client/src/services/db/completionService.js`
+- `client/src/services/db/todoService.js`
+- `client/src/services/db/categoryService.js`
+- `client/src/hooks/queries/useToggleCompletion.js`
+- `server/src/controllers/authController.js`
 
 ### 2026-03-17
 

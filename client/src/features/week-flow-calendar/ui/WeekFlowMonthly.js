@@ -41,8 +41,8 @@ const TRIM_HYSTERESIS_WEEKS = WINDOW_PAGE_WEEKS * 8; // 56w buffer
 const HARD_WINDOW_WEEKS = TARGET_WINDOW_WEEKS + TRIM_HYSTERESIS_WEEKS;
 const PREFETCH_EDGE_ROWS = 4; // how early we extend near edges (perf-first, small buffer)
 const MONTHLY_VISIBLE_WEEK_COUNT = 5;
-const SUMMARY_BUFFER_BEFORE_WEEKS = 4;
-const SUMMARY_BUFFER_AFTER_WEEKS = 4;
+const SUMMARY_BUFFER_BEFORE_WEEKS = 3;
+const SUMMARY_BUFFER_AFTER_WEEKS = 2;
 
 function getMonthStartFromYmd(dateYmd) {
   if (!dateYmd || dateYmd.length < 7) return null;

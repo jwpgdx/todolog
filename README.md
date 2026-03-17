@@ -10,6 +10,7 @@ Todolog is designed to work fully offline, then sync safely to server and Google
 - SQLite as local source of truth for core entities
 - UUID v4 IDs generated client-side
 - Calendar module with month-batch fetch and cache
+- Todo Calendar V2 line-monthly renderer now backing the primary `calendar` tab
 - Common query/aggregation layer (SQLite-only candidate -> decision -> aggregation)
 - Screen adapter layer for TodoScreen/TodoCalendar/StripCalendar handoff conversion
 - Strip-calendar module with separate weekly/monthly list architecture + summary adapter integration
@@ -31,6 +32,8 @@ As of 2026-03-17:
 - Completion coalescing: implemented and validated (sync-start full-snapshot compaction + last-intent replay)
 - Web real-server recovery specs: added for `category`, `todo`, `completion`
   - completion matrix validated for `rapid toggle`, `recurring`, `mixed queue`, `dead_letter`, `restart`
+- Todo Calendar V2 line-monthly baseline: implemented
+- Todo Calendar V2 cutover: `calendar` tab now renders TC2 as the primary monthly calendar path, and the legacy monthly calendar runtime has been retired
 - Strip-calendar stabilization/debugging: ongoing hardening (adapter path already active)
 - Expo Router migration: implemented (file-based routing under `client/app/`)
 - Expo SDK 55 upgrade: complete and validated
@@ -88,12 +91,13 @@ Server:
 │  │  ├─ api/
 │  │  ├─ features/
 │  │  │  ├─ todo/
-│  │  │  ├─ todo-calendar/
+│  │  │  ├─ todo-calendar-v2/
 │  │  │  └─ strip-calendar/
 │  │  ├─ services/
 │  │  │  ├─ db/
 │  │  │  └─ sync/
-│  │  └─ store/
+│  │  ├─ store/
+│  │  └─ utils/
 │  └─ docs/
 ├─ server/
 │  └─ src/
@@ -278,8 +282,9 @@ Client:
 - Sync orchestration: `client/src/services/sync/index.js`
 - Common query/aggregation: `client/src/services/query-aggregation/index.js`
 - Screen adapters: `client/src/services/query-aggregation/adapters/index.js`
-- Calendar data hook: `client/src/features/todo-calendar/hooks/useTodoCalendarData.js`
-- Calendar bridge service: `client/src/features/todo-calendar/services/calendarTodoService.js`
+- TC2 month data hook: `client/src/features/todo-calendar-v2/hooks/useTodoCalendarV2Data.js`
+- TC2 month fetch service: `client/src/features/todo-calendar-v2/services/fetchMonthLayouts.js`
+- Calendar month helpers: `client/src/utils/calendarMonthHelpers.js`
 - Strip-calendar shell: `client/src/features/strip-calendar/ui/StripCalendarShell.js`
 - Strip-calendar weekly/monthly lists: `client/src/features/strip-calendar/ui/WeeklyStripList.js`, `client/src/features/strip-calendar/ui/MonthlyStripList.js`
 - Strip-calendar summary service: `client/src/features/strip-calendar/services/stripCalendarSummaryService.js`
@@ -316,6 +321,10 @@ If you are an AI agent, read in this order:
 5. `ROADMAP.md`
 6. Relevant `.kiro/specs/<feature>/...`
 
+Codex Expo note:
+
+- The local Codex skill `upgrading-expo` is available and listed in `AGENTS.md`; use it for future Expo SDK maintenance work.
+
 ## Documentation Map
 
 - AI behavior and constraints: `.kiro/steering/requirements.md`
@@ -336,7 +345,7 @@ If you are an AI agent, read in this order:
 
 3. Calendar view not updating after edits
 - Check invalidation paths in todo/completion mutation hooks.
-- Confirm month cache invalidation in `todoCalendarStore`.
+- Confirm TC2 invalidation bridge and shared range cache invalidation both ran.
 
 ## License
 

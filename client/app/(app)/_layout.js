@@ -5,6 +5,10 @@ import { getFocusedRouteNameFromRoute } from '@react-navigation/native';
 import { useTimeZone } from '../../src/hooks/useTimeZone';
 import { useAuthStore } from '../../src/store/authStore';
 
+export const unstable_settings = {
+  anchor: '(tabs)',
+};
+
 const TAB_TITLES = {
   index: '홈',
   calendar: '캘린더',
@@ -86,6 +90,26 @@ export default function AppLayout() {
           headerBackTitle: '뒤로',
           headerShown: true,
           title: '색상 선택',
+        }}
+      />
+
+      <Stack.Screen
+        name="todo-form/v2"
+        options={{
+          headerShown: false,
+          presentation: 'formSheet',
+          sheetAllowedDetents: [0.75, 1],
+          sheetInitialDetentIndex: 0,
+          sheetGrabberVisible: Platform.OS === 'ios',
+          sheetCornerRadius: 28,
+          webModalStyle: {
+            width: 'min(960px, 94vw)',
+            minWidth: 360,
+            minHeight: 'min(760px, 88vh)',
+            border: '1px solid #E5E7EB',
+            overlayBackground: 'rgba(15, 23, 42, 0.24)',
+            shadow: 'drop-shadow(0 24px 80px rgba(15, 23, 42, 0.18))',
+          },
         }}
       />
 
@@ -291,13 +315,6 @@ export default function AppLayout() {
         }}
       />
 
-      <Stack.Screen
-        name="todo-calendar"
-        options={{
-          headerShown: true,
-          title: '무한 스크롤 캘린더',
-        }}
-      />
     </Stack>
   );
 }

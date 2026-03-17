@@ -32,9 +32,9 @@ function listDateRangeInclusive(startDate, endDate) {
 }
 
 function decideNonRecurringForDate(todo, targetDate) {
-  const singleDate = normalizeDateOnlyString(todo.date);
-  const startDate = normalizeDateOnlyString(todo.startDate || todo.date);
+  const startDate = normalizeDateOnlyString(todo.startDate || null);
   const endDate = normalizeDateOnlyString(todo.endDate || startDate);
+  const singleDate = !startDate ? normalizeDateOnlyString(todo.date) : null;
 
   if (singleDate) {
     if (singleDate === targetDate) return { pass: true, reason: 'single' };
@@ -83,9 +83,9 @@ function decideRecurringForDate(todo, targetDate) {
 }
 
 function decideNonRecurringForRange(todo, rangeStart, rangeEnd) {
-  const singleDate = normalizeDateOnlyString(todo.date);
-  const startDate = normalizeDateOnlyString(todo.startDate || todo.date);
+  const startDate = normalizeDateOnlyString(todo.startDate || null);
   const endDate = normalizeDateOnlyString(todo.endDate || startDate);
+  const singleDate = !startDate ? normalizeDateOnlyString(todo.date) : null;
 
   if (singleDate) {
     if (isWithinRange(singleDate, rangeStart, rangeEnd)) {
