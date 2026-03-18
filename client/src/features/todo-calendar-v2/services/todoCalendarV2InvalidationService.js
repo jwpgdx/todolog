@@ -1,6 +1,7 @@
 import dayjs from 'dayjs';
 
 import { invalidateRangeCacheByDateRange } from '../../../services/query-aggregation/cache';
+import { hasRecurrenceRule } from '../../../utils/recurrenceEngine';
 import { useTodoCalendarV2Store } from '../store/useTodoCalendarV2Store';
 
 function rangesOverlap(left, right) {
@@ -15,10 +16,7 @@ function rangesOverlap(left, right) {
 }
 
 function hasRecurrence(todo) {
-  const recurrence = todo?.recurrence;
-  if (!recurrence) return false;
-  if (typeof recurrence === 'string') return recurrence.trim().length > 0;
-  return true;
+  return hasRecurrenceRule(todo?.recurrence);
 }
 
 function resolveTodoStartDate(todo) {

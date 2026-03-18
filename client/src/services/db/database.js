@@ -133,8 +133,6 @@ CREATE TABLE IF NOT EXISTS completions (
 
 CREATE INDEX IF NOT EXISTS idx_completions_date ON completions(date);
 CREATE INDEX IF NOT EXISTS idx_completions_todo ON completions(todo_id);
-CREATE INDEX IF NOT EXISTS idx_completions_active_date ON completions(date) WHERE deleted_at IS NULL;
-CREATE INDEX IF NOT EXISTS idx_completions_active_todo ON completions(todo_id) WHERE deleted_at IS NULL;
 
 CREATE TABLE IF NOT EXISTS pending_changes (
   id TEXT PRIMARY KEY,
@@ -164,8 +162,8 @@ let initPromise = null;
  * @returns {Promise<SQLiteDatabase>}
  */
 export async function initDatabase() {
-    // 이미 초기화됨
-    if (db) {
+    // 이미 초기화 완료됨
+    if (db && initDebugState.phase === 'ready') {
         const snapshot = snapshotInitDebugState();
         console.log(
             `📦 [DB] Already initialized (phase=${snapshot.phase}, runId=${snapshot.runId}, hasInitPromise=${snapshot.hasInitPromise ? 'Y' : 'N'})`
@@ -282,6 +280,11 @@ export async function initDatabase() {
             } else {
                 console.log('✅ [DB] No migration needed');
             }
+
+            // completions.deleted_at 는 v8에서 추가된 컬럼이라,
+            // 기존 v7 DB에서는 SCHEMA_SQL 단계에서 partial index를 만들 수 없다.
+            // 버전 메타데이터와 무관하게 여기서 한 번 더 reconciliation 한다.
+            await migrateV8AddCompletionDeletedAt();
             initDebugState.migrationMs = formatMs(nowMs() - migrationStart);
 
             console.log('✅ [DB] Database initialized successfully');
@@ -326,7 +329,9 @@ export async function initDatabase() {
             initDebugState.endedAtMs = nowMs();
             initDebugState.totalMs = formatMs(initDebugState.endedAtMs - initDebugState.startedAtMs);
 
-            return db;
+            const readyDb = db;
+            initPromise = null;
+            return readyDb;
 
         } catch (error) {
             console.error('❌ [DB] Initialization failed:', error);

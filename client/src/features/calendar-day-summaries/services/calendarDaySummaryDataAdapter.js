@@ -4,6 +4,7 @@ import {
 } from '../../../services/query-aggregation/cache/rangeCacheService';
 import { mergeRanges } from '../../../services/query-aggregation/cache/rangeMerge';
 import { normalizeRange } from '../../../services/query-aggregation/cache/rangeKey';
+import { hasRecurrenceRule } from '../../../utils/recurrenceEngine';
 
 import { DEFAULT_MAX_DOTS, DEBUG_CALENDAR_DAY_SUMMARIES } from '../utils/calendarDaySummaryConstants';
 import { useCalendarDaySummaryStore } from '../store/calendarDaySummaryStore';
@@ -17,10 +18,7 @@ function rangesOverlap(leftRange, rightRange) {
 }
 
 function hasRecurrence(todo) {
-  const recurrence = todo?.recurrence;
-  if (!recurrence) return false;
-  if (typeof recurrence === 'string') return recurrence.trim().length > 0;
-  return true;
+  return hasRecurrenceRule(todo?.recurrence);
 }
 
 function resolveTodoRange(todo) {

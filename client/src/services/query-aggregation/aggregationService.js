@@ -1,3 +1,5 @@
+import { hasRecurrenceRule } from '../../utils/recurrenceEngine';
+
 function buildCompletionMap(completions) {
   const map = {};
   for (const completion of completions || []) {
@@ -14,12 +16,13 @@ function toDateTimeOrNull(date, time) {
 
 function buildBaseItem(todo) {
   const category = todo.category || null;
+  const hasRecurrence = hasRecurrenceRule(todo.recurrence);
   return {
     // 호환 필드
     _id: todo._id,
     categoryId: todo.categoryId || null,
     memo: todo.memo || null,
-    recurrence: todo.recurrence || null,
+    recurrence: hasRecurrence ? todo.recurrence : null,
     recurrenceEndDate: todo.recurrenceEndDate || null,
     createdAt: todo.createdAt,
     updatedAt: todo.updatedAt,
@@ -36,7 +39,7 @@ function buildBaseItem(todo) {
 
     // 공통 DTO 필드
     todoId: todo._id,
-    isRecurring: Boolean(todo.recurrence),
+    isRecurring: hasRecurrence,
     completionKey: '',
     completionId: null,
     completed: false,
@@ -44,7 +47,7 @@ function buildBaseItem(todo) {
 }
 
 function buildCompletionKey(todo, targetDate) {
-  if (todo.recurrence) {
+  if (hasRecurrenceRule(todo.recurrence)) {
     return `${todo._id}_${targetDate}`;
   }
   return `${todo._id}_null`;
@@ -136,4 +139,3 @@ export function aggregateForRange({ candidates, decision, range }) {
     error: null,
   };
 }
-

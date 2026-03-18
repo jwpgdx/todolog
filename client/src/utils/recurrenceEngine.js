@@ -15,6 +15,20 @@ const VALID_DAY_CODES = new Set(['SU', 'MO', 'TU', 'WE', 'TH', 'FR', 'SA']);
 
 export const MAX_EXPANSION_DAYS = 366;
 
+export function hasRecurrenceRule(rawRecurrence) {
+  if (!rawRecurrence) return false;
+
+  if (Array.isArray(rawRecurrence)) {
+    return rawRecurrence.some((item) => hasRecurrenceRule(item));
+  }
+
+  if (typeof rawRecurrence === 'string') {
+    return rawRecurrence.trim().length > 0;
+  }
+
+  return true;
+}
+
 /**
  * Normalize date-like value into YYYY-MM-DD (strict).
  * Returns null when input is invalid.
@@ -251,7 +265,7 @@ function detectInputType(rawRecurrence) {
 }
 
 function unwrapRecurrenceInput(rawRecurrence) {
-  if (!rawRecurrence) return null;
+  if (!hasRecurrenceRule(rawRecurrence)) return null;
 
   if (Array.isArray(rawRecurrence)) {
     for (const item of rawRecurrence) {

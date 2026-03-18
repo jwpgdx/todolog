@@ -1,6 +1,7 @@
 import {
   addDaysDateOnly,
   expandOccurrencesInRange,
+  hasRecurrenceRule,
   normalizeDateOnlyString,
   normalizeRecurrence,
   occursOnDateNormalized,
@@ -201,7 +202,7 @@ export function decideForDate(candidates, targetDate) {
   for (const todo of todoCandidates) {
     if (!todo?._id) continue;
 
-    const isRecurring = Boolean(todo.recurrence);
+    const isRecurring = hasRecurrenceRule(todo.recurrence);
     const branchStart = performance.now();
     const decision = isRecurring
       ? decideRecurringForDate(todo, normalizedTargetDate)
@@ -298,7 +299,7 @@ export function decideForRange(candidates, rangeStart, rangeEnd) {
   for (const todo of todoCandidates) {
     if (!todo?._id) continue;
 
-    const isRecurring = Boolean(todo.recurrence);
+    const isRecurring = hasRecurrenceRule(todo.recurrence);
     const branchStart = performance.now();
     const decision = isRecurring
       ? decideRecurringForRange(todo, normalizedRangeStart, normalizedRangeEnd)

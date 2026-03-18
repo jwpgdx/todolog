@@ -1,4 +1,5 @@
 import dayjs from 'dayjs';
+import { hasRecurrenceRule } from './recurrenceEngine';
 
 /**
  * Todo 변경 시 영향받는 월 목록을 계산
@@ -12,7 +13,7 @@ export const getAffectedMonths = (todo) => {
     const startDate = dayjs(todo.startDate);
 
     // 단일 일정
-    if (!todo.recurrence) {
+    if (!hasRecurrenceRule(todo.recurrence)) {
         const endDate = todo.endDate ? dayjs(todo.endDate) : startDate;
 
         let current = startDate.startOf('month');
