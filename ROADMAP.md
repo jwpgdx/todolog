@@ -27,7 +27,7 @@ Current state:
 - Completion write unification is implemented; primary recovery/rerun-latch validation is complete
 - Completion coalescing is implemented and validated
 - Completion local tombstone is implemented and validated
-- Guest local-only bootstrap + all-to-Inbox migration is implemented and validated (iOS simulator + Maestro login/signup branch verification complete)
+- Guest local-only bootstrap + all-to-Inbox migration is implemented and validated (iOS simulator + Maestro login/signup branch verification complete, forced signup partial-failure boundary verified)
 - Cache-policy unification (Option A -> Option B) is complete/validated
 - Todo Calendar V2 readiness is complete/validated on web and native baseline checks
 - Todo Calendar V2 cutover + legacy retirement landed: `calendar` tab now points to TC2, the duplicate standalone `TC2` tab route has been removed, and the old monthly calendar runtime has been removed from active app code
@@ -438,6 +438,7 @@ Evidence:
   - existing login: `취소 / 버리기 / 가져오기` pass
   - signup: `취소 / 버리기 / 가져오기` pass
   - server verification confirms Inbox-only import and imported completion -> imported todo linkage
+  - forced signup partial-failure: `register` succeeds, migrate rolls back, guest session/local SQLite stay intact, server account remains Inbox-only with no imported todo/completion
 - iOS simulator dev launcher default stabilized
   - `ios-sim` launcher now defaults to `host=lan` to avoid dev-client `localhost` reload failures
 

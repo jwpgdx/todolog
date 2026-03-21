@@ -112,11 +112,11 @@
 10. [x] 신규 가입 + `취소` -> signup abort, guest session/data 유지
 11. [x] 신규 가입 + `버리기` -> guest SQLite clear 후 normal register
 12. [x] 신규 가입 + `가져오기` -> `register -> migrateGuestData` 성공 후 guest local clear
-13. [ ] signup `가져오기`에서 migration 실패 시 guest session이 active 상태로 유지됨
+13. [x] signup `가져오기`에서 migration 실패 시 guest session이 active 상태로 유지됨
 14. [x] ActionSheet copy가 Inbox 이관 / 카테고리 구조 미보존을 명시함
 15. [x] 모든 guest todo가 target Inbox category로 매핑됨
 16. [x] guest categories가 대상 계정에 recreated되지 않음
-17. [ ] migration 실패 시 guest local data 유지
+17. [x] migration 실패 시 guest local data 유지
 
 ## Requirements Traceability Matrix
 

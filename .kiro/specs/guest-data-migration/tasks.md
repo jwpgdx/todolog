@@ -74,13 +74,13 @@
 5. [x] signup + `취소` -> guest local data 유지
 6. [x] signup + `버리기` -> guest local SQLite clear 후 normal register
 7. [x] signup + `가져오기` -> `register -> migrateGuestData` 성공 후 guest local clear
-8. [ ] signup `가져오기`에서 migration 실패 시 guest session이 active 상태로 유지됨
+8. [x] signup `가져오기`에서 migration 실패 시 guest session이 active 상태로 유지됨
 9. [ ] migration request가 canonical todo DTO를 사용하고 legacy `date` 를 보내지 않음
 10. [x] ActionSheet copy가 Inbox 이관 / 카테고리 미보존을 명시함
 11. [x] 모든 imported guest todo가 target Inbox category로 들어감
 12. [x] guest categories가 대상 계정에 recreated되지 않음
 13. [x] imported completions가 imported todo ids를 참조함
-14. [ ] migration 실패 시 guest local SQLite가 그대로 유지됨
+14. [x] migration 실패 시 guest local SQLite가 그대로 유지됨
 
 ## Requirements Traceability Matrix
 

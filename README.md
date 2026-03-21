@@ -36,6 +36,7 @@ As of 2026-03-21:
   - login/signup begin from My Page and import all guest todos into account Inbox
   - migration now uses canonical todo/completion DTOs instead of raw local guest objects
   - iOS simulator + Maestro validated `login/signup -> 취소 / 버리기 / 가져오기` branches
+  - forced signup partial-failure validation confirmed guest session/local data retention and Inbox-only server rollback
 - Web real-server recovery specs: added for `category`, `todo`, `completion`
   - completion matrix validated for `rapid toggle`, `recurring`, `mixed queue`, `dead_letter`, `restart`
 - Todo Calendar V2 line-monthly baseline: implemented

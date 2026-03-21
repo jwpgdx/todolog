@@ -44,7 +44,7 @@ Server:
 - Completion write unification: implemented and validated (`always-pending` toggle + sync rerun latch + completion-aware invalidation)
 - Completion coalescing: implemented and validated (sync-start full snapshot compaction + superseded completion pending retirement)
 - Completion local tombstone: implemented and validated (`completions.deleted_at`, restore-aware local writes, todo/category cascade tombstone, guest migration `_id` preservation)
-- Guest local-only bootstrap + all-to-Inbox migration: implemented and validated (default startup -> Todo route, serverless `guest_local`, seeded Inbox-only empty rule, My Page auth entry, canonical migration DTO, `migrateGuestData` Inbox import, iOS simulator + Maestro login/signup `취소/버리기/가져오기` branches)
+- Guest local-only bootstrap + all-to-Inbox migration: implemented and validated (default startup -> Todo route, serverless `guest_local`, seeded Inbox-only empty rule, My Page auth entry, canonical migration DTO, `migrateGuestData` Inbox import, iOS simulator + Maestro login/signup `취소/버리기/가져오기` branches, forced signup partial-failure keeps guest session/local SQLite intact until migration succeeds)
 - Cache-policy unification (Option A -> Option B): complete and validated (shared range cache + sync invalidation unification)
 - Cache retention (memory control): enabled (shared range cache + calendar L1 caches pruned to anchor ±6 months)
 - Expo SDK 55 upgrade: complete and validated (`expo` `55.0.6`, `react-native` `0.83.2`, React Compiler enabled, unused `zeego`/native-menu deps removed)
@@ -56,7 +56,7 @@ Server:
 - UI navigation: Expo Router groups `/(auth)` + `/(app)` with tabs under `client/app/(app)/(tabs)` (e.g. My Page: `/(app)/(tabs)/my-page`)
 - My Page subtree routing: My Page에서 여는 Settings/Profile/Category/Debug 화면은 `client/app/(app)/(tabs)/my-page/*` 아래로 push되어 iOS Large Title/back label UX를 유지
 - Real-server recovery web E2E: category/todo/completion recovery specs validated; completion extended matrix (`rapid toggle`, `recurring`, `mixed queue`, `dead_letter`, `restart`) validated
-- Guest migration server validation: completion import preserves exported active `_id`
+- Guest migration server validation: completion import preserves exported active `_id`, and forced signup partial-failure rolls back imported todos/completions so the server account remains Inbox-only
 
 ### 2.3 Tooling and upgrade notes
 
