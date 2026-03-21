@@ -1,6 +1,6 @@
 # Todolog Roadmap
 
-Last Updated: 2026-03-17
+Last Updated: 2026-03-21
 Owner: Product + Engineering
 
 ## 1. Purpose
@@ -27,9 +27,10 @@ Current state:
 - Completion write unification is implemented; primary recovery/rerun-latch validation is complete
 - Completion coalescing is implemented and validated
 - Completion local tombstone is implemented and validated
+- Guest local-only bootstrap + all-to-Inbox migration is implemented and validated (iOS simulator + Maestro login/signup branch verification complete)
 - Cache-policy unification (Option A -> Option B) is complete/validated
 - Todo Calendar V2 readiness is complete/validated on web and native baseline checks
-- Todo Calendar V2 cutover + legacy retirement landed: `calendar` tab now points to TC2, duplicate `TC2` tab is hidden, and the old monthly calendar runtime has been removed from active app code
+- Todo Calendar V2 cutover + legacy retirement landed: `calendar` tab now points to TC2, the duplicate standalone `TC2` tab route has been removed, and the old monthly calendar runtime has been removed from active app code
 - Post-cutover promoted native smoke is still pending before any legacy-retirement decision
 - Strip-calendar legacy module remains in stabilization/debugging phase
 - Week Flow Calendar rewrite prototype is active (bounded weekly/monthly shell); spec remains SOT for the full replacement plan
@@ -424,6 +425,34 @@ Evidence:
 - `PROJECT_CONTEXT.md`
 - `README.md`
 - `AGENTS.md`
+
+### 2026-03-21
+
+- Guest local-only bootstrap + all-to-Inbox migration finished
+  - app default entry now goes directly to Todo tabs instead of Welcome
+  - guest startup is local-only (`guest_local`) and no longer depends on `/auth/guest`
+  - My Page is the primary auth entry and preserves guest state until `취소 / 버리기 / 가져오기` resolves
+  - signup/login migration now imports all guest todos into the target Inbox and does not recreate guest categories
+  - canonical guest migration DTOs now replace raw local todo payloads
+- iOS guest auth branches validated with Maestro
+  - existing login: `취소 / 버리기 / 가져오기` pass
+  - signup: `취소 / 버리기 / 가져오기` pass
+  - server verification confirms Inbox-only import and imported completion -> imported todo linkage
+- iOS simulator dev launcher default stabilized
+  - `ios-sim` launcher now defaults to `host=lan` to avoid dev-client `localhost` reload failures
+
+Evidence:
+
+- `.kiro/specs/guest-login-rework/tasks.md`
+- `.kiro/specs/guest-data-migration/tasks.md`
+- `client/src/store/authStore.js`
+- `client/src/screens/LoginScreen.js`
+- `client/src/screens/ConvertGuestScreen.js`
+- `client/src/screens/MyPageScreen.js`
+- `client/scripts/dev-launcher.js`
+- `client/.maestro/ios-guest-login-migrate.yaml`
+- `client/.maestro/ios-guest-signup-migrate.yaml`
+- `server/src/controllers/authController.js`
 
 ## 4. Next Milestones (Planned)
 

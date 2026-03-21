@@ -49,6 +49,51 @@ async function ensureInbox(userId) {
   return inbox;
 }
 
+function deriveAuthAccountType(user) {
+  if (!user) return 'anonymous';
+
+  if (user.provider === 'google' || user.googleId) {
+    return 'google';
+  }
+
+  if (user.provider === 'apple' || user.appleId) {
+    return 'apple';
+  }
+
+  if (user.email || user.password || user.accountType === 'local') {
+    return 'local';
+  }
+
+  return 'anonymous';
+}
+
+async function reconcileAuthAccountType(user, options = {}) {
+  if (!user) return user;
+
+  const expectedAccountType = deriveAuthAccountType(user);
+  if (user.accountType !== expectedAccountType) {
+    user.accountType = expectedAccountType;
+    await user.save(options);
+  }
+
+  return user;
+}
+
+function serializeAuthUser(user) {
+  return {
+    _id: user._id,
+    id: user._id,
+    email: user.email,
+    name: user.name,
+    accountType: user.accountType,
+    provider: user.provider,
+    hasCalendarAccess: !!user.googleAccessToken,
+    settings: user.settings,
+    ...(user.picture ? { picture: user.picture } : {}),
+    ...(user.handle ? { handle: user.handle } : {}),
+  };
+}
+
 exports.register = async (req, res) => {
   try {
     const { email, password, name, timeZone } = req.body;
@@ -117,6 +162,7 @@ exports.register = async (req, res) => {
       email,
       password: hashedPassword,
       name,
+      accountType: 'local',
       handle: validatedHandle,
       settings: {
         timeZone: timeZone || 'Asia/Seoul',
@@ -133,15 +179,7 @@ exports.register = async (req, res) => {
 
     res.status(201).json({
       token,
-      user: {
-        _id: user._id,
-        id: user._id,
-        email: user.email,
-        name: user.name,
-        provider: user.provider,
-        hasCalendarAccess: !!user.googleAccessToken,
-        settings: user.settings,
-      },
+      user: serializeAuthUser(user),
     });
   } catch (error) {
     res.status(500).json({ message: 'Server error', error: error.message });
@@ -197,16 +235,7 @@ exports.createGuest = async (req, res) => {
     res.status(201).json({
       accessToken,
       refreshToken,
-      user: {
-        _id: user._id,
-        id: user._id,
-        email: user.email,
-        name: user.name,
-        accountType: user.accountType,
-        provider: user.provider,
-        hasCalendarAccess: !!user.googleAccessToken,
-        settings: user.settings,
-      },
+      user: serializeAuthUser(user),
     });
   } catch (error) {
     console.error('Create guest error:', error);
@@ -295,16 +324,7 @@ exports.convertGuest = async (req, res) => {
 
     res.json({
       message: '회원 전환 완료',
-      user: {
-        _id: user._id,
-        id: user._id,
-        email: user.email,
-        name: user.name,
-        accountType: user.accountType,
-        provider: user.provider,
-        hasCalendarAccess: !!user.googleAccessToken,
-        settings: user.settings,
-      },
+      user: serializeAuthUser(user),
     });
   } catch (error) {
     console.error('Convert guest error:', error);
@@ -322,7 +342,7 @@ exports.login = async (req, res) => {
       return res.status(400).json({ message: 'Email and password are required' });
     }
 
-    const user = await User.findOne({ email });
+    let user = await User.findOne({ email });
     if (!user) {
       console.log('User not found:', email);
       return res.status(400).json({ message: '존재하지 않는 이메일입니다.' });
@@ -337,6 +357,7 @@ exports.login = async (req, res) => {
 
     console.log('Password match, creating token...');
 
+    user = await reconcileAuthAccountType(user);
     await ensureInbox(user._id);
 
     const token = jwt.sign({ userId: user._id }, process.env.JWT_SECRET, {
@@ -347,15 +368,7 @@ exports.login = async (req, res) => {
 
     res.json({
       token,
-      user: {
-        _id: user._id,
-        id: user._id,
-        email: user.email,
-        name: user.name,
-        provider: user.provider,
-        hasCalendarAccess: !!user.googleAccessToken,
-        settings: user.settings,
-      },
+      user: serializeAuthUser(user),
     });
   } catch (error) {
     console.error('Login error:', error);
@@ -386,6 +399,7 @@ exports.googleLogin = async (req, res) => {
         email,
         name,
         googleId,
+        accountType: 'google',
         provider: 'google',
         picture,
       });
@@ -393,6 +407,7 @@ exports.googleLogin = async (req, res) => {
     } else if (!user.googleId) {
       // 기존 이메일 계정에 구글 연동
       user.googleId = googleId;
+      user.accountType = 'google';
       user.provider = 'google';
       user.picture = picture;
       await user.save();
@@ -407,16 +422,7 @@ exports.googleLogin = async (req, res) => {
 
     res.json({
       token,
-      user: {
-        _id: user._id,
-        id: user._id,
-        email: user.email,
-        name: user.name,
-        picture: user.picture,
-        provider: user.provider,
-        hasCalendarAccess: !!user.googleAccessToken,
-        settings: user.settings,
-      },
+      user: serializeAuthUser(user),
     });
   } catch (error) {
     console.error('Google login error:', error);
@@ -438,14 +444,17 @@ exports.googleLoginWeb = async (req, res) => {
 
     if (!user) {
       user = await User.create({
+        _id: generateId(),
         email,
         name,
         googleId,
+        accountType: 'google',
         provider: 'google',
       });
     } else if (!user.googleId) {
       // 기존 이메일 계정에 구글 연동
       user.googleId = googleId;
+      user.accountType = 'google';
       user.provider = 'google';
       await user.save();
     }
@@ -459,15 +468,7 @@ exports.googleLoginWeb = async (req, res) => {
 
     res.json({
       token,
-      user: {
-        _id: user._id,
-        id: user._id,
-        email: user.email,
-        name: user.name,
-        provider: user.provider,
-        hasCalendarAccess: !!user.googleAccessToken,
-        settings: user.settings,
-      },
+      user: serializeAuthUser(user),
     });
   } catch (error) {
     console.error('Google web login error:', error);
@@ -917,7 +918,7 @@ exports.migrateGuestData = async (req, res) => {
     const { email, password, guestData } = req.body;
     
     // 1. 사용자 인증
-    const user = await User.findOne({ email }).session(session);
+    let user = await User.findOne({ email }).session(session);
     
     if (!user) {
       await session.abortTransaction();
@@ -935,25 +936,23 @@ exports.migrateGuestData = async (req, res) => {
         message: '비밀번호가 일치하지 않습니다' 
       });
     }
+
+    user = await reconcileAuthAccountType(user, { session });
     
-    // 2. 마이그레이션된 카테고리 생성
-    const migratedCategoryId = generateId();
-    const categoryName = user.settings?.language === 'en' 
-      ? 'Migrated Category' 
-      : '마이그레이션된 카테고리';
-    
-    await Category.create([{
-      _id: migratedCategoryId,
+    const targetInbox = await Category.findOne({
       userId: user._id,
-      name: categoryName,
-      color: '#9CA3AF',  // Gray-400
-      order: 999,  // 맨 뒤로
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    }], { session });
-    
-    console.log(`✅ [Migration] Created migrated category: ${migratedCategoryId}`);
-    
+      systemKey: 'inbox',
+      deletedAt: null,
+    }).session(session);
+
+    if (!targetInbox) {
+      await session.abortTransaction();
+      return res.status(409).json({
+        success: false,
+        message: '대상 계정 Inbox를 찾을 수 없습니다',
+      });
+    }
+
     // 3. Todos 삽입
     const Todo = require('../models/Todo');
     const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
@@ -1058,7 +1057,7 @@ exports.migrateGuestData = async (req, res) => {
         _id: todo._id,
         userId: user._id,
         title: todo.title.trim(),
-        categoryId: migratedCategoryId,  // 모두 새 카테고리로
+        categoryId: targetInbox._id,
         memo: typeof todo.memo === 'string' ? todo.memo : null,
         startDate,
         endDate: endDate || null,
@@ -1092,17 +1091,19 @@ exports.migrateGuestData = async (req, res) => {
     
     // 4. Completions 삽입
     const Completion = require('../models/Completion');
+    const importedTodoIds = new Set(todosToInsert.map(todo => todo._id));
     const completionValidationErrors = [];
-    const completionsToInsert = guestData.completions.map(comp => ({
-      _id: comp._id,
-      key: comp.key,
-      todoId: comp.todoId,
-      userId: user._id,
-      date: comp.date,
-      completedAt: comp.completedAt,
-    }));
+    const completionsToInsert = [];
 
-    completionsToInsert.forEach((completion, index) => {
+    guestData.completions.forEach((comp, index) => {
+      const completion = {
+        _id: comp._id,
+        key: comp.key,
+        todoId: comp.todoId,
+        userId: user._id,
+        date: comp.date,
+        completedAt: comp.completedAt,
+      };
       const rowErrors = [];
 
       if (typeof completion._id !== 'string' || !completion._id.trim()) {
@@ -1117,6 +1118,9 @@ exports.migrateGuestData = async (req, res) => {
       if (!completion.completedAt) {
         rowErrors.push('completedAt is required');
       }
+      if (!importedTodoIds.has(completion.todoId)) {
+        rowErrors.push('todoId must reference an imported todo');
+      }
 
       if (rowErrors.length > 0) {
         completionValidationErrors.push({
@@ -1124,7 +1128,10 @@ exports.migrateGuestData = async (req, res) => {
           _id: completion?._id ?? null,
           errors: rowErrors,
         });
+        return;
       }
+
+      completionsToInsert.push(completion);
     });
 
     if (completionValidationErrors.length > 0) {
@@ -1152,11 +1159,24 @@ exports.migrateGuestData = async (req, res) => {
     }
     
     const allHaveCorrectCategory = verifyTodos.every(
-      t => t.categoryId === migratedCategoryId
+      t => t.categoryId === targetInbox._id
     );
     
     if (!allHaveCorrectCategory) {
       throw new Error('Category assignment verification failed');
+    }
+
+    const verifyCompletions = await Completion.find({
+      userId: user._id,
+      _id: { $in: completionsToInsert.map(c => c._id) },
+    }).session(session);
+
+    const allCompletionsLinked = verifyCompletions.every(
+      completion => importedTodoIds.has(completion.todoId)
+    );
+
+    if (!allCompletionsLinked) {
+      throw new Error('Completion linkage verification failed');
     }
     
     console.log('✅ [Migration] Data integrity verified');
@@ -1175,17 +1195,8 @@ exports.migrateGuestData = async (req, res) => {
       success: true,
       message: '마이그레이션 완료',
       token,
-      user: {
-        _id: user._id,
-        id: user._id,
-        email: user.email,
-        name: user.name,
-        accountType: user.accountType,
-        provider: user.provider,
-        hasCalendarAccess: !!user.googleAccessToken,
-        settings: user.settings,
-      },
-      migratedCategoryId,
+      user: serializeAuthUser(user),
+      targetInboxCategoryId: targetInbox._id,
       stats: {
         todosInserted: todosToInsert.length,
         completionsInserted: completionsToInsert.length,
@@ -1199,7 +1210,6 @@ exports.migrateGuestData = async (req, res) => {
       stack: error.stack,
       guestDataSize: {
         todos: req.body.guestData?.todos?.length || 0,
-        categories: req.body.guestData?.categories?.length || 0,
         completions: req.body.guestData?.completions?.length || 0,
       },
     });

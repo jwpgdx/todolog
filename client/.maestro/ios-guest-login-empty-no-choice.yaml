@@ -1,0 +1,20 @@
+appId: com.anonymous.client.r6l8abtkq3
+---
+- launchApp:
+    appId: com.anonymous.client.r6l8abtkq3
+    clearState: false
+- assertVisible: 2026년 3월
+- tapOn:
+    point: "60%,96%"
+- assertVisible: 기존 회원 로그인
+- tapOn: 기존 회원 로그인
+- tapOn: 이메일
+- inputText: ${LOGIN_EMAIL}
+- tapOn: 비밀번호 (6자 이상)
+- inputText: ${LOGIN_PASSWORD}
+- tapOn: 로그인
+- tapOn:
+    text: 지금 안 함
+    optional: true
+- assertVisible: 2026년 3월
+- assertNotVisible: 게스트 데이터 발견

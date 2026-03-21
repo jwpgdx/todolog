@@ -1,0 +1,27 @@
+appId: com.anonymous.client.r6l8abtkq3
+---
+- launchApp:
+    appId: com.anonymous.client.r6l8abtkq3
+    clearState: false
+- assertVisible: 2026년 3월
+- tapOn:
+    point: "60%,96%"
+- tapOn: 회원가입
+- tapOn: 이름을 입력하세요
+- inputText: ${SIGNUP_NAME}
+- tapOn: email@example.com
+- inputText: ${SIGNUP_EMAIL}
+- tapOn: 최소 6자 이상
+- inputText: ${SIGNUP_PASSWORD}
+- tapOn: 비밀번호를 다시 입력하세요
+- inputText: ${SIGNUP_PASSWORD}
+- tapOn: 게스트 데이터 안내
+- tapOn:
+    point: "50%,71%"
+- tapOn: 가져오기
+- tapOn:
+    text: 지금 안 함
+    optional: true
+- assertVisible: 2026년 3월
+- openLink: com.anonymous.client://my-page
+- assertNotVisible: 게스트로 사용 중입니다

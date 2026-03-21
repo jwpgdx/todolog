@@ -1,7 +1,7 @@
 # Todolog Project Context
 
-Last Updated: 2026-03-17
-Status: Sync hardening complete (Pending Push -> Delta Pull), Phase 3 Step 1 recurrence engine complete/validated, Phase 3 Step 2 common query/aggregation complete/validated, Phase 3 Step 3 screen-adapter layer complete/validated, category write unification complete/validated, completion write unification implemented/validated, completion coalescing implemented/validated, completion local tombstone implemented/validated, cache-policy unification complete/validated, Expo Router migration implemented (parity validation ongoing), Expo SDK 55 upgrade complete/validated, Todo Calendar V2 line-monthly baseline complete, readiness complete, and primary monthly tab cutover implemented (post-cutover promoted native smoke pending)
+Last Updated: 2026-03-21
+Status: Sync hardening complete (Pending Push -> Delta Pull), Phase 3 Step 1 recurrence engine complete/validated, Phase 3 Step 2 common query/aggregation complete/validated, Phase 3 Step 3 screen-adapter layer complete/validated, category write unification complete/validated, completion write unification implemented/validated, completion coalescing implemented/validated, completion local tombstone implemented/validated, guest local-only bootstrap + all-to-Inbox migration implemented/validated, cache-policy unification complete/validated, Expo Router migration implemented (parity validation ongoing), Expo SDK 55 upgrade complete/validated, Todo Calendar V2 line-monthly baseline complete, readiness complete, and primary monthly tab cutover implemented (post-cutover promoted native smoke pending)
 
 ## 1. Purpose
 
@@ -18,6 +18,7 @@ Client:
 
 - React Native `0.83.2`
 - Expo `55.0.6`
+- Expo Dev Client `~55.0.18`
 - Expo Router `55.0.5`
 - React `19.2.0`
 - Zustand `5.x`
@@ -43,23 +44,25 @@ Server:
 - Completion write unification: implemented and validated (`always-pending` toggle + sync rerun latch + completion-aware invalidation)
 - Completion coalescing: implemented and validated (sync-start full snapshot compaction + superseded completion pending retirement)
 - Completion local tombstone: implemented and validated (`completions.deleted_at`, restore-aware local writes, todo/category cascade tombstone, guest migration `_id` preservation)
+- Guest local-only bootstrap + all-to-Inbox migration: implemented and validated (default startup -> Todo route, serverless `guest_local`, seeded Inbox-only empty rule, My Page auth entry, canonical migration DTO, `migrateGuestData` Inbox import, iOS simulator + Maestro login/signup `취소/버리기/가져오기` branches)
 - Cache-policy unification (Option A -> Option B): complete and validated (shared range cache + sync invalidation unification)
 - Cache retention (memory control): enabled (shared range cache + calendar L1 caches pruned to anchor ±6 months)
 - Expo SDK 55 upgrade: complete and validated (`expo` `55.0.6`, `react-native` `0.83.2`, React Compiler enabled, unused `zeego`/native-menu deps removed)
 - Native validation after SDK 55 upgrade: Android `assembleDebug` + emulator launch succeeded; iOS simulator build/launch succeeded; `expo-doctor` now leaves only the `react-native-wheel-pick` New Architecture metadata warning
-- Todo Calendar V2 (`client/src/features/todo-calendar-v2/`): line-monthly baseline complete; `calendar` tab now renders TC2 as the primary monthly calendar path, adjacent-month cells stay in the 42-day grid but their labels/lines/overflow are hidden, completion glyphs remain out of scope in the frozen baseline, and the old `todo-calendar` runtime has been retired
+- Todo Calendar V2 (`client/src/features/todo-calendar-v2/`): line-monthly baseline complete; `calendar` tab now renders TC2 as the primary monthly calendar path, adjacent-month cells stay in the 42-day grid but their labels/lines/overflow are hidden, completion glyphs remain out of scope in the frozen baseline, the old `todo-calendar` runtime has been retired, and the duplicate standalone `TC2` tab route has been removed
 - Strip-calendar foundation (weekly/monthly shell + anchor sync + debug instrumentation): active and integrated via adapter path
-- Week Flow Calendar (rewrite prototype): bounded calendar UI shell under `client/src/features/week-flow-calendar/`, exposed via tabs `/(app)/(tabs)/week-flow` for side-by-side evaluation (not production default yet)
+- Week Flow Calendar (rewrite prototype): bounded calendar UI shell under `client/src/features/week-flow-calendar/`; Todo screen currently uses `WeekFlowTodoHeader`, and the dedicated `week-flow` evaluation tab has been removed
 - Expo Router migration: implemented (file-based routes under `client/app/`, entry via `expo-router/entry`); parity validation ongoing (Back/Modal/deep-link)
 - UI navigation: Expo Router groups `/(auth)` + `/(app)` with tabs under `client/app/(app)/(tabs)` (e.g. My Page: `/(app)/(tabs)/my-page`)
-- My Page subtree routing: My Page에서 여는 Settings/Profile/Category 화면은 `client/app/(app)/(tabs)/my-page/*` 아래로 push되어 iOS Large Title/back label UX를 유지
-- Modal/presentation test hub: `/(app)/test/modals` + `/(app)/test/form-sheet` (native-stack presentation 옵션별 플랫폼 동작 확인)
+- My Page subtree routing: My Page에서 여는 Settings/Profile/Category/Debug 화면은 `client/app/(app)/(tabs)/my-page/*` 아래로 push되어 iOS Large Title/back label UX를 유지
 - Real-server recovery web E2E: category/todo/completion recovery specs validated; completion extended matrix (`rapid toggle`, `recurring`, `mixed queue`, `dead_letter`, `restart`) validated
 - Guest migration server validation: completion import preserves exported active `_id`
 
 ### 2.3 Tooling and upgrade notes
 
-- Tracked native upgrade config now lives in `client/app.json` via `expo-build-properties`; `ios.buildReactNativeFromSource: true` is required because `client/ios` and `client/android` are gitignored local outputs and the iOS simulator build hit React Native prebuilt header/symbol mismatch under SDK 55.
+- Tracked native upgrade config lives in `client/app.json` with env-aware native overrides in `client/app.config.js`; `ios.buildReactNativeFromSource: true` is required because `client/ios` and `client/android` are gitignored local outputs and the iOS simulator build hit React Native prebuilt header/symbol mismatch under SDK 55. Local iOS device signing is now expected to come from `EXPO_IOS_APPLE_TEAM_ID` and `EXPO_IOS_BUNDLE_IDENTIFIER`, while simulator builds intentionally avoid a committed placeholder team ID.
+- Physical-device development builds now include `expo-dev-client` and use launcher mode so reopening after network changes prefers the dev-client launcher over silently reconnecting to a stale LAN Metro URL.
+- `client/scripts/dev-launcher.js` now defaults `ios-sim` to `host=lan` because the iOS dev-client path was unreliable when the simulator tried to reopen `localhost` directly.
 - `react-native-wheel-pick` is still present and is the only known non-blocking `expo-doctor` warning after the SDK 55 upgrade; replacement is planned with a native implementation later.
 - Codex local skill `upgrading-expo` is installed and listed in `AGENTS.md` for future Expo SDK upgrade work.
 
@@ -277,6 +280,22 @@ Behavior:
    - older `failed` rows with future `next_retry_at` are also superseded if a newer intent exists
 10. This superseded-row retirement is a narrow exception to the generic pending queue rule (`remove on success / keep failed for retry`) and applies only to superseded non-dead_letter completion rows.
 11. Guest-data migration exports only active completion rows and server import preserves the exported completion `_id`.
+
+### 6.2.2 Guest local-only startup and auth handoff flow
+
+1. `loadAuth()` restores a regular session if `token + user` exist and the user is not guest.
+2. If no regular session exists, the client bootstraps `guest_local` and persists it in AsyncStorage without calling `/auth/guest`.
+3. Guest bootstrap ensures a local active Inbox row exists in SQLite.
+4. App startup redirects to `/(app)/(tabs)`; `Welcome` is no longer the primary entry route.
+5. Guest auth entry begins from My Page only and must not clear the guest session before the user selects `로그인` / `회원가입` flow outcomes.
+6. Guest-data detection excludes the seeded Inbox-only state and counts only real todos/completions or non-Inbox user-created categories.
+7. Existing login and signup both expose `가져오기 / 버리기 / 취소`.
+8. `가져오기` sends canonical guest migration DTOs:
+   - todos: canonical schedule fields only
+   - completions: active completion rows only
+   - guest categories are not materialized on the server
+9. Successful migration clears guest SQLite, commits the authenticated session, then runs a signed-in sync pull.
+10. In signup `가져오기`, the regular session is not committed until `migrateGuestData` succeeds.
 
 ### 6.3 Calendar read flow
 

@@ -1,0 +1,14 @@
+appId: com.anonymous.client.r6l8abtkq3
+---
+- launchApp:
+    appId: com.anonymous.client.r6l8abtkq3
+    clearState: false
+- openLink: com.anonymous.client://my-page
+- assertVisible: My Page
+- assertVisible: 회원가입
+- tapOn: 회원가입
+- assertVisible: 회원가입
+- assertVisible: 이름
+- assertVisible: 이메일
+- assertVisible: 비밀번호
+- assertVisible: 비밀번호 확인

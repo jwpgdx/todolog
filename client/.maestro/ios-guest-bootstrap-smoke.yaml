@@ -1,0 +1,8 @@
+appId: com.anonymous.client.r6l8abtkq3
+---
+- launchApp:
+    appId: com.anonymous.client.r6l8abtkq3
+    clearState: false
+- assertVisible: 2026년 3월
+- assertVisible: 등록된 할 일이 없습니다. (업데이트 확인)
+- assertNotVisible: 시작하기

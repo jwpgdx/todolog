@@ -34,6 +34,8 @@ setQueryClient(queryClient);
 let hasRunCommonRangePrewarm = false;
 const PUBLIC_ROUTE_SEGMENTS = new Set([
   'native-list-interactions',
+  'native-settings-catalog',
+  'test-menu-reorder',
 ]);
 
 function addDays(date, days) {
@@ -83,7 +85,7 @@ function buildPrewarmRange(anchorDateOnly) {
 export default function RootLayout() {
   const router = useRouter();
   const segments = useSegments();
-  const { user, isLoading, loadAuth, shouldShowLogin } = useAuthStore();
+  const { user, isLoading, isLoggedIn, loadAuth, shouldShowLogin } = useAuthStore();
   const { currentDate, setCurrentDate } = useDateStore();
   const { mode } = useTodoFormStore();
   const { setColorScheme } = useColorScheme();
@@ -197,18 +199,22 @@ export default function RootLayout() {
     const isInAppGroup = rootSegment === '(app)';
     const isInPublicRoute = PUBLIC_ROUTE_SEGMENTS.has(rootSegment);
 
-    if (!user) {
-      const target = shouldShowLogin ? '/(auth)/login' : '/(auth)/welcome';
-      if (!isInAuthGroup && !isInPublicRoute) {
-        router.replace(target);
+    if (isLoggedIn) {
+      if (!isInAppGroup && !isInPublicRoute) {
+        router.replace('/(app)/(tabs)');
       }
       return;
     }
 
-    if (!isInAppGroup && !isInPublicRoute) {
+    if (shouldShowLogin && !isInAuthGroup && !isInPublicRoute) {
+      router.replace('/(auth)/login');
+      return;
+    }
+
+    if (!user && !isInPublicRoute) {
       router.replace('/(app)/(tabs)');
     }
-  }, [isLoading, user, shouldShowLogin, rootSegment, router]);
+  }, [isLoading, isLoggedIn, user, shouldShowLogin, rootSegment, router]);
 
   useEffect(() => {
     if (isLoading || hasInitializedCurrentDateRef.current) {

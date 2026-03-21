@@ -19,7 +19,7 @@ Todolog is designed to work fully offline, then sync safely to server and Google
 
 ## Current Status
 
-As of 2026-03-17:
+As of 2026-03-21:
 
 - Phase 1-2 calendar integration: complete
 - Phase 2.5 data normalization (floating date/time string contract): complete
@@ -30,6 +30,12 @@ As of 2026-03-17:
 - Category write unification: complete and validated (local-first + pending + background sync)
 - Completion write unification: implemented and primary recovery validated (always-pending toggle + rerun latch + completion-aware invalidation)
 - Completion coalescing: implemented and validated (sync-start full-snapshot compaction + last-intent replay)
+- Guest local-only bootstrap + migration rework: implemented and validated
+  - app default entry now goes straight to Todo tabs
+  - guest start is local-only (`guest_local`) and no longer depends on `/auth/guest`
+  - login/signup begin from My Page and import all guest todos into account Inbox
+  - migration now uses canonical todo/completion DTOs instead of raw local guest objects
+  - iOS simulator + Maestro validated `login/signup -> 취소 / 버리기 / 가져오기` branches
 - Web real-server recovery specs: added for `category`, `todo`, `completion`
   - completion matrix validated for `rapid toggle`, `recurring`, `mixed queue`, `dead_letter`, `restart`
 - Todo Calendar V2 line-monthly baseline: implemented
@@ -38,7 +44,7 @@ As of 2026-03-17:
 - Expo Router migration: implemented (file-based routing under `client/app/`)
 - Expo SDK 55 upgrade: complete and validated
   - client stack now resolves to Expo `55.0.6`, React Native `0.83.2`, React `19.2.0`
-  - React Compiler is enabled in `client/app.json`
+  - React Compiler is enabled through `client/app.json` with env-aware overrides in `client/app.config.js`
   - iOS prebuild now opts into React Native source build through `expo-build-properties`
   - Android emulator and iOS simulator smoke runs both passed on 2026-03-17
   - the only remaining non-blocking Expo doctor warning is `react-native-wheel-pick` New Architecture metadata
@@ -164,6 +170,13 @@ Create `client/.env`:
 EXPO_PUBLIC_API_URL=http://localhost:5000/api
 ```
 
+Optional for iOS physical-device builds, create `client/.env.local`:
+
+```env
+EXPO_IOS_APPLE_TEAM_ID=ABCDE12345
+EXPO_IOS_BUNDLE_IDENTIFIER=com.example.todolog
+```
+
 Create `server/.env`:
 
 ```env
@@ -204,8 +217,9 @@ Client launcher notes:
 
 - `cd client && npm run dev` opens an interactive Expo launcher menu.
 - The launcher auto-selects a free Metro port instead of assuming `8081`.
+- `npm run dev:device` respects `EXPO_PUBLIC_API_URL` from shell, `.env.local`, and `.env`; if none is set, it falls back to the detected LAN IP for device testing.
 - Default targets:
-  - `iOS Simulator` -> dev client + `localhost`
+  - `iOS Simulator` -> dev client + `lan`
   - `Android Emulator` -> dev client + `localhost`
   - `Physical Device (Tunnel)` -> dev client + `tunnel`
   - `Web`
@@ -213,6 +227,7 @@ Client launcher notes:
 - Raw Expo commands are still available:
   - `npm run dev:expo`
   - `npm run ios`
+  - `npm run ios:device` (requires `EXPO_IOS_APPLE_TEAM_ID` and `EXPO_IOS_BUNDLE_IDENTIFIER`)
   - `npm run android`
   - `npm run web`
 
@@ -233,6 +248,13 @@ npm run dev:android:emu
 npm run dev:device
 npm run dev:web
 ```
+
+Device-build note:
+
+- `npm run ios:device` now exits early with a signing hint unless `EXPO_IOS_APPLE_TEAM_ID` and `EXPO_IOS_BUNDLE_IDENTIFIER` are set.
+- Physical-device dev builds now use `expo-dev-client` launcher mode. After this native config changes, rebuild once with `npm run ios:device`; after that, network changes should only require `npm run dev:device` plus reopening the dev build or QR link.
+- Simulator builds do not require provisioning profiles and should use `npm run dev:ios:sim` or `npm run ios`.
+- `npm run dev:ios:sim` now defaults to `host=lan`; this project’s iOS dev-client reopen path was not reliable with `localhost`.
 
 Notes for parallel Codex sessions:
 

@@ -1,0 +1,12 @@
+appId: com.anonymous.client.r6l8abtkq3
+---
+- launchApp:
+    appId: com.anonymous.client.r6l8abtkq3
+    clearState: false
+- openLink: com.anonymous.client://my-page
+- assertVisible: My Page
+- assertVisible: 기존 회원 로그인
+- tapOn: 기존 회원 로그인
+- assertVisible: TODOLOG
+- assertVisible: 이메일
+- assertVisible: 비밀번호 (6자 이상)

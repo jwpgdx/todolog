@@ -1,0 +1,10 @@
+appId: com.anonymous.client.r6l8abtkq3
+---
+- launchApp:
+    appId: com.anonymous.client.r6l8abtkq3
+    clearState: true
+- openLink: ${DEV_CLIENT_URL}
+- tapOn: Continue
+- tapOn: Go home
+- tapOn: ${DEV_SERVER_LABEL}
+- assertVisible: 2026년 3월

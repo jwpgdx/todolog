@@ -10,7 +10,7 @@ const DEV_AUTO_LOGIN_PASSWORD = '123456';
 
 export default function WelcomeScreen() {
   const router = useRouter();
-  const { loginAsGuest, setAuth } = useAuthStore();
+  const { loginAsGuest, setAuth, openLoginScreen } = useAuthStore();
   const [loadingType, setLoadingType] = useState(null);
   const isLoading = loadingType !== null;
 
@@ -136,9 +136,29 @@ export default function WelcomeScreen() {
         )}
       </TouchableOpacity>
 
+      <TouchableOpacity
+        className={`w-full rounded-xl py-3 mb-3 border ${isLoading ? 'bg-gray-100 border-gray-300' : 'bg-white border-emerald-300 active:bg-emerald-50'}`}
+        onPress={() => router.push('/native-list-interactions')}
+        disabled={isLoading}
+      >
+        <Text className="text-emerald-700 text-center font-semibold">
+          Native List Interactions 테스트 화면
+        </Text>
+      </TouchableOpacity>
+
+      <TouchableOpacity
+        className={`w-full rounded-xl py-3 mb-3 border ${isLoading ? 'bg-gray-100 border-gray-300' : 'bg-white border-amber-300 active:bg-amber-50'}`}
+        onPress={() => router.push('/test-menu-reorder')}
+        disabled={isLoading}
+      >
+        <Text className="text-amber-700 text-center font-semibold">
+          Menu + Reorder 테스트 화면
+        </Text>
+      </TouchableOpacity>
+
       {/* 로그인 링크 (작은 텍스트) */}
       <TouchableOpacity 
-        onPress={() => router.push('/(auth)/login')}
+        onPress={openLoginScreen}
         className="p-2"
         disabled={isLoading}
       >
@@ -146,6 +166,10 @@ export default function WelcomeScreen() {
           이미 계정이 있으신가요? <Text className="text-blue-500 font-semibold">로그인</Text>
         </Text>
       </TouchableOpacity>
+
+      <Text className="text-xs text-gray-400 text-center mt-4 leading-5">
+        테스트 화면들은 public route입니다. 로그인 없이도 바로 열 수 있습니다.
+      </Text>
     </View>
   );
 }

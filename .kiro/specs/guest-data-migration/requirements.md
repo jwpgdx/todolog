@@ -1,130 +1,141 @@
-# Requirements Document
+# Requirements Document: Guest Data Migration (All Guest Todos -> Target Inbox)
 
 ## Introduction
 
-게스트 데이터 마이그레이션 기능은 게스트 모드로 앱을 사용하던 사용자가 기존 회원 계정으로 로그인할 때, 게스트 데이터를 기존 회원 계정으로 이전할 수 있는 기능입니다. 이를 통해 사용자는 게스트로 생성한 일정과 카테고리를 잃지 않고 기존 계정에 통합할 수 있습니다.
+게스트 데이터 마이그레이션은 local-only guest 사용자가
+기존 계정으로 로그인하거나 새 계정을 만든 뒤,
+guest SQLite의 데이터를 대상 계정으로 **이관(move)** 하는 기능이다.
+
+이번 결정의 핵심은 다음과 같다.
+
+1. guest 카테고리 구조는 보존하지 않는다.
+2. 가져오기 성공 시 모든 guest todo는 대상 계정의 `Inbox(systemKey='inbox')` 로 들어간다.
+3. guest completion은 imported todo ids를 그대로 따라간다.
+
+관련 문서:
+
+1. `.kiro/specs/guest-login-rework/requirements.md`
+2. `.kiro/specs/inbox-system-category/requirements.md`
+3. `AI_COMMON_RULES.md`
+4. `PROJECT_CONTEXT.md`
 
 ## Glossary
 
-- **Guest_User**: 이메일/비밀번호 없이 앱을 사용하는 익명 사용자 (accountType: 'anonymous')
-- **Regular_User**: 이메일/비밀번호 또는 소셜 로그인으로 가입한 정회원 (accountType: 'local', 'google', 'apple')
-- **Migration**: 게스트 사용자의 데이터(일정, 카테고리, 완료 정보)를 기존 회원 계정으로 이전하는 프로세스
-- **ActionSheet**: 사용자에게 선택지를 제공하는 모달 UI 컴포넌트
-- **SQLite**: 클라이언트 로컬 데이터베이스
-- **MongoDB**: 서버 데이터베이스
-- **UUID**: 범용 고유 식별자 (Universally Unique Identifier)
-- **Migrated_Category**: 마이그레이션된 게스트 일정을 담을 새로운 카테고리
+- **Guest_User**: 서버 비연동 local-only 익명 사용자 (`accountType='anonymous'`)
+- **Regular_User**: 이메일/비밀번호 또는 소셜 로그인으로 가입한 정회원
+- **Migration**: guest SQLite 데이터를 regular-user 계정으로 옮기는 프로세스
+- **Target_Inbox**: 대상 regular-user 계정의 활성 Inbox category (`systemKey='inbox'`)
+- **Move Semantics**: 구현은 copy 후 clear여도, 제품 계약상 guest 쪽에 데이터가 남지 않는 이동 의미
 
 ## Requirements
 
-### Requirement 1: 게스트 데이터 감지
+### Requirement 1: Migration Entry Handoff
 
-**User Story:** 게스트 사용자로서, 기존 회원 계정으로 로그인할 때 내 게스트 데이터가 있다는 것을 알고 싶습니다.
-
-#### Acceptance Criteria
-
-1. WHEN a Guest_User attempts to log in with existing Regular_User credentials THEN THE System SHALL detect the presence of guest data in SQLite
-2. WHEN guest data is detected THEN THE System SHALL count the number of todos and categories
-3. WHEN the count is zero THEN THE System SHALL proceed with normal login without showing migration options
-
-### Requirement 2: 마이그레이션 선택 UI
-
-**User Story:** 게스트 사용자로서, 기존 회원으로 로그인할 때 게스트 데이터를 가져올지 선택하고 싶습니다.
+**User Story:** 게스트 사용자로서, 로그인/회원가입 시 가져오기를 선택하면 내 로컬 데이터가 계정으로 넘어가길 원한다.
 
 #### Acceptance Criteria
 
-1. WHEN guest data exists (count > 0) THEN THE System SHALL display an ActionSheet with migration options
-2. THE ActionSheet SHALL show the message "n개의 일정과 m개의 카테고리를 가져오시겠습니까?" where n and m are the actual counts
-3. THE ActionSheet SHALL provide three options: "가져오기", "버리기", "취소"
-4. WHEN the user selects "취소" THEN THE System SHALL cancel the login process and return to the login screen
-5. WHEN the user selects "버리기" THEN THE System SHALL delete guest data and proceed with login
-6. WHEN the user selects "가져오기" THEN THE System SHALL initiate the migration process
+1. WHEN the user selects `가져오기` from the guest auth choice flow THEN the client SHALL initiate guest-data migration.
+2. THE migration path SHALL be callable after existing-account login intent and after successful new-account registration.
+3. THE handoff UI SHALL disclose that imported guest todos go to the target account Inbox and guest category structure is not preserved.
 
-### Requirement 3: 서버 마이그레이션 처리
+### Requirement 2: Source Data Selection
 
-**User Story:** 시스템 관리자로서, 클라이언트에서 전송된 게스트 데이터를 기존 회원 계정으로 병합하고 싶습니다.
+**User Story:** 개발자로서, 무엇을 서버로 보내는지 명확히 하고 싶다.
 
 #### Acceptance Criteria
 
-1. WHEN migration is initiated THEN THE Client SHALL send a payload containing all local guest data (todos, categories, completions) to the Server
-2. THE Server SHALL create a new category for the Regular_User with a localized name (e.g., "Migrated Category", "마이그레이션된 카테고리")
-3. WHEN creating the migrated category THEN THE Server SHALL generate a new UUID for the category
-4. THE Server SHALL **insert** all received todos with the Regular_User's `userId` into MongoDB
-5. THE Server SHALL set the `categoryId` of all inserted todos to the new migrated category UUID
-6. THE Server SHALL **insert** all received completions with the Regular_User's `userId` into MongoDB
-7. IF guest data relied on local IDs THEN THE Server SHALL resolve them to new server-side IDs (or trust UUIDs if used)
-8. WHEN data insertion is complete THEN THE Server SHALL return the result of the migration
-9. (Optional) IF a temporary Guest_User account existed on server THEN THE Server SHALL delete it
+1. THE client SHALL collect active guest todos for migration using a dedicated migration export DTO, not raw local entity objects.
+2. The guest todo migration DTO SHALL include `_id`, `title`, `startDate`, `endDate`, `startTime`, `endTime`, `isAllDay`, `recurrence`, `recurrenceEndDate`, `memo`, `createdAt`, and `updatedAt`.
+3. The guest todo migration DTO SHALL NOT include legacy `date` or joined category objects.
+4. THE client SHALL collect active guest completions for migration.
+5. The guest completion migration DTO SHALL include `_id`, `key`, `todoId`, `date`, and `completedAt`.
+6. Guest categories MAY be inspected locally for detection/count/cleanup, but SHALL NOT be sent as migration materialization payload and SHALL NOT be recreated as target-account categories during migration.
+7. Deleted/tombstoned guest rows SHALL NOT be included as migratable active data.
+8. A seeded guest Inbox by itself SHALL NOT count as migratable guest data that triggers the import choice flow.
 
-### Requirement 4: 트랜잭션 보장
+### Requirement 3: Target Inbox Resolution
 
-**User Story:** 시스템 관리자로서, 마이그레이션 중 오류 발생 시 데이터 일관성을 보장하고 싶습니다.
-
-#### Acceptance Criteria
-
-1. WHEN migration starts THEN THE Server SHALL begin a MongoDB transaction
-2. IF any migration step fails THEN THE Server SHALL rollback all changes
-3. WHEN rollback occurs THEN THE Server SHALL return an error response to the client
-4. WHEN all migration steps succeed THEN THE Server SHALL commit the transaction
-5. WHEN transaction is committed THEN THE Server SHALL return a success response with the updated user data
-
-### Requirement 5: 클라이언트 동기화
-
-**User Story:** 게스트 사용자로서, 마이그레이션 후 내 데이터가 즉시 반영되기를 원합니다.
+**User Story:** 사용자로서, 가져온 일정이 계정의 기본 Inbox에 들어가길 원한다.
 
 #### Acceptance Criteria
 
-1. WHEN migration succeeds on the server THEN THE Client SHALL clear all local SQLite data
-2. WHEN SQLite is cleared THEN THE Client SHALL save the new access token and user data
-3. WHEN new user data is saved THEN THE Client SHALL trigger a full sync from the server
-4. WHEN sync completes THEN THE Client SHALL invalidate all React Query caches
-5. WHEN caches are invalidated THEN THE Client SHALL navigate to the home screen
+1. WHEN migration starts THEN the server SHALL resolve the target Regular_User's active Inbox by `systemKey='inbox'`.
+2. THE server SHALL NOT create a temporary migrated category.
+3. THE server SHALL NOT recreate guest categories on the target account.
+4. In this phase, target Regular_User active Inbox existence is treated as a normal-auth invariant and not as a separate repair branch inside migration.
 
-### Requirement 6: 게스트 데이터 삭제
+### Requirement 4: Todo / Completion Import Contract
 
-**User Story:** 게스트 사용자로서, 게스트 데이터를 버리고 기존 회원으로 로그인하고 싶습니다.
-
-#### Acceptance Criteria
-
-1. WHEN the user selects "버리기" THEN THE Client SHALL delete all guest todos from SQLite
-2. WHEN todos are deleted THEN THE Client SHALL delete all guest categories from SQLite
-3. WHEN categories are deleted THEN THE Client SHALL delete all guest completions from SQLite
-4. WHEN completions are deleted THEN THE Client SHALL delete all pending changes from SQLite
-5. WHEN all local data is deleted THEN THE Client SHALL proceed with normal login
-6. WHEN login succeeds THEN THE Client SHALL sync the Regular_User's data from the server
-
-### Requirement 7: 오류 처리
-
-**User Story:** 게스트 사용자로서, 마이그레이션 실패 시 명확한 오류 메시지를 받고 싶습니다.
+**User Story:** 시스템 관리자로서, guest 데이터가 단순하고 예측 가능하게 계정으로 들어가길 원한다.
 
 #### Acceptance Criteria
 
-1. IF migration fails due to network error THEN THE System SHALL display "네트워크 오류" message
-2. IF migration fails due to server error THEN THE System SHALL display "마이그레이션 실패" message with details
-3. IF migration fails THEN THE System SHALL keep the guest session active
-4. IF migration fails THEN THE System SHALL allow the user to retry the login
-5. WHEN an error occurs THEN THE System SHALL log the error details for debugging
+1. THE server SHALL insert all migrated guest todos under the target Regular_User's ownership.
+2. THE server SHALL set `categoryId` of every imported guest todo to the resolved target Inbox category id, regardless of the guest todo’s original category.
+3. THE server SHALL insert all migrated guest completions under the target Regular_User's ownership.
+4. Imported completions SHALL continue to reference the imported todo ids.
+5. In this phase, imported todo/completion `_id` values SHALL preserve the client-provided ids used by current local contracts.
+6. The server SHALL validate guest todo payloads against the canonical migration DTO field set and SHALL reject legacy `date`-based payloads.
 
-### Requirement 8: 로딩 상태 표시
+### Requirement 5: Transaction and Move Semantics
 
-**User Story:** 게스트 사용자로서, 마이그레이션 진행 중임을 알고 싶습니다.
-
-#### Acceptance Criteria
-
-1. WHEN migration starts THEN THE Client SHALL display a loading indicator
-2. THE loading indicator SHALL show the message "데이터를 가져오는 중..."
-3. WHEN migration completes THEN THE Client SHALL hide the loading indicator
-4. WHEN migration fails THEN THE Client SHALL hide the loading indicator and show an error message
-5. WHILE loading THEN THE Client SHALL disable all user interactions
-
-### Requirement 9: 데이터 무결성 검증
-
-**User Story:** 시스템 관리자로서, 마이그레이션 후 데이터 무결성을 검증하고 싶습니다.
+**User Story:** 사용자로서, 가져오기 중 오류가 나면 guest 데이터가 사라지지 않길 원한다.
 
 #### Acceptance Criteria
 
-1. WHEN migration completes THEN THE Server SHALL verify all migrated todos have the correct userId
-2. WHEN migration completes THEN THE Server SHALL verify all migrated todos have the correct categoryId
-3. WHEN migration completes THEN THE Server SHALL verify all migrated completions have the correct userId
-4. WHEN migration completes THEN THE Server SHALL verify the Guest_User account no longer exists
-5. IF any verification fails THEN THE Server SHALL rollback the transaction and return an error
+1. WHEN migration starts THEN the server SHALL process the import transactionally.
+2. IF any migration step fails THEN the server SHALL rollback all imported server-side data.
+3. THE client SHALL clear guest SQLite only after confirmed server success.
+4. IF migration fails THEN guest local session and SQLite data SHALL remain intact.
+
+### Requirement 6: Post-Success Client State
+
+**User Story:** 사용자로서, 가져오기 성공 후 바로 계정 데이터로 이어서 사용하고 싶다.
+
+#### Acceptance Criteria
+
+1. WHEN migration succeeds THEN the client SHALL clear guest local SQLite data including guest categories.
+2. WHEN guest local SQLite is cleared THEN the client SHALL persist the authenticated Regular_User session.
+3. WHEN the authenticated session is persisted THEN the client SHALL trigger a full sync from the server.
+4. WHEN full sync completes THEN the client SHALL invalidate relevant caches and navigate to the normal signed-in home flow.
+5. In the signup `가져오기` path, the authenticated Regular_User session SHALL NOT become the active client session until migration success is confirmed.
+
+### Requirement 7: Discard and Failure Boundary
+
+**User Story:** 사용자로서, 가져오지 않거나 실패했을 때 동작이 예측 가능하길 원한다.
+
+#### Acceptance Criteria
+
+1. WHEN the user selects `버리기` THEN the client SHALL clear guest local SQLite data before proceeding with normal auth.
+2. WHEN the user selects `취소` THEN the auth attempt SHALL abort and guest local state SHALL remain unchanged.
+3. IF migration fails due to network or server error THEN the system SHALL present a retryable error and keep guest local data intact.
+4. IF signup succeeds but migration fails THEN the guest session SHALL remain the active client session and retry SHALL occur through a later auth flow.
+
+### Requirement 8: Data Integrity Validation
+
+**User Story:** 시스템 관리자로서, 마이그레이션 후 데이터가 의도한 구조로 들어갔는지 검증하고 싶다.
+
+#### Acceptance Criteria
+
+1. WHEN migration completes THEN the server SHALL verify all imported todos have the target Regular_User ownership.
+2. WHEN migration completes THEN the server SHALL verify all imported todos have `categoryId = targetInboxCategoryId`.
+3. WHEN migration completes THEN the server SHALL verify imported guest categories were not recreated as target-account categories.
+4. WHEN migration completes THEN the server SHALL verify imported completions point to imported todo ids.
+
+## Scope
+
+### In Scope
+
+1. Existing-login guest migration
+2. Signup-after-register guest migration
+3. All guest todos -> target Inbox mapping
+4. Guest category non-preservation
+5. Move semantics and local clear boundary
+
+### Out of Scope
+
+1. Legacy server guest account cleanup
+2. Preserving guest category structure on the target account
+3. One-step register-and-migrate API redesign
+4. Social-login specific UX variants

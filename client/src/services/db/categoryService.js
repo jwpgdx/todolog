@@ -4,7 +4,13 @@
  * Category 데이터 관리
  */
 
-import { getDatabase } from './database';
+import { getDatabase, ensureDatabase } from './database';
+import { generateId } from '../../utils/idGenerator';
+
+const INBOX_SYSTEM_KEY = 'inbox';
+const INBOX_NAME = 'Inbox';
+const INBOX_COLOR = '#CCCCCC';
+const INBOX_ORDER = 0;
 
 // ============================================================
 // 조회
@@ -28,6 +34,86 @@ export async function getAllCategories() {
   `);
 
     return result.map(deserializeCategory);
+}
+
+export async function getInboxCategory() {
+    await ensureDatabase();
+    const db = getDatabase();
+
+    const result = await db.getFirstAsync(
+        `SELECT * FROM categories
+         WHERE system_key = ? AND deleted_at IS NULL
+         ORDER BY created_at ASC
+         LIMIT 1`,
+        [INBOX_SYSTEM_KEY]
+    );
+
+    return result ? deserializeCategory(result) : null;
+}
+
+export async function ensureInboxCategory() {
+    await ensureDatabase();
+    const db = getDatabase();
+    const now = new Date().toISOString();
+
+    const activeInbox = await db.getFirstAsync(
+        `SELECT * FROM categories
+         WHERE system_key = ? AND deleted_at IS NULL
+         ORDER BY created_at ASC
+         LIMIT 1`,
+        [INBOX_SYSTEM_KEY]
+    );
+
+    if (activeInbox) {
+        const needsRepair =
+            activeInbox.name !== INBOX_NAME ||
+            activeInbox.color !== INBOX_COLOR ||
+            activeInbox.order_index !== INBOX_ORDER;
+
+        if (needsRepair) {
+            await db.runAsync(
+                `UPDATE categories
+                 SET name = ?, color = ?, order_index = ?, updated_at = ?
+                 WHERE _id = ?`,
+                [INBOX_NAME, INBOX_COLOR, INBOX_ORDER, now, activeInbox._id]
+            );
+        }
+
+        return {
+            ...deserializeCategory(activeInbox),
+            name: INBOX_NAME,
+            color: INBOX_COLOR,
+            order: INBOX_ORDER,
+        };
+    }
+
+    const existingInbox = await db.getFirstAsync(
+        `SELECT * FROM categories
+         WHERE system_key = ?
+         ORDER BY updated_at DESC, created_at DESC
+         LIMIT 1`,
+        [INBOX_SYSTEM_KEY]
+    );
+
+    const inboxId = existingInbox?._id || generateId();
+    const createdAt = existingInbox?.created_at || now;
+
+    await db.runAsync(
+        `INSERT INTO categories
+         (_id, name, color, icon, order_index, system_key, created_at, updated_at, deleted_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL)
+         ON CONFLICT(_id) DO UPDATE SET
+           name = excluded.name,
+           color = excluded.color,
+           icon = excluded.icon,
+           order_index = excluded.order_index,
+           system_key = excluded.system_key,
+           updated_at = excluded.updated_at,
+           deleted_at = NULL`,
+        [inboxId, INBOX_NAME, INBOX_COLOR, null, INBOX_ORDER, INBOX_SYSTEM_KEY, createdAt, now]
+    );
+
+    return getInboxCategory();
 }
 
 /**
@@ -220,6 +306,19 @@ export async function getCategoryCount() {
     const db = getDatabase();
     const result = await db.getFirstAsync(
         'SELECT COUNT(*) as count FROM categories WHERE deleted_at IS NULL'
+    );
+    return result?.count || 0;
+}
+
+export async function getUserCreatedCategoryCount() {
+    await ensureDatabase();
+    const db = getDatabase();
+    const result = await db.getFirstAsync(
+        `SELECT COUNT(*) as count
+         FROM categories
+         WHERE deleted_at IS NULL
+           AND (system_key IS NULL OR system_key != ?)`,
+        [INBOX_SYSTEM_KEY]
     );
     return result?.count || 0;
 }

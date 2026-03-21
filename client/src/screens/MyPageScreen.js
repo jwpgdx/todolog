@@ -7,7 +7,7 @@ import CategoryGroupList from '../components/domain/category/CategoryGroupList';
 
 export default function MyPageScreen() {
   const router = useRouter();
-  const { user } = useAuthStore();
+  const { user, openLoginScreen } = useAuthStore();
 
   // Mock data for activity summary
   const totalTodos = 0;
@@ -51,7 +51,7 @@ export default function MyPageScreen() {
             {/* 기존 회원 로그인 버튼 */}
             <TouchableOpacity
               className="bg-white border border-blue-500 py-3 px-4 rounded-lg active:bg-blue-50"
-              onPress={() => useAuthStore.getState().logout({ skipDataClear: true, showLogin: true })}
+              onPress={openLoginScreen}
             >
               <Text className="text-blue-500 font-semibold text-center">기존 회원 로그인</Text>
             </TouchableOpacity>
@@ -118,6 +118,10 @@ export default function MyPageScreen() {
           <MenuLink
             title="앱 설정"
             onPress={() => router.push('/(app)/(tabs)/my-page/settings')}
+          />
+          <MenuLink
+            title="Native Settings Catalog"
+            onPress={() => router.push('/native-settings-catalog')}
           />
           <MenuLink
             title="디버그 (DB 초기화)"

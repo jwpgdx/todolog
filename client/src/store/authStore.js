@@ -1,17 +1,24 @@
 import { create } from 'zustand';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import * as Crypto from 'expo-crypto';
 import * as Localization from 'expo-localization';
 
 import api, { setLogoutHandler } from '../api/axios';
 import { authAPI } from '../api/auth';
 import { clearAllData } from '../services/db/database';
 import { getTodoCount, getAllTodos } from '../services/db/todoService';
-import { getCategoryCount, getAllCategories } from '../services/db/categoryService';
-import { getAllCompletionsArray } from '../services/db/completionService';
+import {
+  ensureInboxCategory,
+  getUserCreatedCategoryCount,
+} from '../services/db/categoryService';
+import {
+  getAllCompletionsArray,
+  getCompletionCount,
+} from '../services/db/completionService';
 
 // QueryClient를 외부에서 주입받을 수 있도록 변수 선언
 let queryClientInstance = null;
+const LOCAL_GUEST_USER_ID = 'guest_local';
+const DEFAULT_GUEST_NAME = 'Guest User';
 
 export const setQueryClient = (client) => {
   queryClientInstance = client;
@@ -37,8 +44,104 @@ const isGuestUser = (user) => {
   const resolvedId = user._id || user.id;
   if (typeof resolvedId !== 'string') return false;
 
-  return resolvedId === 'guest_temp' || resolvedId.startsWith('guest_');
+  return resolvedId === LOCAL_GUEST_USER_ID || resolvedId === 'guest_temp' || resolvedId.startsWith('guest_');
 };
+
+const getDeviceTimeZone = () => Localization.getCalendars()[0]?.timeZone || 'Asia/Seoul';
+
+const buildLocalGuestUser = (existingUser = null) => {
+  const settings = {
+    timeZone: getDeviceTimeZone(),
+    theme: 'system',
+    language: 'system',
+    ...(existingUser?.settings || {}),
+  };
+  const preservedName =
+    isGuestUser(existingUser) && typeof existingUser?.name === 'string' && existingUser.name.trim()
+      ? existingUser.name.trim()
+      : DEFAULT_GUEST_NAME;
+
+  return normalizeAuthUser({
+    _id: LOCAL_GUEST_USER_ID,
+    id: LOCAL_GUEST_USER_ID,
+    accountType: 'anonymous',
+    provider: 'local',
+    name: preservedName,
+    email: null,
+    settings,
+  });
+};
+
+const clearQueryCache = () => {
+  if (queryClientInstance) {
+    queryClientInstance.clear();
+  }
+};
+
+const persistGuestSession = async (guestUser) => {
+  await AsyncStorage.removeItem('token');
+  await AsyncStorage.removeItem('refreshToken');
+  await AsyncStorage.setItem('user', JSON.stringify(guestUser));
+};
+
+const bootstrapLocalGuestSession = async (existingUser = null) => {
+  const guestUser = buildLocalGuestUser(existingUser);
+  await persistGuestSession(guestUser);
+
+  try {
+    await ensureInboxCategory();
+  } catch (error) {
+    console.warn('⚠️ [Auth] Failed to ensure guest Inbox:', error?.message || error);
+  }
+
+  return guestUser;
+};
+
+const normalizeRecurrenceForMigration = (value) => {
+  if (!value) return null;
+
+  if (Array.isArray(value)) {
+    const next = value
+      .map((item) => (typeof item === 'string' ? item.trim() : ''))
+      .filter(Boolean);
+    return next.length > 0 ? next : null;
+  }
+
+  if (typeof value === 'string' && value.trim()) {
+    return [value.trim()];
+  }
+
+  return null;
+};
+
+const buildTodoMigrationDTO = (todo) => {
+  const startDate = todo.startDate || todo.date || null;
+  const endDate = todo.endDate || startDate || null;
+  const isAllDay = todo.isAllDay !== undefined ? !!todo.isAllDay : !(todo.startTime || todo.endTime);
+
+  return {
+    _id: todo._id,
+    title: todo.title,
+    startDate,
+    endDate,
+    startTime: isAllDay ? null : (todo.startTime || null),
+    endTime: isAllDay ? null : (todo.endTime || null),
+    isAllDay,
+    recurrence: normalizeRecurrenceForMigration(todo.recurrence),
+    recurrenceEndDate: todo.recurrenceEndDate || null,
+    memo: todo.memo || null,
+    createdAt: todo.createdAt,
+    updatedAt: todo.updatedAt,
+  };
+};
+
+const buildCompletionMigrationDTO = (completion) => ({
+  _id: completion._id,
+  key: completion.key,
+  todoId: completion.todoId,
+  date: completion.date,
+  completedAt: completion.completedAt,
+});
 
 export const useAuthStore = create((set, get) => ({
   user: null,
@@ -47,13 +150,33 @@ export const useAuthStore = create((set, get) => ({
   isLoggedIn: false, // ✅ 추가: 로그인 상태 (게스트 제외)
   shouldShowLogin: false, // 로그아웃 후 바로 로그인 화면으로 이동할지 여부
 
-  setAuth: async (token, user) => {
+  openLoginScreen: () => {
+    set({ shouldShowLogin: true });
+  },
+
+  closeLoginScreen: () => {
+    set({ shouldShowLogin: false });
+  },
+
+  setAuth: async (token, user, options = {}) => {
+    const { clearLocalData = false } = options;
     const normalizedUser = normalizeAuthUser(user);
-    if (token && user) {
+
+    if (clearLocalData) {
+      await clearAllData();
+      clearQueryCache();
+    }
+
+    if (token) {
       await AsyncStorage.setItem('token', token);
+    } else {
+      await AsyncStorage.removeItem('token');
+    }
+    await AsyncStorage.removeItem('refreshToken');
+
+    if (normalizedUser) {
       await AsyncStorage.setItem('user', JSON.stringify(normalizedUser));
     } else {
-      // null 입력 시 로그아웃과 동일하게 처리
       await AsyncStorage.removeItem('token');
       await AsyncStorage.removeItem('user');
     }
@@ -61,7 +184,13 @@ export const useAuthStore = create((set, get) => ({
     // isLoggedIn 계산: user && token && 게스트 아님
     const isLoggedIn = !!(normalizedUser && token && !isGuestUser(normalizedUser));
     
-    set({ token, user: normalizedUser, isLoading: false, isLoggedIn });
+    set({
+      token: token || null,
+      user: normalizedUser || null,
+      isLoading: false,
+      isLoggedIn,
+      shouldShowLogin: false,
+    });
   },
 
   setUser: async (user) => {
@@ -159,26 +288,15 @@ export const useAuthStore = create((set, get) => ({
 
   loginAsGuest: async () => {
     try {
-      // 1. Generate UUID
-      const userId = Crypto.randomUUID();
-
-      // 2. Get device timeZone
-      const timeZone = Localization.getCalendars()[0]?.timeZone || 'Asia/Seoul';
-
-      // 3. Call server API
-      const response = await authAPI.createGuest({ userId, timeZone });
-      const { accessToken, refreshToken, user } = response.data;
-      const normalizedUser = normalizeAuthUser(user);
-
-      // 4. Store tokens and user in AsyncStorage
-      await AsyncStorage.setItem('refreshToken', refreshToken);
-      await AsyncStorage.setItem('token', accessToken);
-      await AsyncStorage.setItem('user', JSON.stringify(normalizedUser));
-
-      // 5. Update Zustand state (게스트는 isLoggedIn = false)
-      set({ token: accessToken, user: normalizedUser, isLoading: false, isLoggedIn: false });
-
-      return normalizedUser;
+      const guestUser = await bootstrapLocalGuestSession(get().user);
+      set({
+        token: null,
+        user: guestUser,
+        isLoading: false,
+        isLoggedIn: false,
+        shouldShowLogin: false,
+      });
+      return guestUser;
     } catch (error) {
       console.error('Guest login error:', error);
       set({ isLoading: false });
@@ -207,15 +325,9 @@ export const useAuthStore = create((set, get) => ({
           
           await AsyncStorage.setItem('user', JSON.stringify(user));
         } else {
-          // Case 2: user 없음 (게스트가 설정만 변경한 경우)
-          // 기본 user 객체 생성 후 oldSettings 적용
-          user = {
-            _id: 'guest_temp',
-            settings: parsedOldSettings,
-          };
-          user = normalizeAuthUser(user);
+          user = buildLocalGuestUser({ settings: parsedOldSettings });
           await AsyncStorage.setItem('user', JSON.stringify(user));
-          console.log('🔄 [Migration] Created user from old settings (guest case)');
+          console.log('🔄 [Migration] Created local guest from old settings');
         }
         
         // 마이그레이션 완료 후 삭제
@@ -223,10 +335,20 @@ export const useAuthStore = create((set, get) => ({
         console.log('✅ [Migration] Old settings migrated and removed');
       }
 
-      // isLoggedIn 계산
-      const isLoggedIn = !!(user && token && !isGuestUser(user));
+      const hasRegularSession = !!(user && token && !isGuestUser(user));
+      if (hasRegularSession) {
+        set({ token, user, isLoading: false, isLoggedIn: true, shouldShowLogin: false });
+        return;
+      }
 
-      set({ token, user, isLoading: false, isLoggedIn, shouldShowLogin: false });
+      const guestUser = await bootstrapLocalGuestSession(user);
+      set({
+        token: null,
+        user: guestUser,
+        isLoading: false,
+        isLoggedIn: false,
+        shouldShowLogin: false,
+      });
     } catch (error) {
       console.error('❌ [loadAuth] Failed:', error);
       set({ isLoading: false });
@@ -250,22 +372,43 @@ export const useAuthStore = create((set, get) => ({
         console.error('⚠️ [Logout] Failed to clear SQLite:', error);
       }
     }
-    
-    set({ token: null, user: null, isLoggedIn: false, shouldShowLogin: showLogin });
 
-    // TanStack Query 캐시 초기화
-    if (queryClientInstance) {
-      queryClientInstance.clear();
+    clearQueryCache();
+
+    if (showLogin) {
+      set({ token: null, user: null, isLoggedIn: false, shouldShowLogin: true, isLoading: false });
+      return;
     }
+
+    const guestUser = await bootstrapLocalGuestSession(get().user);
+    set({
+      token: null,
+      user: guestUser,
+      isLoggedIn: false,
+      shouldShowLogin: false,
+      isLoading: false,
+    });
   },
 
   // 게스트 데이터 확인
   checkGuestData: async () => {
     try {
-      const todoCount = await getTodoCount();
-      const categoryCount = await getCategoryCount();
-      
-      return { todos: todoCount, categories: categoryCount };
+      await ensureInboxCategory();
+
+      const [todoCount, completionCount, categoryCount] = await Promise.all([
+        getTodoCount(),
+        getCompletionCount(),
+        getUserCreatedCategoryCount(),
+      ]);
+
+      const hasGuestData = todoCount > 0 || completionCount > 0 || categoryCount > 0;
+
+      return {
+        todos: todoCount,
+        completions: completionCount,
+        categories: categoryCount,
+        hasGuestData,
+      };
     } catch (error) {
       console.error('Check guest data error:', error);
       throw error;
@@ -275,20 +418,16 @@ export const useAuthStore = create((set, get) => ({
   // 게스트 데이터 마이그레이션
   migrateGuestData: async (credentials) => {
     try {
-      // 1. SQLite에서 모든 게스트 데이터 수집
-      const todos = await getAllTodos();
-      const categories = await getAllCategories();
-      const completions = await getAllCompletionsArray();
+      const todos = (await getAllTodos()).map(buildTodoMigrationDTO);
+      const completions = (await getAllCompletionsArray()).map(buildCompletionMigrationDTO);
+
+      console.log(`📦 [Migration] Collected data: ${todos.length} todos, ${completions.length} completions`);
       
-      console.log(`📦 [Migration] Collected data: ${todos.length} todos, ${categories.length} categories, ${completions.length} completions`);
-      
-      // 2. 서버에 마이그레이션 요청
       const response = await authAPI.migrateGuestData({
         email: credentials.email,
         password: credentials.password,
         guestData: {
           todos,
-          categories,
           completions,
         },
       });
@@ -297,25 +436,8 @@ export const useAuthStore = create((set, get) => ({
       const normalizedUser = normalizeAuthUser(user);
       
       console.log('✅ [Migration] Server migration successful');
-      
-      // 3. SQLite 전체 삭제
-      await clearAllData();
-      console.log('✅ [Migration] SQLite data cleared');
-      
-      // 4. 새 토큰 및 사용자 정보 저장
-      await AsyncStorage.setItem('token', token);
-      await AsyncStorage.setItem('user', JSON.stringify(normalizedUser));
-      
-      // isLoggedIn 계산
-      const isLoggedIn = !!(normalizedUser && token && !isGuestUser(normalizedUser));
-      
-      set({ token, user: normalizedUser, isLoading: false, isLoggedIn });
-      
-      // 5. React Query 캐시 무효화 (Full Sync 트리거)
-      if (queryClientInstance) {
-        queryClientInstance.invalidateQueries();
-        console.log('✅ [Migration] Query cache invalidated');
-      }
+
+      await get().setAuth(token, normalizedUser, { clearLocalData: true });
       
       console.log('✅ [Migration] Migration completed successfully');
       
@@ -330,6 +452,15 @@ export const useAuthStore = create((set, get) => ({
   discardGuestData: async () => {
     try {
       await clearAllData();
+      const guestUser = await bootstrapLocalGuestSession(get().user);
+      clearQueryCache();
+      set({
+        token: null,
+        user: guestUser,
+        isLoading: false,
+        isLoggedIn: false,
+        shouldShowLogin: false,
+      });
       console.log('✅ [Discard] Guest data discarded');
     } catch (error) {
       console.error('❌ [Discard] Failed to discard guest data:', error);

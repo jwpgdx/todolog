@@ -1,15 +1,22 @@
+import { useEffect } from 'react';
 import { Stack } from 'expo-router';
 
 import { useAuthStore } from '../../src/store/authStore';
 
 export default function AuthLayout() {
-  const { user, isLoading } = useAuthStore();
+  const { isLoading, isLoggedIn, shouldShowLogin, closeLoginScreen } = useAuthStore();
+
+  useEffect(() => {
+    if (!isLoading && shouldShowLogin) {
+      closeLoginScreen();
+    }
+  }, [isLoading, shouldShowLogin, closeLoginScreen]);
 
   if (isLoading) {
     return null;
   }
 
-  if (user) {
+  if (isLoggedIn) {
     return null;
   }
 

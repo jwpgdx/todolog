@@ -1,21 +1,26 @@
 #!/usr/bin/env node
 
+const fs = require('node:fs');
 const net = require('node:net');
+const os = require('node:os');
 const path = require('node:path');
 const process = require('node:process');
 const readline = require('node:readline/promises');
 const { spawn, spawnSync } = require('node:child_process');
 
 const PROJECT_ROOT = path.resolve(__dirname, '..');
+const REPO_ROOT = path.resolve(PROJECT_ROOT, '..');
 const NPX_COMMAND = process.platform === 'win32' ? 'npx.cmd' : 'npx';
 const DEFAULT_PORT = Number(process.env.RCT_METRO_PORT) || 8081;
+const DEFAULT_SERVER_PORT = 5001;
+const ENV_FILES = ['.env.local', '.env'];
 const ALLOWED_HOSTS = new Set(['localhost', 'lan', 'tunnel']);
 
 const TARGETS = {
   'ios-sim': {
     label: 'iOS Simulator',
     command: 'expo-start',
-    defaultHost: 'localhost',
+    defaultHost: 'lan',
     startArgs: ['start', '--dev-client', '--ios'],
     prepare: ensureIosSimulator,
   },
@@ -103,17 +108,18 @@ async function main() {
   }
 
   const port = await resolvePort(target, options.port);
+  const env = buildEnv({ port, targetName });
 
   if (typeof target.prepare === 'function') {
     await target.prepare();
   }
 
   const commandArgs = buildCommandArgs(target, { host, port, clear: options.clear });
-  printLaunchSummary(targetName, target, host, port, commandArgs);
+  printLaunchSummary(targetName, target, host, port, commandArgs, env);
 
   const child = spawn(NPX_COMMAND, ['expo', ...commandArgs], {
     cwd: PROJECT_ROOT,
-    env: buildEnv(port),
+    env,
     stdio: 'inherit',
   });
 
@@ -297,11 +303,21 @@ function buildCommandArgs(target, options) {
   return args;
 }
 
-function buildEnv(port) {
-  const env = { ...process.env };
+function buildEnv({ port, targetName }) {
+  const env = {
+    ...loadProjectEnv(),
+    ...process.env,
+  };
 
   if (port) {
     env.RCT_METRO_PORT = String(port);
+  }
+
+  if (!env.EXPO_PUBLIC_API_URL) {
+    const resolvedApiUrl = resolveApiUrlForTarget(targetName);
+    if (resolvedApiUrl) {
+      env.EXPO_PUBLIC_API_URL = resolvedApiUrl;
+    }
   }
 
   // If the caller already pinned a public API URL, don't let Expo reload
@@ -314,7 +330,7 @@ function buildEnv(port) {
   return env;
 }
 
-function printLaunchSummary(targetName, target, host, port, args) {
+function printLaunchSummary(targetName, target, host, port, args, env) {
   console.log('');
   console.log('[dev-launcher] Launching target');
   console.log(`  target: ${targetName} (${target.label})`);
@@ -324,11 +340,156 @@ function printLaunchSummary(targetName, target, host, port, args) {
   if (port) {
     console.log(`  metro port: ${port}`);
   }
-  if (process.env.EXPO_PUBLIC_API_URL) {
-    console.log(`  api url: ${process.env.EXPO_PUBLIC_API_URL}`);
+  if (env.EXPO_PUBLIC_API_URL) {
+    console.log(`  api url: ${env.EXPO_PUBLIC_API_URL}`);
   }
   console.log(`  command: npx expo ${args.join(' ')}`);
+  if (targetName === 'device') {
+    console.log('  next: open the installed dev build or scan the Expo QR on iPhone');
+  }
   console.log('');
+}
+
+function loadProjectEnv() {
+  return ENV_FILES.reduce((accumulator, fileName) => {
+    const filePath = path.join(PROJECT_ROOT, fileName);
+    if (!fs.existsSync(filePath)) {
+      return accumulator;
+    }
+
+    const contents = fs.readFileSync(filePath, 'utf8');
+    const parsed = parseEnvFile(contents);
+    return {
+      ...accumulator,
+      ...parsed,
+    };
+  }, {});
+}
+
+function parseEnvFile(contents) {
+  return contents.split(/\r?\n/).reduce((accumulator, line) => {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith('#')) {
+      return accumulator;
+    }
+
+    const separatorIndex = trimmed.indexOf('=');
+    if (separatorIndex === -1) {
+      return accumulator;
+    }
+
+    const key = trimmed.slice(0, separatorIndex).trim();
+    const rawValue = trimmed.slice(separatorIndex + 1).trim();
+    if (!key) {
+      return accumulator;
+    }
+
+    accumulator[key] = stripWrappingQuotes(rawValue);
+    return accumulator;
+  }, {});
+}
+
+function stripWrappingQuotes(value) {
+  if (
+    (value.startsWith('"') && value.endsWith('"')) ||
+    (value.startsWith("'") && value.endsWith("'"))
+  ) {
+    return value.slice(1, -1);
+  }
+
+  return value;
+}
+
+function resolveApiUrlForTarget(targetName) {
+  const serverPort = resolveServerPort();
+
+  if (
+    targetName === 'ios-sim' ||
+    targetName === 'ios-install' ||
+    targetName === 'web' ||
+    targetName === 'server'
+  ) {
+    return `http://localhost:${serverPort}/api`;
+  }
+
+  if (targetName === 'android-emu' || targetName === 'android-install') {
+    return `http://10.0.2.2:${serverPort}/api`;
+  }
+
+  if (targetName === 'device') {
+    const lanAddress = detectLanIpv4();
+    if (lanAddress) {
+      return `http://${lanAddress}:${serverPort}/api`;
+    }
+
+    console.warn(
+      `[dev-launcher] Unable to detect a LAN IPv4 address for "${targetName}". Falling back to localhost.`
+    );
+    return `http://localhost:${serverPort}/api`;
+  }
+
+  return '';
+}
+
+function resolveServerPort() {
+  if (process.env.CODEX_SERVER_PORT) {
+    return normalizePort(process.env.CODEX_SERVER_PORT);
+  }
+
+  const serverEnvPath = path.join(REPO_ROOT, 'server', '.env');
+
+  try {
+    const content = fs.readFileSync(serverEnvPath, 'utf8');
+    const match = content.match(/^\s*PORT\s*=\s*(\d+)\s*$/m);
+    if (match) {
+      return normalizePort(match[1]);
+    }
+  } catch {
+    // Ignore and fall back to the standard local dev port.
+  }
+
+  return DEFAULT_SERVER_PORT;
+}
+
+function detectLanIpv4() {
+  const interfaces = os.networkInterfaces();
+  const candidates = [];
+
+  for (const [name, addresses] of Object.entries(interfaces || {})) {
+    for (const details of addresses || []) {
+      if (!details) continue;
+      if (details.family !== 'IPv4') continue;
+      if (details.internal) continue;
+      if (!isPrivateIpv4(details.address)) continue;
+
+      candidates.push({
+        address: details.address,
+        priority: getInterfacePriority(name),
+      });
+    }
+  }
+
+  candidates.sort((left, right) => left.priority - right.priority);
+  return candidates[0]?.address || '';
+}
+
+function isPrivateIpv4(address) {
+  return (
+    /^10\./.test(address) ||
+    /^192\.168\./.test(address) ||
+    /^172\.(1[6-9]|2\d|3[0-1])\./.test(address)
+  );
+}
+
+function getInterfacePriority(name) {
+  const normalized = String(name || '').toLowerCase();
+
+  if (normalized === 'en0') return 0;
+  if (normalized === 'en1') return 1;
+  if (normalized.startsWith('eth')) return 2;
+  if (normalized.startsWith('wlan')) return 3;
+  if (normalized.startsWith('bridge')) return 4;
+  return 5;
 }
 
 async function findAvailablePort(startPort, attempts) {
@@ -400,22 +561,48 @@ async function ensureIosSimulator() {
   }
 
   console.log(`[dev-launcher] Booting iOS simulator: ${preferred.name}`);
-  spawnSync('xcrun', ['simctl', 'boot', preferred.udid], {
+  const bootResult = spawnSync('xcrun', ['simctl', 'boot', preferred.udid], {
     cwd: PROJECT_ROOT,
-    stdio: 'ignore',
+    encoding: 'utf8',
   });
+
+  if (
+    bootResult.status !== 0 &&
+    !String(bootResult.stderr || '').includes('current state: Booted')
+  ) {
+    console.warn('[dev-launcher] Failed to boot the preferred iOS simulator.');
+    if (bootResult.stderr) {
+      console.warn(String(bootResult.stderr).trim());
+    }
+  }
+
   spawnSync('open', ['-a', 'Simulator'], {
     cwd: PROJECT_ROOT,
     stdio: 'ignore',
   });
 
-  const bootedInTime = await waitForSimulatorBoot(preferred.udid, 30_000);
+  const bootedInTime = await waitForSimulatorBoot(preferred.udid, 45_000);
   if (!bootedInTime) {
     console.warn('[dev-launcher] iOS simulator boot wait timed out. Expo will continue anyway.');
+    return;
   }
+
+  // Give SpringBoard a brief settle window before Expo asks simctl to open the
+  // development client deep link. This avoids cold-boot openurl races.
+  await delay(1500);
 }
 
 async function waitForSimulatorBoot(udid, timeoutMs) {
+  const bootStatus = spawnSync('xcrun', ['simctl', 'bootstatus', udid, '-b'], {
+    cwd: PROJECT_ROOT,
+    encoding: 'utf8',
+    timeout: timeoutMs,
+  });
+
+  if (bootStatus.status === 0) {
+    return true;
+  }
+
   const startedAt = Date.now();
 
   while (Date.now() - startedAt < timeoutMs) {
