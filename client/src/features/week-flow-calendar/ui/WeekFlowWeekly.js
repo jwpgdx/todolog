@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
 
 import { useDateStore } from "../../../store/dateStore";
@@ -20,7 +20,10 @@ export default function WeekFlowWeekly({
   onToggleMode,
   showToggle = true,
   visibleWeekStart: visibleWeekStartProp,
+  selectedDate: selectedDateProp,
   onVisibleWeekStartChange,
+  embedded = false,
+  enableDaySummaries = true,
 }) {
   const { currentDate, setCurrentDate } = useDateStore();
   const { todayDate } = useTodayDate();
@@ -29,10 +32,34 @@ export default function WeekFlowWeekly({
   const startDayOfWeek = settings.startDayOfWeek || "sunday";
   const language = resolveCalendarLanguage(settings.language || "system");
 
-  const visibleWeekStart = useMemo(() => {
+  const resolvedVisibleWeekStart = useMemo(() => {
     if (visibleWeekStartProp) return visibleWeekStartProp;
     return toWeekStart(currentDate, startDayOfWeek);
   }, [currentDate, startDayOfWeek, visibleWeekStartProp]);
+  const [displayWeekStart, setDisplayWeekStart] = useState(
+    () => resolvedVisibleWeekStart,
+  );
+
+  useEffect(() => {
+    if (!resolvedVisibleWeekStart) return;
+    setDisplayWeekStart((prev) =>
+      prev === resolvedVisibleWeekStart ? prev : resolvedVisibleWeekStart,
+    );
+  }, [resolvedVisibleWeekStart]);
+
+  const visibleWeekStart = displayWeekStart || resolvedVisibleWeekStart;
+  const selectedDate = selectedDateProp || currentDate;
+
+  const commitVisibleWeekStart = useCallback(
+    (nextWeekStart) => {
+      if (!nextWeekStart) return;
+      setDisplayWeekStart((prev) =>
+        prev === nextWeekStart ? prev : nextWeekStart,
+      );
+      onVisibleWeekStartChange?.(nextWeekStart);
+    },
+    [onVisibleWeekStartChange],
+  );
 
   const headerTitle = useMemo(() => {
     if (!visibleWeekStart || visibleWeekStart.length < 7) return "";
@@ -55,29 +82,30 @@ export default function WeekFlowWeekly({
 
   const onTodayJump = useCallback(() => {
     if (!todayDate) return;
+    const todayWeekStart = toWeekStart(todayDate, startDayOfWeek);
+    commitVisibleWeekStart(todayWeekStart);
     setCurrentDate(todayDate);
-    onVisibleWeekStartChange?.(toWeekStart(todayDate, startDayOfWeek));
-  }, [onVisibleWeekStartChange, setCurrentDate, startDayOfWeek, todayDate]);
+  }, [commitVisibleWeekStart, setCurrentDate, startDayOfWeek, todayDate]);
 
   const onPrev = useCallback(() => {
     if (!visibleWeekStart) return;
     const nextWeekStart = addWeeks(visibleWeekStart, -1);
-    onVisibleWeekStartChange?.(nextWeekStart);
-  }, [onVisibleWeekStartChange, visibleWeekStart]);
+    commitVisibleWeekStart(nextWeekStart);
+  }, [commitVisibleWeekStart, visibleWeekStart]);
 
   const onNext = useCallback(() => {
     if (!visibleWeekStart) return;
     const nextWeekStart = addWeeks(visibleWeekStart, 1);
-    onVisibleWeekStartChange?.(nextWeekStart);
-  }, [onVisibleWeekStartChange, visibleWeekStart]);
+    commitVisibleWeekStart(nextWeekStart);
+  }, [commitVisibleWeekStart, visibleWeekStart]);
 
   const onDayPress = useCallback(
     (dateYmd) => {
       if (!dateYmd) return;
+      commitVisibleWeekStart(toWeekStart(dateYmd, startDayOfWeek));
       setCurrentDate(dateYmd);
-      onVisibleWeekStartChange?.(toWeekStart(dateYmd, startDayOfWeek));
     },
-    [onVisibleWeekStartChange, setCurrentDate, startDayOfWeek],
+    [commitVisibleWeekStart, setCurrentDate, startDayOfWeek],
   );
 
   const activeRange = useMemo(() => {
@@ -92,14 +120,14 @@ export default function WeekFlowWeekly({
 
   useWeekFlowDaySummaryRange({
     mode: "weekly",
-    activeRange,
-    retentionAnchorDate: visibleWeekStart,
-    viewportSettledToken: visibleWeekStart,
+    activeRange: enableDaySummaries ? activeRange : null,
+    retentionAnchorDate: enableDaySummaries ? visibleWeekStart : null,
+    viewportSettledToken: enableDaySummaries ? visibleWeekStart : null,
     getIsViewportSettled,
   });
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, embedded ? styles.embeddedContainer : null]}>
       <WeekFlowHeader
         title={headerTitle}
         mode="weekly"
@@ -122,7 +150,7 @@ export default function WeekFlowWeekly({
       <WeekModeRow
         visibleWeekStart={visibleWeekStart}
         todayDate={todayDate}
-        selectedDate={currentDate}
+        selectedDate={selectedDate}
         language={language}
         onDayPress={onDayPress}
         onPrevWeek={onPrev}
@@ -145,6 +173,12 @@ const styles = StyleSheet.create({
     overflow: "hidden",
     marginHorizontal: 12,
     marginTop: 12,
+  },
+  embeddedContainer: {
+    borderWidth: 0,
+    borderRadius: 0,
+    marginHorizontal: 0,
+    marginTop: 0,
   },
   weekdayRow: {
     flexDirection: "row",

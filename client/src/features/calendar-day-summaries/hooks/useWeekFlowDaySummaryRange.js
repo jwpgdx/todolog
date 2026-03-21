@@ -48,6 +48,14 @@ function mergeOverlaps(overlaps = []) {
   return mergeRanges(overlaps);
 }
 
+function emitDebugEvent(onDebugEvent, event) {
+  if (typeof onDebugEvent !== 'function' || !event?.type) return;
+  onDebugEvent({
+    at: new Date().toISOString(),
+    ...event,
+  });
+}
+
 export function useWeekFlowDaySummaryRange({
   mode,
   activeRange,
@@ -55,6 +63,7 @@ export function useWeekFlowDaySummaryRange({
   viewportSettledToken,
   getIsViewportSettled,
   maxDots = DEFAULT_MAX_DOTS,
+  onDebugEvent,
 } = {}) {
   const dirtySeq = useCalendarDaySummaryStore((state) => state.dirtySeq);
   const reensureSeq = useCalendarDaySummaryStore((state) => state.reensureSeq);
@@ -76,31 +85,84 @@ export function useWeekFlowDaySummaryRange({
     if (lastRetentionMonthRef.current === window.anchorMonthId) return;
     lastRetentionMonthRef.current = window.anchorMonthId;
 
+    emitDebugEvent(onDebugEvent, {
+      type: 'retention',
+      status: 'start',
+      anchorMonthId: window.anchorMonthId,
+      range: { startDate: window.startDate, endDate: window.endDate },
+      mode,
+    });
+
     pruneSummaryRetentionWindow({
       startDate: window.startDate,
       endDate: window.endDate,
       reason: `day-summaries:retention:${mode || 'unknown'}:${window.anchorMonthId}`,
     });
-  }, [getIsViewportSettled, mode, retentionAnchorDate, viewportSettledToken]);
+
+    emitDebugEvent(onDebugEvent, {
+      type: 'retention',
+      status: 'done',
+      anchorMonthId: window.anchorMonthId,
+      range: { startDate: window.startDate, endDate: window.endDate },
+      mode,
+    });
+  }, [getIsViewportSettled, mode, onDebugEvent, retentionAnchorDate, viewportSettledToken]);
 
   useEffect(() => {
     if (!active) return;
     if (typeof getIsViewportSettled === 'function' && !getIsViewportSettled()) return;
+
+    let cancelled = false;
+
+    emitDebugEvent(onDebugEvent, {
+      type: 'active-ensure',
+      status: 'start',
+      mode,
+      range: active,
+      reason: `${mode || 'unknown'}:settled`,
+    });
 
     ensureDaySummariesLoaded({
       startDate: active.startDate,
       endDate: active.endDate,
       reason: `${mode || 'unknown'}:settled`,
       maxDots,
-    }).catch((error) => {
-      console.warn('[day-summaries] ensureDaySummariesLoaded failed:', error?.message || error);
-    });
+    })
+      .then((result) => {
+        if (cancelled) return;
+        emitDebugEvent(onDebugEvent, {
+          type: 'active-ensure',
+          status: 'done',
+          mode,
+          range: active,
+          reason: result?.reason || `${mode || 'unknown'}:settled`,
+          cacheHit: result?.cacheHit === true,
+        });
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          emitDebugEvent(onDebugEvent, {
+            type: 'active-ensure',
+            status: 'error',
+            mode,
+            range: active,
+            reason: `${mode || 'unknown'}:settled`,
+            error: error?.message || String(error),
+          });
+        }
+        console.warn('[day-summaries] ensureDaySummariesLoaded failed:', error?.message || error);
+      });
+
+    return () => {
+      cancelled = true;
+    };
   }, [
     active?.endDate,
     active?.startDate,
     getIsViewportSettled,
     maxDots,
     mode,
+    onDebugEvent,
     reensureSeq,
     viewportSettledToken,
   ]);
@@ -115,12 +177,26 @@ export function useWeekFlowDaySummaryRange({
 
     refreshDirtyInFlightRef.current = true;
     (async () => {
+      emitDebugEvent(onDebugEvent, {
+        type: 'dirty-refresh',
+        status: 'start',
+        mode,
+        range: active,
+      });
+
       while (true) {
         const snapshot = useCalendarDaySummaryStore.getState();
         const currentDirty = snapshot.dirtyRanges || [];
         const seqBefore = snapshot.dirtySeq;
 
         if (!Array.isArray(currentDirty) || currentDirty.length === 0) {
+          emitDebugEvent(onDebugEvent, {
+            type: 'dirty-refresh',
+            status: 'done',
+            mode,
+            range: active,
+            refreshedRanges: [],
+          });
           return;
         }
 
@@ -138,6 +214,13 @@ export function useWeekFlowDaySummaryRange({
 
         const merged = mergeOverlaps(overlaps);
         if (merged.length === 0) {
+          emitDebugEvent(onDebugEvent, {
+            type: 'dirty-refresh',
+            status: 'done',
+            mode,
+            range: active,
+            refreshedRanges: [],
+          });
           return;
         }
 
@@ -158,10 +241,24 @@ export function useWeekFlowDaySummaryRange({
 
         // Remove only the part we refreshed; keep other dirty ranges for later scroll.
         useCalendarDaySummaryStore.getState().consumeDirtyRanges(merged);
+        emitDebugEvent(onDebugEvent, {
+          type: 'dirty-refresh',
+          status: 'done',
+          mode,
+          range: active,
+          refreshedRanges: merged,
+        });
         return;
       }
     })()
       .catch((error) => {
+        emitDebugEvent(onDebugEvent, {
+          type: 'dirty-refresh',
+          status: 'error',
+          mode,
+          range: active,
+          error: error?.message || String(error),
+        });
         console.warn('[day-summaries] dirty refresh failed:', error?.message || error);
       })
       .finally(() => {
@@ -174,7 +271,7 @@ export function useWeekFlowDaySummaryRange({
     getIsViewportSettled,
     maxDots,
     mode,
+    onDebugEvent,
     viewportSettledToken,
   ]);
 }
-

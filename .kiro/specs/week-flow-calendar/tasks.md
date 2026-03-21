@@ -2,116 +2,59 @@
 
 ## Overview
 
-This plan creates a new bounded calendar UI under a new name, while keeping the existing
-date-summary adapter and selected-date contract.
-
-The rewrite goal is not to patch `Strip Calendar Legacy`, but to replace its UI shell and
-navigation model with a simpler implementation.
+현재 플랜은 `Week Flow Calendar`를 `TodoScreen` 상단의 active calendar header로 유지하면서,
+기능 안정성과 문서 정합성을 맞추는 데 초점을 둡니다.
 
 ## Tasks
 
-- [x] 1. Create new feature path
-  - Create `client/src/features/week-flow-calendar/`
-  - Add subfolders:
-    - `ui/`
-    - `utils/`
-    - (`hooks/`는 Task 10에서 range hook 도입 시 생성)
-    - `services/` (only if a thin bridge is needed)
-  - Add `index.js` export
+- [x] 1. Create the feature path and exports
+  - `client/src/features/week-flow-calendar/`
+  - shared export surface via `index.js`
 
-- [x] 2. Define new date/grid utility layer
-  - Implement:
-    - `toWeekStart`
-    - `toMonthStart`
-    - `addDays/addWeeks/addMonths`
-    - `getWeekdayIndex`
-    - week meta cache (7-day metadata + month-boundary label helper)
-  - Keep all date values as `YYYY-MM-DD`
+- [x] 2. Implement shared date/grid primitives
+  - `toWeekStart`, `addDays/addWeeks/addMonths`, weekday helpers, week meta cache
 
-- [ ] 3. Implement new shell state model
-  - Use only:
-    - `mode`
-    - `visibleWeekStart`
-    - `visibleMonthStart`
-    - `Selected_Date` from global store
-  - Avoid legacy-style target/anchor duplication
+- [x] 3. Implement the weekly surface
+  - single visible week row
+  - header prev/next
+  - legacy horizontal swipe intent
 
-- [x] 4. Implement `DayCell`
-  - Preserve:
-    - selected state
-    - today marker
-    - composed selected+today state
-    - odd/even month tint
-    - category dots
-    - month-boundary mini label
+- [x] 4. Implement the monthly surface
+  - bounded vertical week-row list
+  - snapped top-week tracking
+  - prepend/append/trim
+  - visible loading for past-direction anchor correction
 
-- [x] 5. Implement shared `WeekRow`
-  - Render 7 cells
-  - Apply `startDayOfWeek`
-  - Reuse in both weekly and monthly modes
+- [x] 5. Reuse existing summary infrastructure
+  - `useWeekFlowDaySummaryRange`
+  - shared `calendar-day-summaries` path
+  - no direct SQLite reads
 
-- [x] 6. Implement `WeekModeRow`
-  - Single bounded week row
-  - No large horizontal virtualized list
-  - Prev/next navigation moves one week
-  - Optional swipe intent uses the same handlers
+- [x] 6. Implement the drag-snap shell
+  - `WeekFlowDragSnapCard`
+  - monthly open/close drag-snap
+  - monthly -> weekly selected-week recenter
+  - hidden-layer freeze rules
 
-- [x] 7. Implement `MonthModeGrid`
-  - Render one bounded month grid (5 or 6 rows)
-  - No internal infinite scroll list
-  - Prev/next navigation moves one month
-  - Selected date must remain visible and highlighted
+- [x] 7. Integrate into `TodoScreen`
+  - mount `WeekFlowTodoHeader` above `DailyTodoList`
+  - remove dedicated `week-flow` evaluation tab from active runtime
 
-- [x] 8. Implement `WeekFlowHeader`
-  - Render title and navigation controls
-  - Weekly mode title: selected/visible month context
-  - Monthly mode title: visible month
-  - Include today jump button if today is outside the current visible calendar scope
-  - Today jump updates both `Selected_Date` and the active visible scope
+- [x] 8. Keep weekly horizontal interaction conservative
+  - weekly drag-follow experiment removed
+  - legacy prev/next swipe path retained
 
-- [x] 9. Implement `WeekFlowToggleBar`
-  - Preserve swipe-based weekly/monthly toggle
-  - Use toggle bar up/down swipe for mode switching
-  - In weekly mode, left/right swipe may reuse prev/next week handlers
-  - Ensure toggle is selected-date-driven, not stale-scroll-driven
+- [x] 9. Keep default runtime low-noise
+  - temporary `[WF]` debug logs removed after iOS validation
+  - debug-only verification artifacts kept out of default runtime
 
-- [ ] 10. Add a new calendar-specific data range hook
-  - Create `useWeekFlowDataRange`
-  - Reuse the current range-summary adapter/store path
-  - Call existing `ensureRangeLoaded/select` semantics internally
-  - Keep retention/prune behavior compatible with the shared summary cache
-  - Do not fork recurrence/data logic
+- [x] 10. Validate iOS functional behavior
+  - multi-step monthly -> weekly transition
+  - today return
+  - monthly future/past scroll regression
+  - simulator + device smoke
 
-- [ ] 11. Bound range loading for the new UI
-  - Weekly mode: active week + small prefetch
-  - Monthly mode: visible month grid range + minimal buffer
-  - Remove dependence on giant virtual windows
-
-- [x] 12. Add dedicated test screen
-  - Create a new test route for `Week Flow Calendar`
-  - Keep legacy `Strip Calendar` test screen side-by-side during migration
-
-- [ ] 13. Add logging guardrails
-  - Default: low-noise logs
-  - Debug mode: transition and range-request logs only
-  - Remove scroll-spam as default behavior
-
-- [ ] 14. Cross-platform validation
-  - Web:
-    - selected date propagation
-    - month grid correctness
-    - toggle behavior
-  - iOS:
-    - no year jump on mode switch
-    - smooth weekly/monthly transition
-  - Android:
-    - no crash
-    - no year jump on mode switch
-    - selected date propagation works
-    - prev/next navigation works as defined
-    - acceptable render performance
-
-- [ ] 15. Migration checkpoint
-  - Replace the test tab/screen with the new calendar once validated
-  - Keep legacy implementation available only as rollback reference
-  - Do not wire into `TodoScreen` production path until the new test screen passes cross-platform checks
+- [ ] 11. Finish remaining validation / polish
+  - Android parity smoke
+  - weekly horizontal swipe final manual confidence pass
+  - visual/motion polish after functional freeze

@@ -32,8 +32,8 @@ Current state:
 - Todo Calendar V2 readiness is complete/validated on web and native baseline checks
 - Todo Calendar V2 cutover + legacy retirement landed: `calendar` tab now points to TC2, the duplicate standalone `TC2` tab route has been removed, and the old monthly calendar runtime has been removed from active app code
 - Post-cutover promoted native smoke is still pending before any legacy-retirement decision
-- Strip-calendar legacy module remains in stabilization/debugging phase
-- Week Flow Calendar rewrite prototype is active (bounded weekly/monthly shell); spec remains SOT for the full replacement plan
+- Strip-calendar remains legacy/spec reference only and is no longer mounted in the active Todo runtime
+- Week Flow Calendar is active on `TodoScreen` header (`WeekFlowTodoHeader`) with monthly drag-snap + monthly->weekly recenter on iOS-validated path; dedicated `week-flow` tab has been removed
 - Expo Router migration is complete/validated (file-based routing under `client/app/`)
 - Expo SDK 55 upgrade is complete/validated; Android emulator + iOS simulator smoke both passed
 - `react-native-wheel-pick` remains as the only non-blocking Expo doctor warning and is slated for later native replacement
@@ -43,8 +43,8 @@ Immediate objective:
 - maintain sync operational stability (retry/dead-letter/throughput monitoring)
 - reduce runtime debug log noise after Phase 3 integration
 - finish post-cutover promoted native smoke for Todo Calendar V2 and decide legacy monthly-calendar retirement timing
-- stabilize strip-calendar weekly/monthly settle behavior and mode-anchor consistency
-- finalize Week Flow Calendar rewrite spec and use it as the new source of truth for calendar UI replacement
+- finish Week Flow Calendar Android/manual parity validation and keep docs/spec aligned with the Todo header runtime
+- leave strip-calendar as legacy reference only unless later archive/removal work is explicitly scheduled
 - prepare next feature track on top of common layer + screen-adapter contracts
 - post Expo Router migration: ensure deep-link/push route parity and keep legacy navigation deps at 0
 - replace `react-native-wheel-pick` with native UI after the SDK 55 stabilization window
@@ -327,6 +327,15 @@ Evidence:
 - Modal/page-sheet/form-sheet presentation 옵션 비교용 test routes 확장 (`/(app)/test/modals`)
 - Week Flow Calendar rewrite prototype test screen 추가 (`/(app)/(tabs)/week-flow`)
 
+### 2026-03-21
+
+- Week Flow Calendar Todo header integration completed on the active Todo runtime
+  - `TodoScreen` 상단에 `WeekFlowTodoHeader` 삽입
+  - default iOS interaction은 weekly single-row + monthly drag-snap shell
+  - monthly -> weekly close 시 visible 5-row viewport 안의 selected week로 recenter
+  - dedicated `week-flow` evaluation tab 제거
+  - iOS simulator / device smoke에서 multi-step monthly->weekly transition, today return, monthly scroll regression 재확인
+
 ### 2026-03-13
 
 - Category write unification completed
@@ -466,7 +475,7 @@ Target:
 Priority checks:
 
 1. remove or gate verbose debug logs in runtime-critical paths
-2. keep 3-screen consistency checks (`TodoScreen`, `TodoCalendar`, `StripCalendar`) regression-safe
+2. keep active surface consistency checks (`TodoScreen`, `TodoCalendarV2`, `WeekFlowTodoHeader`) regression-safe
 3. ensure stale/fresh transition behavior remains deterministic after sync
 
 ## P1: Reliability and Operational Hardening

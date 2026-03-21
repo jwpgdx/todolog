@@ -12,8 +12,8 @@ Todolog is designed to work fully offline, then sync safely to server and Google
 - Calendar module with month-batch fetch and cache
 - Todo Calendar V2 line-monthly renderer now backing the primary `calendar` tab
 - Common query/aggregation layer (SQLite-only candidate -> decision -> aggregation)
-- Screen adapter layer for TodoScreen/TodoCalendar/StripCalendar handoff conversion
-- Strip-calendar module with separate weekly/monthly list architecture + summary adapter integration
+- Screen adapter layer for TodoScreen / TodoCalendarV2 / calendar surfaces handoff conversion
+- Week Flow Calendar Todo header with weekly/monthly drag-snap shell
 - Google Calendar integration with strict schedule type handling
 - Timezone-aware selected-date state (`currentDate`) based on `user.settings.timeZone`
 
@@ -38,10 +38,11 @@ As of 2026-03-21:
   - iOS simulator + Maestro validated `login/signup -> 취소 / 버리기 / 가져오기` branches
   - forced signup partial-failure validation confirmed guest session/local data retention and Inbox-only server rollback
 - Web real-server recovery specs: added for `category`, `todo`, `completion`
-  - completion matrix validated for `rapid toggle`, `recurring`, `mixed queue`, `dead_letter`, `restart`
+- completion matrix validated for `rapid toggle`, `recurring`, `mixed queue`, `dead_letter`, `restart`
+- Week Flow Calendar is mounted at the top of `TodoScreen`; dedicated `week-flow` evaluation tab has been removed and iOS weekly/monthly smoke passed
 - Todo Calendar V2 line-monthly baseline: implemented
 - Todo Calendar V2 cutover: `calendar` tab now renders TC2 as the primary monthly calendar path, and the legacy monthly calendar runtime has been retired
-- Strip-calendar stabilization/debugging: ongoing hardening (adapter path already active)
+- Strip-calendar: legacy reference only (not mounted in active runtime)
 - Expo Router migration: implemented (file-based routing under `client/app/`)
 - Expo SDK 55 upgrade: complete and validated
   - client stack now resolves to Expo `55.0.6`, React Native `0.83.2`, React `19.2.0`
@@ -99,7 +100,8 @@ Server:
 │  │  ├─ features/
 │  │  │  ├─ todo/
 │  │  │  ├─ todo-calendar-v2/
-│  │  │  └─ strip-calendar/
+│  │  │  ├─ week-flow-calendar/
+│  │  │  └─ strip-calendar/   # legacy reference
 │  │  ├─ services/
 │  │  │  ├─ db/
 │  │  │  └─ sync/
@@ -308,9 +310,11 @@ Client:
 - TC2 month data hook: `client/src/features/todo-calendar-v2/hooks/useTodoCalendarV2Data.js`
 - TC2 month fetch service: `client/src/features/todo-calendar-v2/services/fetchMonthLayouts.js`
 - Calendar month helpers: `client/src/utils/calendarMonthHelpers.js`
-- Strip-calendar shell: `client/src/features/strip-calendar/ui/StripCalendarShell.js`
-- Strip-calendar weekly/monthly lists: `client/src/features/strip-calendar/ui/WeeklyStripList.js`, `client/src/features/strip-calendar/ui/MonthlyStripList.js`
-- Strip-calendar summary service: `client/src/features/strip-calendar/services/stripCalendarSummaryService.js`
+- Week Flow Todo header: `client/src/features/week-flow-calendar/ui/WeekFlowTodoHeader.js`
+- Week Flow drag-snap shell: `client/src/features/week-flow-calendar/ui/WeekFlowDragSnapCard.js`
+- Week Flow monthly/weekly surfaces: `client/src/features/week-flow-calendar/ui/WeekFlowMonthly.js`, `client/src/features/week-flow-calendar/ui/WeekFlowWeekly.js`
+- Week Flow day-summary range hook: `client/src/features/calendar-day-summaries/hooks/useWeekFlowDaySummaryRange.js`
+- Strip-calendar spec/reference only: `.kiro/specs/strip-calendar/`
 - Todo form logic: `client/src/features/todo/form/useTodoFormLogic.js`
 
 Server:

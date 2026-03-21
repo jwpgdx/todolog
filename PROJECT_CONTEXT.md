@@ -50,8 +50,8 @@ Server:
 - Expo SDK 55 upgrade: complete and validated (`expo` `55.0.6`, `react-native` `0.83.2`, React Compiler enabled, unused `zeego`/native-menu deps removed)
 - Native validation after SDK 55 upgrade: Android `assembleDebug` + emulator launch succeeded; iOS simulator build/launch succeeded; `expo-doctor` now leaves only the `react-native-wheel-pick` New Architecture metadata warning
 - Todo Calendar V2 (`client/src/features/todo-calendar-v2/`): line-monthly baseline complete; `calendar` tab now renders TC2 as the primary monthly calendar path, adjacent-month cells stay in the 42-day grid but their labels/lines/overflow are hidden, completion glyphs remain out of scope in the frozen baseline, the old `todo-calendar` runtime has been retired, and the duplicate standalone `TC2` tab route has been removed
-- Strip-calendar foundation (weekly/monthly shell + anchor sync + debug instrumentation): active and integrated via adapter path
-- Week Flow Calendar (rewrite prototype): bounded calendar UI shell under `client/src/features/week-flow-calendar/`; Todo screen currently uses `WeekFlowTodoHeader`, and the dedicated `week-flow` evaluation tab has been removed
+- Strip-calendar legacy path: kept only as historical/spec reference; no active app route or Todo runtime mount depends on it
+- Week Flow Calendar: `client/src/features/week-flow-calendar/` now backs the Todo header surface via `WeekFlowTodoHeader`; default iOS interaction uses weekly single-row + monthly drag-snap shell, monthly->weekly selected-week recenter, and the dedicated `week-flow` evaluation tab has been removed
 - Expo Router migration: implemented (file-based routes under `client/app/`, entry via `expo-router/entry`); parity validation ongoing (Back/Modal/deep-link)
 - UI navigation: Expo Router groups `/(auth)` + `/(app)` with tabs under `client/app/(app)/(tabs)` (e.g. My Page: `/(app)/(tabs)/my-page`)
 - My Page subtree routing: My Page에서 여는 Settings/Profile/Category/Debug 화면은 `client/app/(app)/(tabs)/my-page/*` 아래로 push되어 iOS Large Title/back label UX를 유지
@@ -299,8 +299,8 @@ Behavior:
 
 ### 6.3 Calendar read flow
 
-1. Screen/hook requests date or range data (`TodoScreen`, `TodoCalendarV2`, `StripCalendar`).
-2. For range reads (`TodoCalendarV2`, `StripCalendar`), the shared range cache is the first hop:
+1. Screen/hook requests date or range data (`TodoScreen`, `TodoCalendarV2`, `WeekFlowCalendar`).
+2. For range reads (`TodoCalendarV2`, `WeekFlowCalendar`), the shared range cache is the first hop:
    - cache hit: return cached handoff payload (`itemsByDate`)
    - cache miss: load uncovered sub-ranges via common query/aggregation and merge into cache
 3. Common query/aggregation layer runs on SQLite-only path (direct for date reads, miss-only for range reads):
@@ -309,10 +309,10 @@ Behavior:
    - aggregation (`todo + completion + category`)
 4. Screen adapters transform handoff DTO into screen-specific shapes.
    - `TodoCalendarV2`: fixed 6-week month layouts via `fetchMonthLayoutsForMonths` -> `adaptMonthLayoutsFromRangeHandoff`
-   - `StripCalendar`: dot summaries via `stripCalendarAdapter`
+   - `WeekFlowCalendar`: visible-range day summaries via `calendar-day-summaries` + `useWeekFlowDaySummaryRange`
 5. Screen stores cache adapter outputs when needed:
    - `useTodoCalendarV2Store` (`monthLayoutsById` / `visibleContext` / `reensureSeq`)
-   - `stripCalendarStore` (`summariesByDate`)
+   - `calendar-day-summaries` shared store/path for week-flow marker summaries
 6. UI components render from adapted shape and cache selectors.
 
 Shared range cache implementation:
@@ -347,60 +347,38 @@ Shared range cache implementation:
 3. Screens/components compare `currentDate` vs `todayDate` for UI state.
 4. On AppState `active`, `todayDate` is re-evaluated (midnight rollover safety).
 
-### 6.5 Strip-calendar flow (current implementation)
+### 6.5 Week Flow calendar flow (current implementation)
 
-1. `StripCalendarShell` bootstraps weekly mode using `todayWeekStart` as initial anchor.
-2. Weekly and monthly lists are separated components (`WeeklyStripList`, `MonthlyStripList`) and only one is mounted by mode.
-3. Weekly list:
-   - horizontal FlashList (layout only), with direct user free horizontal scroll disabled
-   - weekly movement is driven by one-shot intent detection:
-     - touch/mouse drag swipe threshold (`dx`) -> prev/next week action
-     - web wheel/trackpad horizontal movement is not mapped to weekly navigation
-   - viewport width from `onLayout`
-   - explicit `scrollToOffset(index * viewportWidth)` sync for deterministic positioning
-   - week settle quantization via `onMomentumScrollEnd` and web fallback settle after programmatic scroll
-4. Monthly list:
-   - vertical FlashList
-   - `snapToInterval={WEEK_ROW_HEIGHT}` + `disableIntervalMomentum` + `decelerationRate="fast"`
-   - settle path uses `onMomentumScrollEnd`, plus web idle settle fallback (`onScroll` timer) with guards/cooldowns/re-arm thresholds
-   - layout normalize nudge: on monthly enter, if FlashList layout looks discontinuous (estimated-height artifacts), nudge width by 1px to force relayout and prevent "1 week only visible" viewport
-5. Data summary path is enabled at runtime:
-   - `ENABLE_STRIP_CALENDAR_SUMMARY = true`
-   - summary source is shared range cache miss -> `runCommonQueryForRange` -> shared range cache upsert -> `adaptStripCalendarFromRangeHandoff`
-   - dot rendering uses category-color dedupe + overflow metadata
-   - L1 summary cache (`stripCalendarStore`) contract:
-     - `summariesByDate`: per-day dot summary map (adapter output). Empty summaries are meaningful.
-     - `loadedRanges`: coverage ranges used by `ensureRangeLoaded`; fully-covered requests short-circuit without DB work.
-     - `dirtyRanges`/`dirtySeq`: CRUD invalidation queue used for targeted refresh in `useStripCalendarDataRange`.
-   - CRUD invalidation (Todo create/update/delete):
-     - hooks call `invalidateTodoSummary(todo)` which splits `loadedRanges` to create coverage "holes", records `dirtyRanges`,
-       and invalidates the shared range cache for the same date range.
-     - for unbounded recurrence (`recurrenceEndDate = null`) in `monthly`/`weekly`, invalidation is extended to the current
-       loaded window (`minLoadedStart`/`maxLoadedEnd`) to prevent stale dots in already-scrolled months/weeks.
-   - Dirty refresh:
-     - `useStripCalendarDataRange` re-ensures only the dirty overlap within the current `activeRange`, then consumes refreshed dirty ranges.
-   - Deletion/ghost-dot safety:
-     - strip adapter emits a sparse map (only dates that have items). For dirty-overlap reloads, `ensureRangeLoaded` fills
-       `buildDefaultSummaryRange(startDate, endDate)` first so "no todo" days overwrite stale summaries.
-6. Monthly -> Weekly target resolution policy:
-   - stale weekly transition target is cleared in shell on monthly settle and before monthly->weekly toggle
-   - transition target is resolved once at mode-switch time (no per-frame `onScroll` evaluation)
-   - base target is `monthlyTopWeekStart` (fallback: `currentWeekStart`)
-   - if `currentDate` week is inside current monthly 5-row viewport, weekly target prefers `currentWeekStart`
-   - if outside viewport, weekly target uses `monthlyTopWeekStart`
-7. Current integration surface:
-   - active in `StripCalendarTestScreen`
-   - main `TodoScreen` still uses the existing todo list path without strip-calendar mount
-8. Bottom mode-toggle interaction policy:
-   - bottom bar is swipe-only (click/tap toggle removed)
-   - `Weekly_Mode` + swipe-down => `Monthly_Mode`
-   - `Monthly_Mode` + swipe-up => `Weekly_Mode`
-9. Month-boundary label rendering policy:
-   - month label is shown on month-change boundary inside a week row
-   - month label is also shown when day-number is `1`, including week-first cell
-10. Day-cell month readability tint policy:
-   - odd/even month uses subtle background tint difference at day-cell level
-   - tint is subordinate to selected-circle, today-text, and dot indicators
+1. `WeekFlowTodoHeader` is mounted at the top of `TodoScreen`.
+2. `WeekFlowDragSnapCard` keeps explicit `weekly` / `monthly` surfaces and animates the container height between them.
+3. Weekly surface:
+   - renders exactly one visible week row
+   - header prev/next and legacy horizontal swipe intent both map to `±1 week`
+   - the committed visible week is reported upward through `onVisibleWeekStartChange`
+4. Monthly surface:
+   - uses a vertical `FlashList` of week rows with a bounded sliding window
+   - the top visible week is derived from snapped scroll offset, not loose viewability only
+   - prepend/append/trim keep the list bounded while preserving a 5-row viewport contract
+5. Drag-snap / transition policy:
+   - opening monthly anchors to the current weekly visible week
+   - closing monthly uses the current monthly top week as the source week
+   - if the selected date's week is within the current monthly 5-row viewport, weekly recenter runs after close
+   - otherwise weekly remains at the monthly top week
+6. Hidden-layer freeze policy:
+   - inactive mode keeps rendering for transition continuity
+   - inactive mode day-summary loading is disabled by default
+   - hidden monthly top-week reports do not overwrite committed weekly visible-week state outside active monthly mode
+   - `currentDate` changes in monthly mode do not auto-retarget hidden weekly visible-week state
+7. Day-summary path:
+   - `useWeekFlowDaySummaryRange` drives visible weekly/monthly summary ensure through the shared `calendar-day-summaries` path
+   - week-flow does not read SQLite directly
+8. Current integration surface:
+   - active in `TodoScreen` via `WeekFlowTodoHeader`
+   - dedicated `week-flow` evaluation tab has been removed
+   - strip legacy code remains reference-only and is not mounted in active runtime
+9. Visual policy:
+   - month-boundary label is shown on month-change boundary and always on day `1`
+   - odd/even month tint remains secondary to selected, today, and summary-dot states
 
 ### 6.6 Recurrence engine flow (Phase 3 Step 1)
 
@@ -418,8 +396,8 @@ Shared range cache implementation:
    - `idx_todos_recurrence_window(start_date, recurrence_end_date)` index
 5. Runtime integration status:
    - `recurrenceUtils` delegates recurrence predicate to engine core
-   - common query/aggregation path-level unification (TodoScreen/TodoCalendar/StripCalendar) is complete
-   - screen adapters (TodoScreen/TodoCalendar/StripCalendar) are complete and wired to runtime read paths
+   - common query/aggregation path-level unification (TodoScreen/TodoCalendarV2/WeekFlowCalendar) is complete
+   - screen adapters / calendar read paths for TodoScreen, TC2, and week-flow are wired to runtime read paths
 
 ## 7. Key Files by Responsibility
 
@@ -481,21 +459,22 @@ Todo Calendar V2 module (primary monthly path):
   - month container height: `TC2_MONTH_TITLE_HEIGHT + (6 * TC2_DAY_CELL_HEIGHT)`
   - adjacent-month cells remain structural only; baseline UI hides their content
 
-Strip calendar module:
+Week Flow calendar module:
 
-- `client/src/features/strip-calendar/ui/StripCalendarShell.js`
-- `client/src/features/strip-calendar/ui/WeeklyStripList.js`
-- `client/src/features/strip-calendar/ui/MonthlyStripList.js`
-- `client/src/features/strip-calendar/hooks/useStripCalendarController.js`
-- `client/src/features/strip-calendar/hooks/useStripCalendarDataRange.js`
-- `client/src/features/strip-calendar/services/stripCalendarDataAdapter.js`
-- `client/src/features/strip-calendar/services/stripCalendarSummaryService.js`
-- `client/src/features/strip-calendar/store/stripCalendarStore.js`
-- `client/src/features/strip-calendar/utils/stripCalendarConstants.js`
-- `client/src/features/strip-calendar/utils/stripCalendarDebug.js`
-- `client/src/screens/StripCalendarTestScreen.js`
+- `client/src/features/week-flow-calendar/ui/WeekFlowTodoHeader.js`
+- `client/src/features/week-flow-calendar/ui/WeekFlowDragSnapCard.js`
+- `client/src/features/week-flow-calendar/ui/WeekFlowWeekly.js`
+- `client/src/features/week-flow-calendar/ui/WeekFlowMonthly.js`
+- `client/src/features/week-flow-calendar/ui/WeekRow.js`
+- `client/src/features/week-flow-calendar/utils/weekFlowConstants.js`
+- `client/src/features/calendar-day-summaries/hooks/useWeekFlowDaySummaryRange.js`
 - UI geometry defaults:
   - `WEEK_ROW_HEIGHT = 48px` (weekly viewport: 1 row, monthly viewport: 5 rows)
+
+Strip calendar legacy reference:
+
+- `.kiro/specs/strip-calendar/*`
+- runtime mount 없음, active `client/app` / `client/src/screens/TodoScreen.js` import 없음
 
 Todo form:
 

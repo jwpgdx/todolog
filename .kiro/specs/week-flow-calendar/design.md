@@ -2,313 +2,178 @@
 
 ## Overview
 
-`Week Flow Calendar` is a bounded, deterministic replacement for `Strip Calendar Legacy`.
+현재 `Week Flow Calendar`는 `TodoScreen` 상단에 붙는 bounded weekly/monthly calendar shell입니다.
 
-The design goal is to preserve the existing data layer while removing the unstable UI behavior caused by:
+핵심 설계 의도는 다음과 같습니다.
 
-- giant week windows
-- duplicated navigation state
-- list-settle races
-- platform-specific scroll differences
+- `currentDate` / `todayDate` / `calendar-day-summaries` 계약 재사용
+- weekly 기본 보기 유지
+- monthly는 iOS에서 안정적인 drag-snap / snapped top-week 기반으로 동작
+- hidden layer 간섭은 freeze 규칙으로 제한
 
-The new calendar intentionally trades away infinite internal scrolling complexity in favor of:
+이 구현은 더 이상 “한 달 그리드 하나”를 목표로 하지 않습니다.
+현재 기준 설계는 `single-row weekly + bounded sliding monthly week window + close-time recenter` 입니다.
 
-- explicit weekly mode
-- explicit monthly mode
-- selected-date-based transitions
-- bounded rendering
-- shared week-row/day-cell visual language
+## Runtime Architecture
 
-## Legacy Problems to Avoid
-
-### 1. Multi-anchor navigation state
-
-Legacy state mixed:
-
-- `anchorWeekStart`
-- `weeklyVisibleWeekStart`
-- `monthlyTopWeekStart`
-- `weeklyTargetWeekStart`
-- `monthlyTargetWeekStart`
-
-This made transitions depend on stale internal state instead of current user intent.
-
-### 2. Giant week windows
-
-Legacy design created a large week window and then re-centered it near edges.
-That made a single index-sync error look like a year-level or decade-level jump.
-
-### 3. Scroll-settle race conditions
-
-Legacy monthly mode relied on:
-
-- `initialScrollIndex`
-- settle callbacks
-- fallback settle
-- programmatic guard
-- quantize correction
-- hidden alignment state
-
-This created platform-specific timing issues.
-
-## New Architecture
-
-```mermaid
-graph TB
-  DS[dateStore.currentDate]
-  SET[useSettings]
-  TD[useTodayDate]
-  AD[Existing Data Adapter]
-
-  SHELL[WeekFlowCalendarShell]
-  HEAD[WeekFlowHeader]
-  TOGGLE[WeekFlowToggleBar]
-  WEEK[WeekModeRow]
-  MONTH[MonthModeGrid]
-  WR[WeekRow]
-  DC[DayCell]
-
-  DS --> SHELL
-  SET --> SHELL
-  TD --> SHELL
-  AD --> SHELL
-
-  SHELL --> HEAD
-  SHELL --> TOGGLE
-  SHELL --> WEEK
-  SHELL --> MONTH
-  WEEK --> WR
-  MONTH --> WR
-  WR --> DC
+```text
+dateStore.currentDate
+useTodayDate / useSettings
+        ↓
+WeekFlowTodoHeader
+        ↓
+WeekFlowDragSnapCard
+   ├─ WeekFlowWeekly
+   └─ WeekFlowMonthly
+        ↓
+useWeekFlowDaySummaryRange
+        ↓
+calendar-day-summaries / shared range cache
 ```
-
-## Naming Plan
-
-Planned feature/module names:
-
-- `WeekFlowCalendarShell`
-- `WeekFlowHeader`
-- `WeekFlowToggleBar`
-- `WeekModeRow`
-- `MonthModeGrid`
-- `WeekRow`
-- `DayCell`
-
-Planned feature path:
-
-- `client/src/features/week-flow-calendar/`
-
-Legacy path remains:
-
-- `client/src/features/strip-calendar/` as reference only until migration completes
 
 ## Core State Model
 
 ### Global state reused
 
 - `Selected_Date = dateStore.currentDate`
-- `todayDate = useTodayDate()`
-- settings from `useSettings()`
+- `Today_Date = useTodayDate()`
+- `startDayOfWeek`, `language` from `useSettings()`
 
-### New local state
+### Local runtime state
 
-```js
-{
-  mode: 'weekly' | 'monthly',
-  visibleWeekStart: 'YYYY-MM-DD',
-  visibleMonthStart: 'YYYY-MM-01',
-}
-```
+`WeekFlowTodoHeader`
 
-`visibleWeekStart` = requirements의 `Visible_Week_Start`
+- `weeklyWeekStart`
 
-`visibleMonthStart` = requirements의 `Visible_Month_Start`
+`WeekFlowDragSnapCard`
 
-### State rules
+- `committedMode`
+- `monthlyViewportWeekStart`
+- `previewWeeklyWeekStart`
+- `previewWeeklySelectedDate`
+- `weeklyRecenterTransition`
+- measured weekly/monthly heights for drag-snap
 
-- `Selected_Date` remains the only source of truth for which day is selected
-- `visibleWeekStart` controls only weekly mode viewport
-- `visibleMonthStart` controls only monthly mode viewport
-- No extra target/anchor state unless an implementation detail proves unavoidable
+### Why extra state exists
 
-### Day Selection Side Effects
+이 구현은 “상태 최소화”만으로는 해결되지 않는 iOS 전환 문제를 겪었기 때문에,
+다음 상태를 명시적으로 둡니다.
 
-- In `Monthly_Mode`, tapping a leading/trailing day SHALL:
-  - update `Selected_Date`
-  - keep `visibleMonthStart` unchanged
-  - keep the current month grid visible
-  - render the selected leading/trailing day with both its out-of-month styling and selected styling
-- In `Weekly_Mode`, tapping a day SHALL:
-  - update `Selected_Date`
-  - keep `visibleWeekStart` unchanged
-  - only allow taps on days already rendered in the current visible week row
+- `monthlyViewportWeekStart`
+  - monthly 현재 맨 윗주
+- `previewWeeklyWeekStart`
+  - close/open transition 중 weekly preview source
+- `previewWeeklySelectedDate`
+  - hidden weekly selected freeze용
+- `weeklyRecenterTransition`
+  - monthly close 이후 selected week recenter animation 정보
 
-## Rendering Model
+핵심 원칙은 “상태를 늘리지 않는다”가 아니라,
+“각 상태의 책임을 명확히 분리하고 hidden layer 간섭을 막는다” 입니다.
 
-## Weekly Mode
+## Weekly Surface
 
-- Render one week row only
-- Build days from `visibleWeekStart`
-- No virtualized horizontal list required
-- Navigation:
-  - prev/next buttons move `visibleWeekStart` by `-1/+1 week`
-  - left/right swipe MAY call the same handlers
+- `WeekFlowWeekly`는 단일 visible week row만 렌더합니다.
+- header prev/next는 `±1 week`
+- 좌우 스와이프는 기존 legacy prev/next intent path를 유지합니다.
+- `visibleWeekStart`는 상위로 보고되고, Todo header는 이 값을 다음 monthly open anchor로 재사용합니다.
 
-## Monthly Mode
+## Monthly Surface
 
-- Render a bounded month grid (5 or 6 rows)
-- Build month grid from `visibleMonthStart`
-- Include leading/trailing days to fill full weeks
-- Keep a stable 5-row or 6-row layout; do not collapse to a 4-row layout
-- No long vertical list
-- No internal multi-year scroll container
-- Navigation:
-  - prev/next buttons move `visibleMonthStart` by `-1/+1 month`
+- `WeekFlowMonthly`는 vertical `FlashList` 기반 week-row surface입니다.
+- viewport는 5 visible rows를 기준으로 동작합니다.
+- 내부 데이터는 bounded sliding window로 유지됩니다.
+  - prepend / append / trim
+  - top-anchored rebuild
+  - snapped offset 기반 top-week 계산
+- 과거 방향 prepend 시에는 anchor lock과 visible loading으로 튐을 줄입니다.
 
-## Gesture/Swipe Model
+## Drag-Snap Shell
 
-- Weekly mode:
-  - left/right swipe: prev/next week
-  - toggle bar up/down swipe: mode switch
-- Monthly mode:
-  - month grid itself does not own mode-switch correctness
-  - toggle bar up/down swipe: mode switch
-  - prev/next month is handled by header controls
-- Core correctness must not depend on scroll momentum, settle timing, or hidden gesture state
+`WeekFlowDragSnapCard`는 weekly/monthly 두 레이어를 유지하면서 높이와 opacity를 애니메이션합니다.
+
+### Why dual-layer is kept
+
+- monthly open/close를 손가락에 붙는 방식으로 유지하기 위해
+- close 시 `monthly top week -> weekly preview -> selected week recenter` 흐름을 자연스럽게 만들기 위해
+
+### Freeze rules
+
+- hidden monthly top-week report는 active monthly mode가 아닐 때 visible weekly를 덮지 않습니다.
+- `monthly`에서 날짜를 눌러도 hidden weekly visible-week는 자동 변경되지 않습니다.
+- inactive mode는 기본적으로 summary loading을 비활성화합니다.
+- hidden monthly는 weekly visible-week를 따라가되, 주로 다음 open source 정합성용으로만 sync합니다.
 
 ## Transition Rules
 
 ### Weekly -> Monthly
 
-1. Read `Selected_Date`
-2. Compute `visibleMonthStart = startOfMonth(Selected_Date)`
-3. Build month grid for that month
-4. Keep selected date highlighted in the month grid
+1. current weekly visible week를 monthly sync target으로 전달
+2. hidden monthly가 해당 top week를 보이도록 맞춤
+3. drag-snap/tap toggle로 monthly를 연다
 
-This transition is selected-date-driven, not scroll-state-driven.
+즉 open 기준은 `Selected_Date` 단독이 아니라 현재 weekly visible week 입니다.
 
 ### Monthly -> Weekly
 
-1. Read `Selected_Date`
-2. Compute `visibleWeekStart = weekStart(Selected_Date, startDayOfWeek)`
-3. Render the week row for that week
+1. 닫히는 순간 source week는 `monthlyViewportWeekStart`
+2. selected date의 week가 현재 5-row viewport 안에 있으면 recenter target으로 채택
+3. viewport 밖이면 monthly top week를 그대로 유지
+4. recenter가 필요한 경우 close 후 slide/fade로 weekly target week에 맞춘다
 
-This guarantees that toggling never jumps away from the selected date.
+### Today jump
 
-### Today Jump
+- weekly에서 `오늘`:
+  - weekly visible week를 today week로 먼저 commit
+  - 그 다음 `currentDate = todayDate`
+- monthly에서 `오늘`:
+  - `currentDate = todayDate`
+  - monthly list를 today week가 보이도록 이동
 
-1. Set `Selected_Date = todayDate`
-2. If `Weekly_Mode`, set `visibleWeekStart = weekStart(todayDate, startDayOfWeek)`
-3. If `Monthly_Mode`, set `visibleMonthStart = startOfMonth(todayDate)`
-4. Re-render with today selected and visible in the active mode
+## Data Loading
 
-## Visual Rules
+### Weekly
 
-### Day Cell
+- active range는 visible week 기준의 작은 버퍼 범위만 유지합니다.
+- mounted summary loading은 active weekly mode일 때만 기본 활성입니다.
 
-- Selected date: primary selection indicator
-- Today: separate today marker
-- Selected + today: composed visual state
+### Monthly
 
-### Month boundary label
+- active range는 settled top week 기준의 visible 5 rows + small buffer 입니다.
+- scroll settled token이 바뀔 때 필요한 범위만 re-ensure 합니다.
 
-Show a small month label above the day number when:
+### Shared contract
 
-- the day is the first visible day of a new month within the row, or
-- the day number is `1`
+- `useWeekFlowDaySummaryRange`
+- `calendar-day-summaries`
+- shared range cache miss -> common query/aggregation -> summary selection
 
-### Odd/Even month tint
+SQLite 직접 접근은 없습니다.
 
-- Odd month: neutral surface
-- Even month: slightly tinted surface
-- The tint must stay subtle enough not to fight selected/today/dot states
+## Logging and Debug
 
-## Data Loading Plan
+- default runtime은 low-noise가 원칙입니다.
+- temporary `[WF]` debug logs는 validation 이후 제거합니다.
+- 추가 디버그가 필요하면 test-only panel이나 explicit flag로만 켭니다.
 
-The new UI keeps the existing adapter path:
+## Integration Surface
 
-- `ensureRangeLoaded({ startDate, endDate, reason })`
-- `selectDaySummaries(...)`
+- active runtime: `TodoScreen` + `WeekFlowTodoHeader`
+- removed: dedicated `week-flow` tab
+- retained as legacy reference only: `strip-calendar` spec/code lineage
 
-### Adapter Hook Strategy
+## Validation Status
 
-The legacy `useStripCalendarDataRange` hook depends on legacy navigation state shape and is not
-the source of truth for the new calendar.
+완료:
 
-The new calendar should introduce a dedicated hook such as:
+- iOS simulator/device
+- monthly drag-snap
+- monthly -> weekly recenter
+- multi-step selected-date transition
+- today return
+- monthly future/past scroll regression
 
-- `useWeekFlowDataRange({ mode, visibleWeekStart, visibleMonthStart })`
+남음:
 
-That hook should:
-
-- call the existing `ensureRangeLoaded` path
-- read summaries via existing select/store semantics
-- keep retention/prune behavior compatible with the current summary cache
-- remain independent from legacy target/anchor state
-
-### Weekly range
-
-Recommended initial range:
-
-- active week
-- plus a small prefetch window around it (for example ±2 weeks)
-
-### Monthly range
-
-Recommended initial range:
-
-- the visible month grid start/end
-- plus a small leading/trailing buffer only if needed
-
-This is intentionally smaller than the legacy multi-month scrolling model.
-
-## Logging Plan
-
-Default behavior:
-
-- no high-volume perf logging
-- no per-scroll spam
-
-Debug mode should focus on:
-
-- mode transition input/output
-- selected date
-- visible week/month state
-- adapter range requests
-
-## Platform Strategy
-
-The new design should minimize platform-specific behavior by avoiding list/settle-heavy interaction for correctness.
-
-That means:
-
-- weekly mode should not depend on large horizontal virtualization
-- monthly mode should not depend on long vertical snap physics
-- the same rendering logic should work on iOS, Android, and Web
-
-## Migration Strategy
-
-### Keep
-
-- existing date store contract
-- existing today/settings hooks
-- existing strip calendar summary/data adapter
-- existing strip calendar summary cache store
-- existing day summary semantics
-
-### Replace
-
-- strip calendar shell
-- controller/navigation state model
-- weekly list UI
-- monthly list UI
-- toggle transition behavior
-
-### Rollout
-
-1. Build `Week Flow Calendar` beside the legacy implementation
-2. Add dedicated test screen
-3. Validate iOS/Android/Web
-4. Swap test tab to new calendar
-5. Move `TodoScreen` integration after test validation
-6. Keep legacy implementation only until rollback window closes
+- Android parity smoke
+- design polish / motion tuning

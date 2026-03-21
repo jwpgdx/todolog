@@ -2,4 +2,5 @@ export const WEEKDAY_COUNT = 7;
 export const WEEK_ROW_HEIGHT = 48;
 
 export const DEBUG_WEEK_FLOW_CALENDAR = false;
-
+export const DEFAULT_WEEK_FLOW_DRAG_SNAP_ENABLED = true;
+export const DEFAULT_WEEK_FLOW_WEEKLY_RECENTER_ANIMATION_ENABLED = true;

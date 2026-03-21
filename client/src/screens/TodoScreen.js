@@ -1,11 +1,11 @@
 import React, { useCallback, useRef } from 'react';
-import { SafeAreaView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { useRouter } from 'expo-router';
+import { SafeAreaView, StyleSheet } from 'react-native';
 import { useDateStore } from '../store/dateStore';
 import { useTodos } from '../hooks/queries/useTodos';
 import { useToggleCompletion } from '../hooks/queries/useToggleCompletion';
 import { useDeleteTodo } from '../hooks/queries/useDeleteTodo';
 import { useTodoFormStore } from '../store/todoFormStore';
+import { WeekFlowTodoHeader } from '../features/week-flow-calendar';
 
 import DailyTodoList from '../features/todo/list/DailyTodoList';
 
@@ -14,7 +14,6 @@ import DailyTodoList from '../features/todo/list/DailyTodoList';
  * 메인 투두 리스트 화면
  */
 export default function TodoScreen() {
-  const router = useRouter();
   const { currentDate } = useDateStore();
   const { data: todos, isLoading } = useTodos(currentDate);
   const { mutate: toggleCompletion } = useToggleCompletion();
@@ -68,29 +67,7 @@ export default function TodoScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <View style={styles.testEntryRow}>
-        <TouchableOpacity
-          onPress={() => router.push('/test/form-sheet')}
-          activeOpacity={0.85}
-          style={styles.devButton}
-        >
-          <Text style={styles.devButtonText}>Form Sheet Test</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          onPress={() => router.push('/test/page-sheet')}
-          activeOpacity={0.85}
-          style={styles.devButton}
-        >
-          <Text style={styles.devButtonText}>Page Sheet Test</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          onPress={() => router.push('/test/modals')}
-          activeOpacity={0.85}
-          style={styles.devButton}
-        >
-          <Text style={styles.devButtonText}>Modals Test</Text>
-        </TouchableOpacity>
-      </View>
+      <WeekFlowTodoHeader />
       <DailyTodoList
         date={currentDate}
         todos={todos}
@@ -107,30 +84,5 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#F9FAFB',
-  },
-  testEntryRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    justifyContent: 'flex-end',
-    gap: 10,
-    flexWrap: 'wrap',
-    paddingHorizontal: 12,
-    paddingTop: 8,
-    paddingBottom: 8,
-  },
-  devButton: {
-    backgroundColor: '#111827',
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderRadius: 12,
-    elevation: 6,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 6,
-  },
-  devButtonText: {
-    color: 'white',
-    fontWeight: '700',
   },
 });

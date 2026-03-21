@@ -35,47 +35,11 @@ export default function TabsLayout() {
         }}
       />
       <Tabs.Screen
-        name="todo-calendar-v2"
-        options={{
-          href: null,
-          title: 'Calendar V2',
-          tabBarLabel: 'TC2',
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="calendar-clear-outline" size={size} color={color} />
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="test"
-        options={{
-          title: '테스트',
-          tabBarLabel: '테스트',
-          tabBarIcon: ({ color, size }) => <Ionicons name="flask-outline" size={size} color={color} />,
-        }}
-      />
-      <Tabs.Screen
-        name="debug"
-        options={{
-          title: '디버그',
-          tabBarLabel: '디버그',
-          tabBarIcon: ({ color, size }) => <Ionicons name="bug-outline" size={size} color={color} />,
-        }}
-      />
-      <Tabs.Screen
         name="my-page"
         options={{
           title: 'My Page',
           tabBarLabel: 'My Page',
           tabBarIcon: ({ color, size }) => <Ionicons name="person-outline" size={size} color={color} />,
-        }}
-      />
-
-      <Tabs.Screen
-        name="week-flow"
-        options={{
-          title: 'Week Flow',
-          tabBarLabel: 'WF',
-          tabBarIcon: ({ color, size }) => <Ionicons name="swap-vertical-outline" size={size} color={color} />,
         }}
       />
 
