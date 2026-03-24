@@ -8,6 +8,7 @@ import { useCategories } from '../hooks/queries/useCategories';
 import { useTodosByCategory } from '../hooks/queries/useTodosByCategory';
 import { useUpdateTodo } from '../hooks/queries/useUpdateTodo';
 import { useDeleteTodo } from '../hooks/queries/useDeleteTodo';
+import { useFloatingTabBarScrollPadding } from '../navigation/useFloatingTabBarInset';
 
 const formatDateRange = (startDate, endDate) => {
     const start = dayjs(startDate);
@@ -70,6 +71,7 @@ export default function CategoryTodosScreen() {
         [categories, categoryId]
     );
     const categoryColor = category?.color || '#3B82F6';
+    const bottomInset = useFloatingTabBarScrollPadding(16);
 
     const { data: todos, isLoading } = useTodosByCategory(categoryId);
     const updateTodo = useUpdateTodo();
@@ -161,7 +163,8 @@ export default function CategoryTodosScreen() {
                         onDelete={handleDelete}
                     />
                 )}
-                contentContainerStyle={{ padding: 16, paddingBottom: 100 }}
+                contentInsetAdjustmentBehavior="automatic"
+                contentContainerStyle={{ padding: 16, paddingBottom: bottomInset }}
                 ListEmptyComponent={
                     <View className="items-center justify-center py-20">
                         <Ionicons name="folder-open-outline" size={48} color="#D1D5DB" />

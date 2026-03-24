@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { FlashList } from '@shopify/flash-list';
+import { useFloatingTabBarScrollPadding } from '../../../navigation/useFloatingTabBarInset';
 import { useFocusEffect } from 'expo-router';
 
 import { useAuthStore } from '../../../store/authStore';
@@ -12,6 +13,7 @@ import { TC2_MONTH_HEIGHT } from '../utils/monthLayoutUtils';
 import TodoCalendarV2MonthSection from './TodoCalendarV2MonthSection';
 
 export default function TodoCalendarV2CalendarList() {
+  const bottomInset = useFloatingTabBarScrollPadding(16);
   const isFocusedRef = useRef(true);
   const hasHandledInitialViewabilityRef = useRef(false);
   const hasDispatchedSyntheticInitialRef = useRef(false);
@@ -144,6 +146,7 @@ export default function TodoCalendarV2CalendarList() {
         onViewableItemsChanged={onViewableItemsChanged}
         viewabilityConfig={{ itemVisiblePercentThreshold: 30 }}
         maintainVisibleContentPosition={{ minIndexForVisible: 0 }}
+        contentContainerStyle={{ paddingBottom: bottomInset }}
       />
     </View>
   );

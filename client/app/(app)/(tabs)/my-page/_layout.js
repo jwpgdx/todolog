@@ -76,6 +76,7 @@ export default function MyPageLayout() {
           title: '색상 선택',
         }}
       />
+      <Stack.Screen name="debug" options={{ title: '디버그' }} />
     </Stack>
   );
 }

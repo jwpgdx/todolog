@@ -1,6 +1,6 @@
 # Todolog Roadmap
 
-Last Updated: 2026-03-21
+Last Updated: 2026-03-24
 Owner: Product + Engineering
 
 ## 1. Purpose
@@ -36,6 +36,8 @@ Current state:
 - Week Flow Calendar is active on `TodoScreen` header (`WeekFlowTodoHeader`) with monthly drag-snap + monthly->weekly recenter on iOS-validated path; dedicated `week-flow` tab has been removed
 - Expo Router migration is complete/validated (file-based routing under `client/app/`)
 - Expo SDK 55 upgrade is complete/validated; Android emulator + iOS simulator smoke both passed
+- Floating tab bar implementation has landed: the product shell now uses a detached custom tab bar with a three-tab menu shell, a separate circular `+` quick action, shared reserved inset hooks, blurred shared surface, and animated moving selected pill
+- Floating tab bar iOS simulator validation passed after rebuilding the dev client for `expo-blur`/`react-native-svg`; Android/manual parity validation is still pending
 - `react-native-wheel-pick` remains as the only non-blocking Expo doctor warning and is slated for later native replacement
 
 Immediate objective:
@@ -47,6 +49,7 @@ Immediate objective:
 - leave strip-calendar as legacy reference only unless later archive/removal work is explicitly scheduled
 - prepare next feature track on top of common layer + screen-adapter contracts
 - post Expo Router migration: ensure deep-link/push route parity and keep legacy navigation deps at 0
+- finish floating tab bar Android/manual parity smoke after the iOS-validated detached-shell rollout
 - replace `react-native-wheel-pick` with native UI after the SDK 55 stabilization window
 
 ## 3. Dated Milestones (Completed)
@@ -254,6 +257,26 @@ Evidence:
 - `.kiro/specs/page-sheet/tasks.md`
 - `client/src/components/ui/page-sheet/index.js`
 - `client/src/test/PageSheetTestScreen.js`
+
+### 2026-03-24
+
+- Floating tab bar implementation landed
+  - Top-level product tabs reduced to `Todo / Calendar / My Page`
+  - `+` is now a non-route quick action rendered as a separate circular surface beside the menu shell
+  - Detached shell uses a shared blurred background (`expo-blur`) and SVG tab icons (`react-native-svg`)
+  - Active tab state now uses a moving selected pill instead of per-item static backgrounds
+  - Shared reserved bottom inset hooks are wired into Todo / Calendar / My Page descendant scroll surfaces
+  - iOS simulator rebuild + detached-shell smoke passed; Android/manual parity remains pending
+
+Evidence:
+
+- `.kiro/specs/floating-tab-bar/requirements.md`
+- `.kiro/specs/floating-tab-bar/design.md`
+- `.kiro/specs/floating-tab-bar/tasks.md`
+- `.kiro/specs/floating-tab-bar/external-review-triage.md`
+- `client/src/navigation/TabBar.js`
+- `client/src/navigation/tabBarMetrics.js`
+- `client/src/navigation/useFloatingTabBarInset.js`
 
 ### 2026-03-05
 

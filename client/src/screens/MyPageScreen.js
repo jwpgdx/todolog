@@ -4,10 +4,12 @@ import { useRouter } from 'expo-router';
 import { useAuthStore } from '../store/authStore';
 import { Ionicons } from '@expo/vector-icons';
 import CategoryGroupList from '../components/domain/category/CategoryGroupList';
+import { useFloatingTabBarScrollPadding } from '../navigation/useFloatingTabBarInset';
 
 export default function MyPageScreen() {
   const router = useRouter();
   const { user, openLoginScreen } = useAuthStore();
+  const bottomInset = useFloatingTabBarScrollPadding(16);
 
   // Mock data for activity summary
   const totalTodos = 0;
@@ -27,22 +29,22 @@ export default function MyPageScreen() {
     <ScrollView
       className="flex-1 bg-white"
       contentInsetAdjustmentBehavior="automatic"
-      contentContainerStyle={{ paddingBottom: 40 }}
+      contentContainerStyle={{ paddingBottom: bottomInset }}
     >
         {/* Guest Banner */}
         {user?.accountType === 'anonymous' && (
-          <View className="mx-4 mt-4 mb-2 bg-blue-50 border border-blue-200 rounded-xl p-4">
+          <View className="mx-4 mt-4 mb-2 bg-gray-50 border border-gray-200 rounded-xl p-4">
             <View className="flex-row items-center mb-2">
-              <Ionicons name="information-circle" size={20} color="#3b82f6" />
-              <Text className="text-blue-700 font-semibold ml-2">게스트로 사용 중입니다</Text>
+              <Ionicons name="information-circle" size={20} color="#6b7280" />
+              <Text className="text-gray-800 font-semibold ml-2">게스트로 사용 중입니다</Text>
             </View>
-            <Text className="text-blue-600 text-sm mb-3">
+            <Text className="text-gray-600 text-sm mb-3">
               회원으로 전환하면 여러 기기에서 데이터를 동기화할 수 있습니다.
             </Text>
             
             {/* 회원가입 버튼 */}
             <TouchableOpacity
-              className="bg-blue-500 py-3 px-4 rounded-lg active:bg-blue-600 mb-2"
+              className="bg-gray-900 py-3 px-4 rounded-lg active:bg-blue-600 mb-2"
               onPress={() => router.push('/(app)/guest/convert')}
             >
               <Text className="text-white font-semibold text-center">회원가입</Text>
@@ -50,10 +52,10 @@ export default function MyPageScreen() {
             
             {/* 기존 회원 로그인 버튼 */}
             <TouchableOpacity
-              className="bg-white border border-blue-500 py-3 px-4 rounded-lg active:bg-blue-50"
+              className="bg-white border border-gray-300 py-3 px-4 rounded-lg active:bg-blue-50"
               onPress={openLoginScreen}
             >
-              <Text className="text-blue-500 font-semibold text-center">기존 회원 로그인</Text>
+              <Text className="text-gray-700 font-semibold text-center">기존 회원 로그인</Text>
             </TouchableOpacity>
           </View>
         )}
@@ -90,7 +92,7 @@ export default function MyPageScreen() {
             onPress={() => router.push('/(app)/(tabs)')}
           >
             <Text className="text-gray-500 text-sm mb-1">오늘 할 일</Text>
-            <Text className="text-2xl font-bold text-blue-500">{todayTodos}</Text>
+            <Text className="text-2xl font-bold text-gray-900">{todayTodos}</Text>
           </TouchableOpacity>
         </View>
 
@@ -125,7 +127,7 @@ export default function MyPageScreen() {
           />
           <MenuLink
             title="디버그 (DB 초기화)"
-            onPress={() => router.push('/(app)/(tabs)/debug')}
+            onPress={() => router.push('/(app)/(tabs)/my-page/debug')}
             isLast
           />
         </View>

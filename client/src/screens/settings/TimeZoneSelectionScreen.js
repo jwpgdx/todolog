@@ -4,10 +4,12 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuthStore } from '../../store/authStore';
 import { useTimeZone, COMMON_TIMEZONES } from '../../hooks/useTimeZone';
+import { useFloatingTabBarScrollPadding } from '../../navigation/useFloatingTabBarInset';
 
 export default function TimeZoneSelectionScreen({ navigation }) {
     const { user } = useAuthStore();
     const { updateTimeZone } = useTimeZone();
+    const bottomInset = useFloatingTabBarScrollPadding(16);
 
     // settings.timeZone이 우선, 없으면 root level timeZone, 없으면 기본값
     const currentTimeZone = user?.settings?.timeZone || user?.timeZone || 'Asia/Seoul';
@@ -19,7 +21,7 @@ export default function TimeZoneSelectionScreen({ navigation }) {
 
     return (
         <SafeAreaView className="flex-1 bg-background" edges={['bottom']}>
-            <ScrollView className="flex-1">
+            <ScrollView className="flex-1" contentContainerStyle={{ paddingBottom: bottomInset }}>
                 <View className="bg-white dark:bg-gray-800 border-t border-b border-gray-100 dark:border-gray-700 mt-4">
                     {COMMON_TIMEZONES.map((timeZone, index) => {
                         const isSelected = timeZone === currentTimeZone;

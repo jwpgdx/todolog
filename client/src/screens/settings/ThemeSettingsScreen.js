@@ -3,11 +3,13 @@ import { View, Text, TouchableOpacity, ScrollView } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useSettings, useUpdateSetting } from '../../hooks/queries/useSettings';
+import { useFloatingTabBarScrollPadding } from '../../navigation/useFloatingTabBarInset';
 
 export default function ThemeSettingsScreen({ navigation }) {
     const { data: settings = {} } = useSettings();
     const { mutate: updateSetting } = useUpdateSetting();
     const currentTheme = settings.theme || 'system';
+    const bottomInset = useFloatingTabBarScrollPadding(16);
 
     const options = [
         { label: '시스템 설정', value: 'system' },
@@ -21,7 +23,7 @@ export default function ThemeSettingsScreen({ navigation }) {
 
     return (
         <SafeAreaView className="flex-1 bg-background" edges={['bottom']}>
-            <ScrollView className="flex-1">
+            <ScrollView className="flex-1" contentContainerStyle={{ paddingBottom: bottomInset }}>
                 <View className="mt-4 border-t border-b border-gray-100 bg-white">
                     {options.map((option, index) => {
                         const isSelected = currentTheme === option.value;

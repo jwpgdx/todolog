@@ -5,11 +5,13 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSettings, useUpdateSetting } from '../../hooks/queries/useSettings';
 import i18n from '../../utils/i18n';
 import * as Localization from 'expo-localization';
+import { useFloatingTabBarScrollPadding } from '../../navigation/useFloatingTabBarInset';
 
 export default function LanguageSettingsScreen({ navigation }) {
     const { data: settings = {} } = useSettings();
     const { mutate: updateSetting } = useUpdateSetting();
     const currentLang = settings.language || 'system';
+    const bottomInset = useFloatingTabBarScrollPadding(16);
 
     const options = [
         { label: '시스템 설정 (System Default)', value: 'system' },
@@ -35,7 +37,7 @@ export default function LanguageSettingsScreen({ navigation }) {
 
     return (
         <SafeAreaView className="flex-1 bg-background" edges={['bottom']}>
-            <ScrollView className="flex-1">
+            <ScrollView className="flex-1" contentContainerStyle={{ paddingBottom: bottomInset }}>
                 <View className="mt-4 border-t border-b border-gray-100 bg-white dark:bg-gray-800 dark:border-gray-700">
                     {options.map((option, index) => {
                         const isSelected = currentLang === option.value;

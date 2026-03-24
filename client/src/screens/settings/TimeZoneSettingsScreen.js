@@ -6,12 +6,14 @@ import * as Localization from 'expo-localization';
 import { useRouter } from 'expo-router';
 import { useSettings, useUpdateSetting } from '../../hooks/queries/useSettings';
 import { useTimeZone, getTimeZoneDisplayName } from '../../hooks/useTimeZone';
+import { useFloatingTabBarScrollPadding } from '../../navigation/useFloatingTabBarInset';
 
 export default function TimeZoneSettingsScreen() {
     const router = useRouter();
     const { data: settings = {} } = useSettings();
     const { mutate: updateSetting } = useUpdateSetting();
     const { updateTimeZone } = useTimeZone();
+    const bottomInset = useFloatingTabBarScrollPadding(16);
 
     const currentTimeZone = settings.timeZone || 'Asia/Seoul';
     const isAuto = settings.timeZoneAuto ?? true;
@@ -31,7 +33,7 @@ export default function TimeZoneSettingsScreen() {
 
     return (
         <SafeAreaView className="flex-1 bg-background" edges={['bottom']}>
-            <ScrollView className="flex-1">
+            <ScrollView className="flex-1" contentContainerStyle={{ paddingBottom: bottomInset }}>
                 <View className="mb-6">
                     {/* 섹션 1: 자동 설정 스위치 */}
                     <View className="px-4 pt-6 pb-2">

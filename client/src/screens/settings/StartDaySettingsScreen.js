@@ -4,12 +4,14 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useSettings, useUpdateSetting } from '../../hooks/queries/useSettings';
 import { useTranslation } from 'react-i18next';
+import { useFloatingTabBarScrollPadding } from '../../navigation/useFloatingTabBarInset';
 
 export default function StartDaySettingsScreen({ navigation }) {
     const { data: settings = {} } = useSettings();
     const { mutate: updateSetting } = useUpdateSetting();
     const { t } = useTranslation();
     const currentStartDay = settings.startDayOfWeek || 'sunday';
+    const bottomInset = useFloatingTabBarScrollPadding(16);
 
     const options = [
         { label: t('day_sunday'), value: 'sunday' },
@@ -22,7 +24,7 @@ export default function StartDaySettingsScreen({ navigation }) {
 
     return (
         <SafeAreaView className="flex-1 bg-background" edges={['bottom']}>
-            <ScrollView className="flex-1">
+            <ScrollView className="flex-1" contentContainerStyle={{ paddingBottom: bottomInset }}>
                 <View className="mt-4 border-t border-b border-gray-100 bg-white dark:bg-gray-800 dark:border-gray-700">
                     {options.map((option, index) => {
                         const isSelected = currentStartDay === option.value;

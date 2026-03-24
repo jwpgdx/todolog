@@ -50,6 +50,7 @@ import {
   getCategoryCount,
 } from '../services/db/categoryService';
 import { useSyncContext } from '../providers/SyncProvider';
+import useFloatingTabBarInset from '../navigation/useFloatingTabBarInset';
 
 function getLocalDateString() {
   const now = new Date();
@@ -72,6 +73,7 @@ function percentile(values, p) {
 
 export default function DebugScreen() {
   const router = useRouter();
+  const bottomInset = useFloatingTabBarInset(16);
   const [logs, setLogs] = useState([]);
   const [selectedDate, setSelectedDate] = useState(getLocalDateString());
   const [validationSummary, setValidationSummary] = useState({
@@ -1895,7 +1897,7 @@ export default function DebugScreen() {
   };
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { paddingBottom: bottomInset }]}>
       <Text style={styles.title}>🔧 Debug Screen (SQLite)</Text>
 
       <View style={styles.dateSelector}>
@@ -1925,17 +1927,6 @@ export default function DebugScreen() {
       </View>
 
       <ScrollView style={styles.buttonContainer}>
-        <Text style={styles.sectionTitle}>⌨️ 키보드/UI</Text>
-
-        <TouchableOpacity
-          style={[styles.button, styles.testButton]}
-          onPress={() => router.push('/test/quick-bar-native')}
-        >
-          <Text style={styles.buttonText}>⌨️ Quick Bar Native Test 열기</Text>
-        </TouchableOpacity>
-
-        <View style={styles.divider} />
-
         <Text style={styles.sectionTitle}>📊 기본 상태 확인</Text>
 
         <TouchableOpacity style={[styles.button, styles.primaryButton]} onPress={checkDbStatus}>
@@ -2114,20 +2105,6 @@ export default function DebugScreen() {
           onPress={() => router.push('/(app)/guest/migration-test')}
         >
           <Text style={styles.buttonText}>🔬 Guest Migration Test</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={[styles.button, styles.testButton]}
-          onPress={() => router.push('/(app)/(tabs)/test')}
-        >
-          <Text style={styles.buttonText}>📅 TC2 Readiness Test</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={[styles.button, styles.testButton]}
-          onPress={() => router.push('/(app)/test/recurrence-engine')}
-        >
-          <Text style={styles.buttonText}>🔁 Recurrence Engine Test</Text>
         </TouchableOpacity>
 
       </ScrollView>

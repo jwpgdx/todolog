@@ -1,7 +1,7 @@
 # Todolog Project Context
 
-Last Updated: 2026-03-21
-Status: Sync hardening complete (Pending Push -> Delta Pull), Phase 3 Step 1 recurrence engine complete/validated, Phase 3 Step 2 common query/aggregation complete/validated, Phase 3 Step 3 screen-adapter layer complete/validated, category write unification complete/validated, completion write unification implemented/validated, completion coalescing implemented/validated, completion local tombstone implemented/validated, guest local-only bootstrap + all-to-Inbox migration implemented/validated, cache-policy unification complete/validated, Expo Router migration implemented (parity validation ongoing), Expo SDK 55 upgrade complete/validated, Todo Calendar V2 line-monthly baseline complete, readiness complete, and primary monthly tab cutover implemented (post-cutover promoted native smoke pending)
+Last Updated: 2026-03-24
+Status: Sync hardening complete (Pending Push -> Delta Pull), Phase 3 Step 1 recurrence engine complete/validated, Phase 3 Step 2 common query/aggregation complete/validated, Phase 3 Step 3 screen-adapter layer complete/validated, category write unification complete/validated, completion write unification implemented/validated, completion coalescing implemented/validated, completion local tombstone implemented/validated, guest local-only bootstrap + all-to-Inbox migration implemented/validated, cache-policy unification complete/validated, Expo Router migration implemented (parity validation ongoing), Expo SDK 55 upgrade complete/validated, Todo Calendar V2 line-monthly baseline complete, readiness complete, primary monthly tab cutover implemented (post-cutover promoted native smoke pending), and floating tab bar implementation landed (iOS simulator validated; Android/manual parity pending)
 
 ## 1. Purpose
 
@@ -54,7 +54,10 @@ Server:
 - Week Flow Calendar: `client/src/features/week-flow-calendar/` now backs the Todo header surface via `WeekFlowTodoHeader`; default iOS interaction uses weekly single-row + monthly drag-snap shell, monthly->weekly selected-week recenter, and the dedicated `week-flow` evaluation tab has been removed
 - Expo Router migration: implemented (file-based routes under `client/app/`, entry via `expo-router/entry`); parity validation ongoing (Back/Modal/deep-link)
 - UI navigation: Expo Router groups `/(auth)` + `/(app)` with tabs under `client/app/(app)/(tabs)` (e.g. My Page: `/(app)/(tabs)/my-page`)
+- Floating tab bar: top-level tabs now use a custom JS `tabBar` (`client/src/navigation/TabBar.js`) with a three-item menu shell (`Todo / Calendar / My Page`) plus a separate circular non-route `+` quick action on the right; tab presses reset to each destination root via `router.replace`, selected state is rendered as a moving blue pill using Reanimated, and scrollable tab surfaces consume shared bottom inset helpers from `client/src/navigation/useFloatingTabBarInset.js`
+- Floating tab bar visuals: menu shell and `+` surface share the same blurred detached background via `expo-blur` (`intensity=8`), current geometry is defined in `client/src/navigation/tabBarMetrics.js`, tab icons are SVG-based components under `client/src/navigation/icons/`, and the `Todo` icon renders the current day number via `useTodayDate`
 - My Page subtree routing: My Page에서 여는 Settings/Profile/Category/Debug 화면은 `client/app/(app)/(tabs)/my-page/*` 아래로 push되어 iOS Large Title/back label UX를 유지
+- Floating tab bar validation: iOS simulator dev-client rebuild succeeded after adding `expo-blur`/`react-native-svg`, and native smoke confirmed the detached bar, moving selected pill, and SVG tab icons on `Todo / Calendar / My Page`; Android/manual parity verification remains pending
 - Real-server recovery web E2E: category/todo/completion recovery specs validated; completion extended matrix (`rapid toggle`, `recurring`, `mixed queue`, `dead_letter`, `restart`) validated
 - Guest migration server validation: completion import preserves exported active `_id`, and forced signup partial-failure rolls back imported todos/completions so the server account remains Inbox-only
 
@@ -63,6 +66,7 @@ Server:
 - Tracked native upgrade config lives in `client/app.json` with env-aware native overrides in `client/app.config.js`; `ios.buildReactNativeFromSource: true` is required because `client/ios` and `client/android` are gitignored local outputs and the iOS simulator build hit React Native prebuilt header/symbol mismatch under SDK 55. Local iOS device signing is now expected to come from `EXPO_IOS_APPLE_TEAM_ID` and `EXPO_IOS_BUNDLE_IDENTIFIER`, while simulator builds intentionally avoid a committed placeholder team ID.
 - Physical-device development builds now include `expo-dev-client` and use launcher mode so reopening after network changes prefers the dev-client launcher over silently reconnecting to a stale LAN Metro URL.
 - `client/scripts/dev-launcher.js` now defaults `ios-sim` to `host=lan` because the iOS dev-client path was unreliable when the simulator tried to reopen `localhost` directly.
+- `expo-blur` and `react-native-svg` are now active client dependencies for the floating tab bar shell and SVG tab icons; adding or upgrading either requires a native dev-client rebuild before simulator/device verification.
 - `react-native-wheel-pick` is still present and is the only known non-blocking `expo-doctor` warning after the SDK 55 upgrade; replacement is planned with a native implementation later.
 - Codex local skill `upgrading-expo` is installed and listed in `AGENTS.md` for future Expo SDK upgrade work.
 

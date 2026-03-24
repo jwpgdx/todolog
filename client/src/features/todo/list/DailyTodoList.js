@@ -2,6 +2,7 @@ import React, { useState, useMemo, useCallback } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { FlashList } from '@shopify/flash-list';
 import TodoListItem from './TodoListItem';
+import { useFloatingTabBarScrollPadding } from '../../../navigation/useFloatingTabBarInset';
 
 /**
  * DailyTodoList
@@ -17,6 +18,7 @@ import TodoListItem from './TodoListItem';
  */
 export default function DailyTodoList({ date, todos = [], isLoading, onToggleComplete, onEdit, onDelete }) {
     const [sortOption, setSortOption] = useState('DEADLINE'); // 'DEADLINE', 'NEWEST', 'OLDEST'
+    const bottomInset = useFloatingTabBarScrollPadding(16);
 
     // 정렬 로직
     const sortedTodos = useMemo(() => {
@@ -110,7 +112,7 @@ export default function DailyTodoList({ date, todos = [], isLoading, onToggleCom
                 keyExtractor={keyExtractor}
                 estimatedItemSize={70}
                 showsVerticalScrollIndicator={false}
-                contentContainerStyle={styles.listContent}
+                contentContainerStyle={[styles.listContent, { paddingBottom: bottomInset }]}
             />
         </View>
     );
@@ -173,7 +175,7 @@ const styles = StyleSheet.create({
         color: '#FFFFFF',
     },
     listContent: {
-        paddingBottom: 100, // 하단 여백 (나중에 FAB 등에 가려지지 않게)
+        paddingBottom: 0,
     },
     itemContainer: {
         flexDirection: 'row',

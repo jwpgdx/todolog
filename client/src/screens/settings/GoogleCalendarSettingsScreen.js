@@ -7,6 +7,7 @@ import Toast from 'react-native-toast-message';
 
 import { useAuthStore } from '../../store/authStore';
 import api from '../../api/axios';
+import { useFloatingTabBarScrollPadding } from '../../navigation/useFloatingTabBarInset';
 
 // Google Client ID (가이드 문서에서 발급받은 값)
 const GOOGLE_CLIENT_ID = '399488138188-e5ee5mj2jpedtc1ojv3p1paus11sg1mn.apps.googleusercontent.com';
@@ -37,6 +38,7 @@ export default function GoogleCalendarSettingsScreen({ navigation }) {
 function GoogleCalendarSettingsContent({ navigation }) {
     const { user, setAuth } = useAuthStore();
     const [isLoading, setIsLoading] = useState(false);
+    const bottomInset = useFloatingTabBarScrollPadding(16);
 
     const hasCalendarAccess = user?.hasCalendarAccess || false;
     const calendarSyncEnabled = user?.settings?.calendarSyncEnabled || false;
@@ -134,7 +136,7 @@ function GoogleCalendarSettingsContent({ navigation }) {
 
     return (
         <SafeAreaView className="flex-1 bg-background" edges={['bottom']}>
-            <ScrollView className="flex-1">
+            <ScrollView className="flex-1" contentContainerStyle={{ paddingBottom: bottomInset }}>
                 {/* 섹션 1: 연동 상태 */}
                 <SectionHeader title="연동 상태" />
                 <View className="bg-white dark:bg-gray-800 border-t border-b border-gray-100 dark:border-gray-700">
@@ -179,7 +181,7 @@ function GoogleCalendarSettingsContent({ navigation }) {
                                     <TouchableOpacity
                                         onPress={handleConnect}
                                         disabled={isLoading}
-                                        className="px-4 py-2 rounded-lg bg-blue-500"
+                                        className="px-4 py-2 rounded-lg bg-gray-900 active:bg-blue-600"
                                     >
                                         <Text className="text-white font-medium">Google 계정 연결</Text>
                                     </TouchableOpacity>
@@ -267,7 +269,7 @@ function GoogleConnectButton({ isLoading, setIsLoading, user, setAuth }) {
         <TouchableOpacity
             onPress={() => googleLogin()}
             disabled={isLoading}
-            className="px-4 py-2 rounded-lg bg-blue-500"
+            className="px-4 py-2 rounded-lg bg-gray-900 active:bg-blue-600"
         >
             {isLoading ? (
                 <ActivityIndicator size="small" color="#FFFFFF" />
