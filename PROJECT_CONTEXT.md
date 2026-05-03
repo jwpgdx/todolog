@@ -156,7 +156,7 @@ Validation and rejection logic:
 
 File: `client/src/services/db/database.js`
 
-- `MIGRATION_VERSION = 8`
+- `MIGRATION_VERSION = 9`
 - `todos` key columns:
   - `_id TEXT PRIMARY KEY`
   - `date TEXT` (legacy compatibility column; runtime contract uses start/end date)
@@ -166,6 +166,9 @@ File: `client/src/services/db/database.js`
   - `end_time TEXT`
   - `recurrence TEXT`
   - `recurrence_end_date TEXT`
+  - `custom_order REAL`
+  - `category_order REAL`
+  - `favorite_order REAL | NULL`
 - `categories` key columns:
   - `_id TEXT PRIMARY KEY`
   - `name TEXT NOT NULL`
@@ -218,6 +221,10 @@ Removed legacy fields:
 Note:
 
 - `exdates` is currently `Date[]` and was not converted in Phase 2.5.
+- Todo order lanes:
+  - `order.custom: Number`
+  - `order.category: Number`
+  - `order.favorite: Number | null`
 
 ### 5.3 Google adapter
 

@@ -28,6 +28,11 @@ function normalizeTodoUpdated(updated) {
   return source
     .filter(item => item && item._id)
     .map(item => ({
+      order: {
+        custom: item?.order?.custom ?? 0,
+        category: item?.order?.category ?? 0,
+        favorite: item?.order?.favorite ?? null,
+      },
       _id: String(item._id),
       title: item.title || '',
       memo: item.memo || '',

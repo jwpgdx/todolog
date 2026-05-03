@@ -1,6 +1,11 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import NetInfo from '@react-native-community/netinfo';
-import { upsertTodo, getTodoById } from '../../services/db/todoService';
+import {
+  upsertTodo,
+  getTodoById,
+  getNextCategoryOrder,
+  getNextFavoriteOrder,
+} from '../../services/db/todoService';
 import { addPendingChange } from '../../services/db/pendingService';
 import { ensureDatabase } from '../../services/db/database';
 import { invalidateTodoSummary as invalidateDaySummariesTodo } from '../../features/calendar-day-summaries';
@@ -120,20 +125,52 @@ export const useUpdateTodo = () => {
         const existingTodo = await getTodoById(id);
 
         if (existingTodo) {
+          const categoryChanged =
+            Object.prototype.hasOwnProperty.call(data, 'categoryId') &&
+            data.categoryId &&
+            existingTodo.categoryId !== data.categoryId;
+          const favoriteFlagProvided = Object.prototype.hasOwnProperty.call(data, 'isFavorite');
+          const toggledFavoriteOn = favoriteFlagProvided && Boolean(data.isFavorite) && !Boolean(existingTodo.isFavorite);
+          const toggledFavoriteOff = favoriteFlagProvided && !Boolean(data.isFavorite);
+          const nextOrder = {
+            custom: existingTodo.order?.custom ?? existingTodo.customOrder ?? 0,
+            category: existingTodo.order?.category ?? existingTodo.categoryOrder ?? 0,
+            favorite: existingTodo.order?.favorite ?? existingTodo.favoriteOrder ?? null,
+            ...(data.order || {}),
+          };
+
+          if (categoryChanged && data.order?.category === undefined) {
+            nextOrder.category = await getNextCategoryOrder(data.categoryId);
+          }
+
+          if (toggledFavoriteOn && data.order?.favorite === undefined) {
+            nextOrder.favorite = await getNextFavoriteOrder();
+          }
+
+          if (toggledFavoriteOff) {
+            nextOrder.favorite = null;
+          }
+
           const updatedTodo = {
             ...existingTodo,
             ...data,
+            order: nextOrder,
             updatedAt: new Date().toISOString(),
             syncStatus: 'pending',
           };
 
           await upsertTodo(updatedTodo);
 
+          const pendingData = {
+            ...data,
+            order: nextOrder,
+          };
+
           // Pending changes에 추가
           await addPendingChange({
             type: 'updateTodo',
             entityId: id,
-            data,
+            data: pendingData,
           });
 
           return updatedTodo;

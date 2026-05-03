@@ -83,8 +83,9 @@ const todoSchema = new mongoose.Schema({
 
   // --- 순서 관리 ---
   order: {
-    keep: { type: Number },
-    category: { type: Number }
+    custom: { type: Number, default: 0 },
+    category: { type: Number, default: 0 },
+    favorite: { type: Number, default: null }
   },
 
   // --- 구글 캘린더 연동 메타데이터 ---

@@ -1,7 +1,7 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import NetInfo from '@react-native-community/netinfo';
-import { upsertTodo } from '../../services/db/todoService';
+import { buildNewTodoOrders, upsertTodo } from '../../services/db/todoService';
 import { addPendingChange } from '../../services/db/pendingService';
 import { ensureDatabase } from '../../services/db/database';
 import { generateId } from '../../utils/idGenerator';
@@ -20,6 +20,15 @@ export const useCreateTodo = () => {
       // UUID가 없으면 생성 (variables에 직접 추가)
       if (!variables._id) {
         variables._id = generateId();
+      }
+
+      await ensureDatabase();
+
+      if (!variables.order) {
+        variables.order = await buildNewTodoOrders({
+          categoryId: variables.categoryId,
+          isFavorite: Boolean(variables.isFavorite),
+        });
       }
       
       // 1. 진행 중인 refetch 취소
@@ -67,6 +76,10 @@ export const useCreateTodo = () => {
       // variables에서 전달된 _id 사용 (새로 생성하지 않음)
       const todo = {
         ...data,
+        order: data.order || await buildNewTodoOrders({
+          categoryId: data.categoryId,
+          isFavorite: Boolean(data.isFavorite),
+        }),
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
         syncStatus: 'pending',

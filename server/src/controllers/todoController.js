@@ -105,6 +105,27 @@ function validateTodoDateTimePayload({
   return errors;
 }
 
+function normalizeOrderValue(value, { nullable = false, fallback = 0 } = {}) {
+  if (value === undefined) return undefined;
+  if (value === null) return nullable ? null : fallback;
+
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) {
+    return fallback;
+  }
+
+  return numeric;
+}
+
+function buildTodoOrder(order) {
+  const source = order && typeof order === 'object' ? order : {};
+  return {
+    custom: normalizeOrderValue(source.custom, { fallback: 0 }) ?? 0,
+    category: normalizeOrderValue(source.category, { fallback: 0 }) ?? 0,
+    favorite: normalizeOrderValue(source.favorite, { nullable: true, fallback: null }) ?? null,
+  };
+}
+
 // 전체 할일 조회 (관리 화면용)
 exports.getAllTodos = async (req, res) => {
   try {
@@ -177,7 +198,7 @@ exports.getTodos = async (req, res) => {
       recurrence: todo.recurrence,
       recurrenceEndDate: todo.recurrenceEndDate,
       memo: todo.memo,
-      order: todo.order || { category: 0 },
+      order: buildTodoOrder(todo.order),
       completed: !!completionMap[todo._id.toString()],
       categoryId: todo.categoryId,
       googleCalendarEventId: todo.googleCalendarEventId,
@@ -211,6 +232,7 @@ exports.createTodo = async (req, res) => {
       title,
       memo,
       categoryId,
+      order,
       userTimeZone,
       startDate,
       startTime,
@@ -273,6 +295,7 @@ exports.createTodo = async (req, res) => {
       recurrenceEndDate: normalizedRecurrenceEndDate,
       memo,
       categoryId,
+      order: buildTodoOrder(order),
     };
 
     console.log('📝 [createTodo] Todo 데이터 생성:', todoData);
@@ -400,8 +423,15 @@ exports.updateTodo = async (req, res) => {
     // Order 필드 별도 처리
     if (req.body.order) {
       if (typeof req.body.order === 'object') {
-        if (req.body.order.category !== undefined) updateOps['order.category'] = req.body.order.category;
-        if (req.body.order.keep !== undefined) updateOps['order.keep'] = req.body.order.keep;
+        if (req.body.order.custom !== undefined) {
+          updateOps['order.custom'] = normalizeOrderValue(req.body.order.custom, { fallback: 0 });
+        }
+        if (req.body.order.category !== undefined) {
+          updateOps['order.category'] = normalizeOrderValue(req.body.order.category, { fallback: 0 });
+        }
+        if (req.body.order.favorite !== undefined) {
+          updateOps['order.favorite'] = normalizeOrderValue(req.body.order.favorite, { nullable: true, fallback: null });
+        }
       }
     }
 
@@ -716,7 +746,7 @@ exports.getDeltaSync = async (req, res) => {
         recurrence: todo.recurrence,
         recurrenceEndDate: todo.recurrenceEndDate,
         exdates: todo.exdates || [],
-        order: todo.order,
+        order: buildTodoOrder(todo.order),
         color: todo.categoryId?.color || '#808080',
         categoryName: todo.categoryId?.name || null,
         syncStatus: todo.syncStatus,

@@ -21,6 +21,14 @@ const normalizeTodoPayload = (data = {}) => {
   if ('startTime' in payload) payload.startTime = normalizeTimeField(payload.startTime);
   if ('endTime' in payload) payload.endTime = normalizeTimeField(payload.endTime);
 
+  if ('order' in payload && payload.order && typeof payload.order === 'object') {
+    payload.order = {
+      custom: payload.order.custom ?? 0,
+      category: payload.order.category ?? 0,
+      favorite: payload.order.favorite ?? null,
+    };
+  }
+
   return payload;
 };
 
@@ -42,6 +50,7 @@ export const todoAPI = {
     userTimeZone: data.userTimeZone,  // Google Calendar 연동용
     recurrence: data.recurrence,
     recurrenceEndDate: data.recurrenceEndDate,
+    order: data.order,
   })),
   updateTodo: (id, data) => api.put(`/todos/${id}`, normalizeTodoPayload(data)),
   deleteTodo: (id) => api.delete(`/todos/${id}`),

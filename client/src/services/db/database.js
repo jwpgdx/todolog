@@ -66,7 +66,7 @@ function snapshotInitDebugState() {
 }
 
 // 현재 마이그레이션 버전
-const MIGRATION_VERSION = 8;
+const MIGRATION_VERSION = 9;
 const SYNC_CURSOR_METADATA_KEY = 'sync.last_success_at';
 
 // ============================================================
@@ -99,6 +99,9 @@ CREATE TABLE IF NOT EXISTS todos (
   recurrence TEXT,
   recurrence_end_date TEXT,
   category_id TEXT,
+  custom_order REAL NOT NULL DEFAULT 0,
+  category_order REAL NOT NULL DEFAULT 0,
+  favorite_order REAL,
   is_all_day INTEGER DEFAULT 0,
   start_time TEXT,
   end_time TEXT,
@@ -120,6 +123,9 @@ CREATE INDEX IF NOT EXISTS idx_todos_active_range ON todos(start_date, end_date)
 CREATE INDEX IF NOT EXISTS idx_todos_active_start_open ON todos(start_date) WHERE deleted_at IS NULL AND end_date IS NULL;
 CREATE INDEX IF NOT EXISTS idx_todos_active_recur_window ON todos(start_date, recurrence_end_date) WHERE deleted_at IS NULL AND recurrence IS NOT NULL AND start_date IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_todos_active_recur_date_window ON todos(date, recurrence_end_date) WHERE deleted_at IS NULL AND recurrence IS NOT NULL AND start_date IS NULL;
+CREATE INDEX IF NOT EXISTS idx_todos_custom_order ON todos(custom_order, _id) WHERE deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_todos_category_order ON todos(category_id, category_order, _id) WHERE deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_todos_favorite_order ON todos(favorite_order, _id) WHERE deleted_at IS NULL AND favorite_order IS NOT NULL;
 
 CREATE TABLE IF NOT EXISTS completions (
   _id TEXT PRIMARY KEY,
@@ -276,6 +282,11 @@ export async function initDatabase() {
                     await migrateV8AddCompletionDeletedAt();
                 }
 
+                // v9: todos에 custom/category/favorite order 컬럼 추가
+                if (currentVersion < 9) {
+                    await migrateV9AddTodoOrderColumns();
+                }
+
                 await setMetadata('migration_version', String(MIGRATION_VERSION));
             } else {
                 console.log('✅ [DB] No migration needed');
@@ -285,6 +296,7 @@ export async function initDatabase() {
             // 기존 v7 DB에서는 SCHEMA_SQL 단계에서 partial index를 만들 수 없다.
             // 버전 메타데이터와 무관하게 여기서 한 번 더 reconciliation 한다.
             await migrateV8AddCompletionDeletedAt();
+            await migrateV9AddTodoOrderColumns();
             initDebugState.migrationMs = formatMs(nowMs() - migrationStart);
 
             console.log('✅ [DB] Database initialized successfully');
@@ -877,6 +889,56 @@ async function migrateV8AddCompletionDeletedAt() {
         console.log('✅ [Migration v8] Created active completion indexes');
     } catch (error) {
         console.error('❌ [Migration v8] Failed:', error);
+        throw error;
+    }
+}
+
+async function migrateV9AddTodoOrderColumns() {
+    console.log('🔄 [Migration v9] Adding todo order columns...');
+
+    try {
+        const tableInfo = await db.getAllAsync("PRAGMA table_info(todos)");
+        const hasCustomOrder = tableInfo.some(col => col.name === 'custom_order');
+        const hasCategoryOrder = tableInfo.some(col => col.name === 'category_order');
+        const hasFavoriteOrder = tableInfo.some(col => col.name === 'favorite_order');
+
+        if (!hasCustomOrder) {
+            await db.runAsync('ALTER TABLE todos ADD COLUMN custom_order REAL NOT NULL DEFAULT 0');
+            console.log('✅ [Migration v9] Added custom_order column');
+        } else {
+            console.log('✅ [Migration v9] custom_order column already exists');
+        }
+
+        if (!hasCategoryOrder) {
+            await db.runAsync('ALTER TABLE todos ADD COLUMN category_order REAL NOT NULL DEFAULT 0');
+            console.log('✅ [Migration v9] Added category_order column');
+        } else {
+            console.log('✅ [Migration v9] category_order column already exists');
+        }
+
+        if (!hasFavoriteOrder) {
+            await db.runAsync('ALTER TABLE todos ADD COLUMN favorite_order REAL');
+            console.log('✅ [Migration v9] Added favorite_order column');
+        } else {
+            console.log('✅ [Migration v9] favorite_order column already exists');
+        }
+
+        await db.runAsync('UPDATE todos SET custom_order = 0 WHERE custom_order IS NULL');
+        await db.runAsync('UPDATE todos SET category_order = 0 WHERE category_order IS NULL');
+
+        await db.runAsync(
+            'CREATE INDEX IF NOT EXISTS idx_todos_custom_order ON todos(custom_order, _id) WHERE deleted_at IS NULL'
+        );
+        await db.runAsync(
+            'CREATE INDEX IF NOT EXISTS idx_todos_category_order ON todos(category_id, category_order, _id) WHERE deleted_at IS NULL'
+        );
+        await db.runAsync(
+            'CREATE INDEX IF NOT EXISTS idx_todos_favorite_order ON todos(favorite_order, _id) WHERE deleted_at IS NULL AND favorite_order IS NOT NULL'
+        );
+
+        console.log('✅ [Migration v9] Created todo order indexes');
+    } catch (error) {
+        console.error('❌ [Migration v9] Failed:', error);
         throw error;
     }
 }

@@ -1,49 +1,91 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import api from '../../api/axios';
+import NetInfo from '@react-native-community/netinfo';
+import { ensureDatabase } from '../../services/db/database';
+import { getTodoById, upsertTodo } from '../../services/db/todoService';
+import { addPendingChange } from '../../services/db/pendingService';
+import { useSyncContext } from '../../providers/SyncProvider';
 
 export const updateTodoOrder = async ({ id, order, categoryId }) => {
-  const data = { order };
-  if (categoryId) data.categoryId = categoryId;
-  const response = await api.put(`/todos/${id}`, data);
-  return response.data;
+  await ensureDatabase();
+
+  const existingTodo = await getTodoById(id);
+  if (!existingTodo) {
+    throw new Error('SQLite에서 할일을 찾을 수 없습니다');
+  }
+
+  const updatedTodo = {
+    ...existingTodo,
+    categoryId: categoryId || existingTodo.categoryId,
+    order: {
+      custom: existingTodo.order?.custom ?? existingTodo.customOrder ?? 0,
+      category: existingTodo.order?.category ?? existingTodo.categoryOrder ?? 0,
+      favorite: existingTodo.order?.favorite ?? existingTodo.favoriteOrder ?? null,
+      ...(order || {}),
+    },
+    updatedAt: new Date().toISOString(),
+    syncStatus: 'pending',
+  };
+
+  await upsertTodo(updatedTodo);
+  await addPendingChange({
+    type: 'updateTodo',
+    entityId: id,
+    data: {
+      ...(categoryId ? { categoryId } : {}),
+      order: updatedTodo.order,
+    },
+  });
+
+  return updatedTodo;
 };
 
 export const useReorderTodo = (date) => {
   const queryClient = useQueryClient();
+  const { syncAll } = useSyncContext();
 
   return useMutation({
-    mutationFn: updateTodoOrder,
+    mutationFn: async (variables) => {
+      const result = await updateTodoOrder(variables);
+
+      try {
+        const netInfo = await NetInfo.fetch();
+        if (netInfo.isConnected) {
+          Promise.resolve(syncAll?.()).catch(() => {});
+        }
+      } catch {}
+
+      return result;
+    },
     onMutate: async ({ id, order, categoryId }) => {
-      // Cancel refetches
       await queryClient.cancelQueries({ queryKey: ['todos', date] });
 
-      // Snapshot previous value
       const previousTodos = queryClient.getQueryData(['todos', date]);
 
-      // Optimistically update
       queryClient.setQueryData(['todos', date], (old) => {
         if (!old) return [];
+
         return old.map((todo) => {
-          if (todo._id === id) {
-            // Ensure order object structure exists
-            const currentOrder = todo.order || { keep: 0, category: 0 };
-             // Handle numeric legacy order if necessary (though getTodos handles it)
-            const safeCurrentOrder = typeof currentOrder === 'number' ? { category: currentOrder } : currentOrder;
-            
-            return {
-              ...todo,
-              order: { ...safeCurrentOrder, category: order.category },
-              categoryId: categoryId || todo.categoryId,
-            };
-          }
-          return todo;
+          if (todo._id !== id) return todo;
+
+          return {
+            ...todo,
+            categoryId: categoryId || todo.categoryId,
+            order: {
+              custom: todo.order?.custom ?? todo.customOrder ?? 0,
+              category: todo.order?.category ?? todo.categoryOrder ?? 0,
+              favorite: todo.order?.favorite ?? todo.favoriteOrder ?? null,
+              ...(order || {}),
+            },
+          };
         });
       });
 
       return { previousTodos };
     },
-    onError: (err, newTodo, context) => {
-      queryClient.setQueryData(['todos', date], context.previousTodos);
+    onError: (_error, _variables, context) => {
+      if (context?.previousTodos) {
+        queryClient.setQueryData(['todos', date], context.previousTodos);
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['todos', date] });
