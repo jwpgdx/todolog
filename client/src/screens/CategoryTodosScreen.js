@@ -1,71 +1,191 @@
-import React, { useMemo } from 'react';
-import { View, Text, TouchableOpacity, SafeAreaView, FlatList, ActivityIndicator } from 'react-native';
+import React, { useCallback, useMemo } from 'react';
+import {
+    ActivityIndicator,
+    Alert,
+    Platform,
+    SafeAreaView,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    View,
+} from 'react-native';
 import { Stack, useLocalSearchParams } from 'expo-router';
+import { FlashList } from '@shopify/flash-list';
 import { useActionSheet } from '@expo/react-native-action-sheet';
 import { Ionicons } from '@expo/vector-icons';
+import { Swipeable } from 'react-native-gesture-handler';
 import dayjs from 'dayjs';
 import { useCategories } from '../hooks/queries/useCategories';
 import { useTodosByCategory } from '../hooks/queries/useTodosByCategory';
-import { useUpdateTodo } from '../hooks/queries/useUpdateTodo';
 import { useDeleteTodo } from '../hooks/queries/useDeleteTodo';
+import { useToggleCompletion } from '../hooks/queries/useToggleCompletion';
+import { useTodayDate } from '../hooks/useTodayDate';
+import { useTodoFormStore } from '../store/todoFormStore';
 import { useFloatingTabBarScrollPadding } from '../navigation/useFloatingTabBarInset';
+import { hasRecurrenceRule } from '../utils/recurrenceEngine';
+import NativeManagedList from '../components/ui/native-managed-list/NativeManagedList';
+import { buildManagedTodoItem } from '../features/todo/native/managedTodoItemAdapter';
 
-const formatDateRange = (startDate, endDate) => {
-    const start = dayjs(startDate);
-    const end = endDate ? dayjs(endDate) : null;
-
-    if (!end || start.isSame(end, 'day')) {
-        return start.format('YYYY.MM.DD');
+const formatDateLabel = (date) => {
+    if (!date) {
+        return null;
     }
-    return `${start.format('YYYY.MM.DD')} ~ ${end.format('YYYY.MM.DD')}`;
+
+    const parsed = dayjs(date);
+    return parsed.isValid() ? parsed.format('YYYY.MM.DD') : date;
 };
 
-const TodoItem = ({ todo, onToggleComplete, onDelete }) => {
-    const isCompleted = todo.isCompleted;
-    const dateRange = formatDateRange(todo.startDate, todo.endDate);
+const formatScheduleLabel = (todo) => {
+    if (hasRecurrenceRule(todo?.recurrence)) {
+        return formatDateLabel(todo.occurrenceDate || todo.startDate || todo.date);
+    }
+
+    const startDate = todo.startDate || todo.date;
+    const endDate = todo.endDate || startDate;
+    if (!startDate) {
+        return null;
+    }
+
+    if (!endDate || startDate === endDate) {
+        return formatDateLabel(startDate);
+    }
+
+    return `${formatDateLabel(startDate)} ~ ${formatDateLabel(endDate)}`;
+};
+
+const formatTimeLabel = (todo) => {
+    if (!todo.startTime && !todo.endTime) {
+        return null;
+    }
+
+    if (todo.startTime && todo.endTime) {
+        return `${todo.startTime} ~ ${todo.endTime}`;
+    }
+
+    return todo.startTime || todo.endTime;
+};
+
+const buildMetaItems = (todo) => {
+    const items = [];
+    const scheduleLabel = formatScheduleLabel(todo);
+    const timeLabel = formatTimeLabel(todo);
+
+    if (scheduleLabel) {
+        items.push({
+            icon: hasRecurrenceRule(todo?.recurrence) ? 'repeat-outline' : 'calendar-outline',
+            text: scheduleLabel,
+        });
+    }
+
+    if (timeLabel) {
+        items.push({
+            icon: 'alarm-outline',
+            text: timeLabel,
+        });
+    }
+
+    return items;
+};
+
+function CategoryTodoRow({
+    todo,
+    categoryColor,
+    onDelete,
+    onOpen,
+    onOpenActions,
+    onToggleComplete,
+}) {
+    const metaItems = buildMetaItems(todo);
+    const isCompleted = todo.completed;
+
+    const renderRightActions = useCallback(() => (
+        <TouchableOpacity
+            activeOpacity={0.85}
+            onPress={() => onDelete(todo)}
+            style={styles.deleteAction}
+        >
+            <Ionicons name="trash-outline" size={20} color="#FFFFFF" />
+            <Text style={styles.deleteActionText}>삭제</Text>
+        </TouchableOpacity>
+    ), [onDelete, todo]);
 
     return (
-        <View className={`flex-row items-center p-4 rounded-xl mb-3 ${isCompleted ? 'bg-gray-100' : 'bg-gray-50'}`}>
-            {/* Checkbox */}
-            <TouchableOpacity
-                onPress={() => onToggleComplete(todo)}
-                className={`w-6 h-6 rounded-full border-2 mr-3 items-center justify-center ${isCompleted ? 'bg-blue-500 border-blue-500' : 'border-gray-300'}`}
-            >
-                {isCompleted && (
-                    <Ionicons name="checkmark" size={16} color="white" />
-                )}
-            </TouchableOpacity>
+        <Swipeable
+            overshootRight={false}
+            renderRightActions={renderRightActions}
+        >
+            <View style={styles.rowWrapper}>
+                <View style={[styles.row, isCompleted && styles.rowCompleted]}>
+                    <TouchableOpacity
+                        activeOpacity={0.8}
+                        onPress={() => onToggleComplete(todo)}
+                        style={[
+                            styles.checkButton,
+                            { borderColor: categoryColor },
+                            isCompleted && { backgroundColor: categoryColor },
+                        ]}
+                    >
+                        {isCompleted ? <Ionicons color="#FFFFFF" name="checkmark" size={16} /> : null}
+                    </TouchableOpacity>
 
-            {/* Todo Info */}
-            <View className="flex-1">
-                <Text className={`text-base font-medium ${isCompleted ? 'text-gray-400 line-through' : 'text-gray-900'}`}>
-                    {todo.title}
-                </Text>
-                <Text className={`text-sm mt-1 ${isCompleted ? 'text-gray-400' : 'text-gray-500'}`}>
-                    {dateRange}
-                </Text>
+                    <TouchableOpacity
+                        activeOpacity={0.82}
+                        delayLongPress={180}
+                        onLongPress={Platform.OS === 'ios' ? () => onOpenActions(todo) : undefined}
+                        onPress={() => onOpen(todo)}
+                        style={styles.contentPressable}
+                    >
+                        <View style={styles.content}>
+                            <Text
+                                numberOfLines={1}
+                                style={[styles.title, isCompleted && styles.completedTitle]}
+                            >
+                                {todo.title}
+                            </Text>
+
+                            {metaItems.length > 0 ? (
+                                <View style={styles.metaRow}>
+                                    {metaItems.map((item) => (
+                                        <View key={`${todo._id}-${item.icon}-${item.text}`} style={styles.metaItem}>
+                                            <Ionicons
+                                                color={isCompleted ? '#9CA3AF' : '#6B7280'}
+                                                name={item.icon}
+                                                size={13}
+                                                style={styles.metaIcon}
+                                            />
+                                            <Text style={[styles.metaText, isCompleted && styles.completedMetaText]}>
+                                                {item.text}
+                                            </Text>
+                                        </View>
+                                    ))}
+                                </View>
+                            ) : null}
+                        </View>
+                    </TouchableOpacity>
+
+                    {Platform.OS === 'android' ? (
+                        <TouchableOpacity
+                            activeOpacity={0.8}
+                            onPress={() => onOpenActions(todo)}
+                            style={styles.menuButton}
+                        >
+                            <Ionicons color="#6B7280" name="ellipsis-horizontal" size={20} />
+                        </TouchableOpacity>
+                    ) : null}
+                </View>
             </View>
-
-            {/* Recurring indicator */}
-            {todo.recurrence && (
-                <Ionicons name="repeat" size={18} color="#9CA3AF" className="mr-2" />
-            )}
-
-            {/* Delete button */}
-            <TouchableOpacity
-                onPress={() => onDelete(todo)}
-                className="p-2 ml-2"
-            >
-                <Ionicons name="trash-outline" size={20} color="#EF4444" />
-            </TouchableOpacity>
-        </View>
+        </Swipeable>
     );
-};
+}
 
 export default function CategoryTodosScreen() {
     const { categoryId: rawCategoryId } = useLocalSearchParams();
     const categoryId = Array.isArray(rawCategoryId) ? rawCategoryId[0] : rawCategoryId;
     const { data: categories, isLoading: isCategoriesLoading } = useCategories();
+    const { todayDate } = useTodayDate();
+    const { showActionSheetWithOptions } = useActionSheet();
+    const { openDetail } = useTodoFormStore();
+
     const category = useMemo(
         () => categories?.find((cat) => cat?._id === categoryId) || null,
         [categories, categoryId]
@@ -73,77 +193,158 @@ export default function CategoryTodosScreen() {
     const categoryColor = category?.color || '#3B82F6';
     const bottomInset = useFloatingTabBarScrollPadding(16);
 
-    const { data: todos, isLoading } = useTodosByCategory(categoryId);
-    const updateTodo = useUpdateTodo();
-    const deleteTodo = useDeleteTodo();
+    const { data: todos = [], isLoading } = useTodosByCategory(categoryId, todayDate);
+    const { mutate: toggleCompletion } = useToggleCompletion();
+    const { mutate: deleteTodo } = useDeleteTodo();
 
-    // 날짜순 정렬
     const sortedTodos = useMemo(() => {
-        if (!todos) return [];
         return [...todos].sort((a, b) => {
-            // 미완료 먼저, 그 다음 날짜순
-            if (a.isCompleted !== b.isCompleted) {
-                return a.isCompleted ? 1 : -1;
+            const orderA = Number(a?.order?.category ?? 0);
+            const orderB = Number(b?.order?.category ?? 0);
+            if (orderA !== orderB) {
+                return orderA - orderB;
             }
-            return new Date(a.startDate) - new Date(b.startDate);
+
+            const createdAtOrder = String(a?.createdAt || '').localeCompare(String(b?.createdAt || ''));
+            if (createdAtOrder !== 0) {
+                return createdAtOrder;
+            }
+
+            return String(a?._id || '').localeCompare(String(b?._id || ''));
         });
     }, [todos]);
 
     const headerTitle = category?.name || '카테고리';
     const headerColor = category?.color || '#3B82F6';
 
-    const handleToggleComplete = (todo) => {
-        updateTodo.mutate({
-            id: todo._id,
-            data: { isCompleted: !todo.isCompleted }
+    const handleOpenTodo = useCallback((todo, target = null) => {
+        openDetail(todo, target);
+    }, [openDetail]);
+
+    const handleToggleComplete = useCallback((todo) => {
+        toggleCompletion({
+            todoId: todo._id,
+            date: todo.occurrenceDate || todayDate,
+            currentCompleted: todo.completed,
+            todo,
         });
-    };
+    }, [todayDate, toggleCompletion]);
 
-    const { showActionSheetWithOptions } = useActionSheet();
+    const handleDelete = useCallback((todo) => {
+        Alert.alert(
+            '일정 삭제',
+            `"${todo.title}" 일정을 삭제할까요?`,
+            [
+                { text: '취소', style: 'cancel' },
+                {
+                    text: '삭제',
+                    style: 'destructive',
+                    onPress: () => deleteTodo(todo),
+                },
+            ]
+        );
+    }, [deleteTodo]);
 
-    const handleDelete = (todo) => {
-        const options = ['이벤트 삭제', '취소'];
-        const destructiveButtonIndex = 0;
-        const cancelButtonIndex = 1;
+    const handleOpenActions = useCallback((todo) => {
+        const options = ['일정 보기', '수정', '이동', '일정 삭제', '취소'];
+        const cancelButtonIndex = 4;
+        const destructiveButtonIndex = 3;
 
         showActionSheetWithOptions(
             {
                 options,
                 cancelButtonIndex,
                 destructiveButtonIndex,
-                title: '이 이벤트를 삭제하겠습니까?',
-                message: todo.title,
-                containerStyle: {
-                    // Web-specific tweaks if needed
-                }
+                title: todo.title,
+                message: '실행할 작업을 선택하세요.',
             },
             (selectedIndex) => {
-                if (selectedIndex === destructiveButtonIndex) {
-                    console.log('🗑️ [CategoryTodosScreen] 삭제 요청:', todo._id, todo.title);
-                    deleteTodo.mutate(todo);
+                switch (selectedIndex) {
+                    case 0:
+                    case 1:
+                        handleOpenTodo(todo);
+                        break;
+                    case 2:
+                        handleOpenTodo(todo, 'CATEGORY');
+                        break;
+                    case 3:
+                        handleDelete(todo);
+                        break;
+                    default:
+                        break;
                 }
             }
         );
-    };
+    }, [handleDelete, handleOpenTodo, showActionSheetWithOptions]);
+
+    const renderItem = useCallback(({ item }) => (
+        <CategoryTodoRow
+            categoryColor={categoryColor}
+            onDelete={handleDelete}
+            onOpen={handleOpenTodo}
+            onOpenActions={handleOpenActions}
+            onToggleComplete={handleToggleComplete}
+            todo={item}
+        />
+    ), [categoryColor, handleDelete, handleOpenActions, handleOpenTodo, handleToggleComplete]);
+
+    const todoById = useMemo(
+        () => new Map(sortedTodos.map((todo) => [todo._id, todo])),
+        [sortedTodos]
+    );
+
+    const managedSections = useMemo(() => {
+        if (sortedTodos.length === 0) {
+            return [];
+        }
+
+        return [
+            {
+                id: categoryId || 'category-todos',
+                role: 'normal',
+                reorderMode: 'none',
+                items: sortedTodos.map((todo) =>
+                    buildManagedTodoItem(todo, {
+                        accentColor: categoryColor,
+                        reorderable: false,
+                        showFavoriteBadge: true,
+                        includeCompleteToggle: true,
+                        includeFavoriteAction: false,
+                        includeFavoriteToggle: false,
+                        menuActions: [
+                            { id: 'view', title: '보기' },
+                            { id: 'edit', title: '수정' },
+                            { id: 'move', title: '이동' },
+                            { id: 'delete', title: '일정 삭제', role: 'destructive' },
+                        ],
+                        leadingSwipeActions: [],
+                        trailingSwipeActions: [
+                            { id: 'delete', title: '삭제', role: 'destructive' },
+                        ],
+                    })
+                ),
+            },
+        ];
+    }, [categoryColor, categoryId, sortedTodos]);
 
     if (!categoryId) {
         return (
-            <SafeAreaView className="flex-1 bg-white items-center justify-center">
-                <Text className="text-gray-500">잘못된 접근입니다.</Text>
+            <SafeAreaView style={styles.centeredScreen}>
+                <Text style={styles.centerMessage}>잘못된 접근입니다.</Text>
             </SafeAreaView>
         );
     }
 
     if (isLoading || (isCategoriesLoading && !category)) {
         return (
-            <SafeAreaView className="flex-1 bg-white items-center justify-center">
+            <SafeAreaView style={styles.centeredScreen}>
                 <ActivityIndicator size="large" color={categoryColor} />
             </SafeAreaView>
         );
     }
 
     return (
-        <SafeAreaView className="flex-1 bg-white">
+        <SafeAreaView style={styles.screen}>
             <Stack.Screen
                 options={{
                     title: headerTitle,
@@ -153,32 +354,217 @@ export default function CategoryTodosScreen() {
                     headerTintColor: '#fff',
                 }}
             />
-            <FlatList
-                data={sortedTodos}
-                keyExtractor={(item) => item._id}
-                renderItem={({ item }) => (
-                    <TodoItem
-                        todo={item}
-                        onToggleComplete={handleToggleComplete}
-                        onDelete={handleDelete}
-                    />
-                )}
-                contentInsetAdjustmentBehavior="automatic"
-                contentContainerStyle={{ padding: 16, paddingBottom: bottomInset }}
-                ListEmptyComponent={
-                    <View className="items-center justify-center py-20">
+            {Platform.OS === 'ios' ? (
+                sortedTodos.length === 0 ? (
+                    <View style={styles.emptyState}>
                         <Ionicons name="folder-open-outline" size={48} color="#D1D5DB" />
-                        <Text className="text-gray-400 mt-4 text-base">등록된 일정이 없습니다</Text>
+                        <Text style={styles.emptyText}>등록된 일정이 없습니다</Text>
                     </View>
-                }
-                ListHeaderComponent={
-                    <View className="mb-4">
-                        <Text className="text-gray-500 text-sm">
-                            총 {sortedTodos.length}개의 일정
-                        </Text>
+                ) : (
+                    <View
+                        style={{
+                            padding: 16,
+                            paddingBottom: bottomInset,
+                        }}
+                    >
+                        <View style={styles.listHeader}>
+                            <Text style={styles.listHeaderText}>
+                                총 {sortedTodos.length}개의 일정
+                            </Text>
+                        </View>
+
+                        <NativeManagedList
+                            listId={`category-todos:${categoryId || 'unknown'}`}
+                            variant="todo"
+                            sections={managedSections}
+                            onPressItem={({ itemId }) => {
+                                const todo = todoById.get(itemId);
+                                if (todo) {
+                                    handleOpenTodo(todo);
+                                }
+                            }}
+                            onControlAction={({ itemId, controlId }) => {
+                                if (controlId !== 'complete') {
+                                    return;
+                                }
+
+                                const todo = todoById.get(itemId);
+                                if (todo) {
+                                    handleToggleComplete(todo);
+                                }
+                            }}
+                            onAction={({ itemId, actionId }) => {
+                                const todo = todoById.get(itemId);
+                                if (!todo) {
+                                    return;
+                                }
+
+                                switch (actionId) {
+                                    case 'view':
+                                    case 'edit':
+                                        handleOpenTodo(todo);
+                                        break;
+                                    case 'move':
+                                        handleOpenTodo(todo, 'CATEGORY');
+                                        break;
+                                    case 'delete':
+                                        handleDelete(todo);
+                                        break;
+                                    default:
+                                        break;
+                                }
+                            }}
+                            onError={(event) => {
+                                console.warn('[CategoryTodosScreen:NativeManagedList]', event?.message || event);
+                            }}
+                        />
                     </View>
-                }
-            />
+                )
+            ) : (
+                <FlashList
+                    data={sortedTodos}
+                    keyExtractor={(item) => item._id}
+                    renderItem={renderItem}
+                    estimatedItemSize={88}
+                    showsVerticalScrollIndicator={false}
+                    contentContainerStyle={{
+                        padding: 16,
+                        paddingBottom: bottomInset,
+                    }}
+                    ListEmptyComponent={
+                        <View style={styles.emptyState}>
+                            <Ionicons name="folder-open-outline" size={48} color="#D1D5DB" />
+                            <Text style={styles.emptyText}>등록된 일정이 없습니다</Text>
+                        </View>
+                    }
+                    ListHeaderComponent={
+                        <View style={styles.listHeader}>
+                            <Text style={styles.listHeaderText}>
+                                총 {sortedTodos.length}개의 일정
+                            </Text>
+                        </View>
+                    }
+                />
+            )}
         </SafeAreaView>
     );
 }
+
+const styles = StyleSheet.create({
+    screen: {
+        flex: 1,
+        backgroundColor: '#FFFFFF',
+    },
+    centeredScreen: {
+        flex: 1,
+        backgroundColor: '#FFFFFF',
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    centerMessage: {
+        fontSize: 15,
+        color: '#6B7280',
+    },
+    listHeader: {
+        marginBottom: 12,
+    },
+    listHeaderText: {
+        fontSize: 13,
+        color: '#6B7280',
+        fontWeight: '500',
+    },
+    rowWrapper: {
+        marginBottom: 12,
+    },
+    row: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingHorizontal: 16,
+        paddingVertical: 15,
+        borderRadius: 18,
+        backgroundColor: '#F9FAFB',
+        borderWidth: 1,
+        borderColor: '#F3F4F6',
+    },
+    rowCompleted: {
+        backgroundColor: '#F3F4F6',
+    },
+    checkButton: {
+        width: 28,
+        height: 28,
+        borderRadius: 999,
+        borderWidth: 2,
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginRight: 12,
+    },
+    content: {
+        flex: 1,
+    },
+    contentPressable: {
+        flex: 1,
+    },
+    title: {
+        fontSize: 16,
+        lineHeight: 21,
+        color: '#111827',
+        fontWeight: '600',
+    },
+    completedTitle: {
+        color: '#9CA3AF',
+        textDecorationLine: 'line-through',
+    },
+    metaRow: {
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        marginTop: 6,
+        gap: 10,
+    },
+    metaItem: {
+        flexDirection: 'row',
+        alignItems: 'center',
+    },
+    metaIcon: {
+        marginRight: 4,
+    },
+    metaText: {
+        fontSize: 12,
+        color: '#6B7280',
+    },
+    completedMetaText: {
+        color: '#9CA3AF',
+    },
+    menuButton: {
+        width: 32,
+        height: 32,
+        borderRadius: 16,
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginLeft: 8,
+    },
+    deleteAction: {
+        width: 84,
+        borderRadius: 18,
+        marginBottom: 12,
+        marginLeft: 10,
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: '#EF4444',
+    },
+    deleteActionText: {
+        marginTop: 4,
+        fontSize: 12,
+        color: '#FFFFFF',
+        fontWeight: '600',
+    },
+    emptyState: {
+        alignItems: 'center',
+        justifyContent: 'center',
+        paddingVertical: 96,
+    },
+    emptyText: {
+        marginTop: 12,
+        fontSize: 15,
+        color: '#9CA3AF',
+    },
+});
