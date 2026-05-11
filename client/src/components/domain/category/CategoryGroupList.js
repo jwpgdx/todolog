@@ -14,6 +14,7 @@ import { useCategories } from '../../../hooks/queries/useCategories';
 import { useDeleteCategory } from '../../../hooks/queries/useDeleteCategory';
 import { useReorderCategory } from '../../../hooks/queries/useReorderCategory';
 import { useCategoryActionSheet } from '../../../hooks/useCategoryActionSheet';
+import NativeCategoryManager from '../../../features/category/native/NativeCategoryManager';
 
 function blurActiveElementOnWeb() {
   if (Platform.OS !== 'web') return;
@@ -200,11 +201,11 @@ function WebCategoryList({
 
         <TouchableOpacity
           onPress={onPressAdd}
-          className="flex-row items-center px-4 py-3"
+          className="flex-row items-center px-4 py-3 active:bg-blue-50"
         >
           <Text className="w-8 text-xs text-gray-400 tabular-nums" />
-          <Ionicons name="add-circle-outline" size={20} color="#2563EB" />
-          <Text className="text-base font-medium text-blue-600 ml-2">카테고리 추가</Text>
+          <Ionicons name="add-circle-outline" size={20} color="#6B7280" />
+          <Text className="text-base font-medium text-gray-700 ml-2">카테고리 추가</Text>
         </TouchableOpacity>
       </View>
     </DndContext>
@@ -217,6 +218,8 @@ export default function CategoryGroupList() {
   const deleteMutation = useDeleteCategory();
   const reorderMutation = useReorderCategory();
   const isWeb = Platform.OS === 'web';
+  const isIOSManagedList = Platform.OS === 'ios';
+  const useNativeCategoryManager = true;
 
   const [localCategories, setLocalCategories] = useState([]);
   const [isEditing, setIsEditing] = useState(false);
@@ -325,29 +328,73 @@ export default function CategoryGroupList() {
     onDelete: (id) => handleDelete(id),
   });
 
-  const handleDragEnd = ({ data, from, to }) => {
-    const nextAll = inboxCategory ? [inboxCategory, ...data] : data;
+  const normalizeCategoryOrder = (orderedCategories) => {
+    let nextOrder = 100;
+
+    const nextAll = orderedCategories.map((category) => {
+      if (category?.systemKey === 'inbox') {
+        return {
+          ...category,
+          order: 0,
+        };
+      }
+
+      const nextCategory = {
+        ...category,
+        order: nextOrder,
+      };
+      nextOrder += 100;
+      return nextCategory;
+    });
+
+    const orders = nextAll
+      .filter((category) => category?._id && category?.systemKey !== 'inbox')
+      .map((category) => ({
+        _id: category._id,
+        order: category.order,
+      }));
+
+    return {
+      nextAll,
+      orders,
+    };
+  };
+
+  const commitCategoryOrder = (orderedCategories, { persist = true } = {}) => {
+    const { nextAll, orders } = normalizeCategoryOrder(orderedCategories);
     setLocalCategories(nextAll);
 
-    if (from === to) return;
+    if (persist && orders.length > 0) {
+      reorderMutation.mutate({ orders });
+    }
+  };
 
-    const movedItem = data[to];
-    if (!movedItem) return;
-    const prevItem = data[to - 1];
-    const nextItem = data[to + 1];
+  const handleDragEnd = ({ data, from, to }) => {
+    const nextAll = inboxCategory ? [inboxCategory, ...data] : data;
+    commitCategoryOrder(nextAll, { persist: from !== to });
+  };
 
-    let newOrder;
-    if (!prevItem && !nextItem) {
-      newOrder = 0;
-    } else if (!prevItem) {
-      newOrder = nextItem.order - 100;
-    } else if (!nextItem) {
-      newOrder = prevItem.order + 100;
-    } else {
-      newOrder = (prevItem.order + nextItem.order) / 2;
+  const handleManagedReorderCommit = (event) => {
+    const categorySection = event?.sections?.find(
+      (section) => section.sectionId === 'categories'
+    );
+
+    if (!categorySection) {
+      return;
     }
 
-    reorderMutation.mutate({ id: movedItem._id, order: newOrder });
+    const categoryMap = new Map(
+      localCategories.map((category) => [category._id, category])
+    );
+    const nextAll = categorySection.orderedItemIds
+      .map((itemId) => categoryMap.get(itemId))
+      .filter(Boolean);
+
+    if (nextAll.length !== localCategories.length) {
+      return;
+    }
+
+    commitCategoryOrder(nextAll);
   };
 
   const onToggleEditing = () => {
@@ -400,14 +447,16 @@ export default function CategoryGroupList() {
 
   return (
     <GestureHandlerRootView>
-      <View className="px-4 mt-6">
+      <View className={isIOSManagedList ? 'mt-6' : 'px-4 mt-6'}>
         <View className="flex-row items-center justify-between mb-2">
           <Text className="text-xs font-semibold text-gray-500">카테고리</Text>
-          <TouchableOpacity onPress={onToggleEditing} className="px-2 py-1">
-            <Text className={`text-sm font-semibold ${isEditing ? 'text-blue-600' : 'text-gray-900'}`}>
-              {isEditing ? '완료' : '편집'}
-            </Text>
-          </TouchableOpacity>
+          {!isIOSManagedList ? (
+            <TouchableOpacity onPress={onToggleEditing} className="px-2 py-1">
+              <Text className={`text-sm font-semibold ${isEditing ? 'text-blue-600' : 'text-gray-900'}`}>
+                {isEditing ? '완료' : '편집'}
+              </Text>
+            </TouchableOpacity>
+          ) : null}
         </View>
 
         {/* iOS grouped-style list */}
@@ -422,6 +471,20 @@ export default function CategoryGroupList() {
             onDragEnd={handleDragEnd}
             onPressAdd={handleCreate}
           />
+        ) : isIOSManagedList && useNativeCategoryManager ? (
+          <>
+            <NativeCategoryManager
+              categories={localCategories}
+              onPressAddCategory={handleCreate}
+              onPressCategory={handlePressCategory}
+              onRenameCategory={handleEdit}
+              onDeleteCategory={handleDelete}
+              onReorderCommit={handleManagedReorderCommit}
+              onError={(event) => {
+                console.warn('[NativeCategoryManager]', event?.message || event);
+              }}
+            />
+          </>
         ) : (
           <View className="bg-white rounded-2xl border border-gray-100">
             {inboxCategory ? (
@@ -461,10 +524,13 @@ export default function CategoryGroupList() {
               ))
             )}
 
-            <TouchableOpacity onPress={handleCreate} className="flex-row items-center px-4 py-3">
+            <TouchableOpacity
+              onPress={handleCreate}
+              className="flex-row items-center px-4 py-3 active:bg-blue-50"
+            >
               <Text className="w-8 text-xs text-gray-400 tabular-nums" />
-              <Ionicons name="add-circle-outline" size={20} color="#2563EB" />
-              <Text className="text-base font-medium text-blue-600 ml-2">카테고리 추가</Text>
+              <Ionicons name="add-circle-outline" size={20} color="#6B7280" />
+              <Text className="text-base font-medium text-gray-700 ml-2">카테고리 추가</Text>
             </TouchableOpacity>
           </View>
         )}

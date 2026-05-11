@@ -38,32 +38,36 @@
 - ✅ delete / favorite / complete 같은 domain action은 native가 직접 처리하지 않는다는 규칙 정의
 - ✅ `NativeSettingsList`와 책임 경계 정의
 - ✅ iOS `custom-lifted` prototype을 category variant로 승격할 수 있는 경로 정의
+- ✅ iOS `todo` variant의 category-grouped pilot 경로 정의
+- ✅ `TODO SCREEN > 카테고리별 순서`와 `ALL TODOS SCREEN`의 공통 interaction model 정의
 
 - ❌ Favorite 기능 자체 구현
 - ❌ Todo DB schema / sync / API 변경
-- ❌ 실제 production 화면 즉시 교체
+- ❌ 모든 production 화면 일괄 교체
 - ❌ Android 최종 UX 완성
 - ❌ Web 구현
 - ❌ 모든 variant의 최종 디자인 확정
 
 ## Current Rollout Slice
 
-현재 이 spec에서 바로 구현 대상으로 보는 범위는 아래다.
+현재 이 spec의 rollout 범위는 아래다.
 
 - `NativeManagedList` public contract freeze
 - iOS `category` variant production path 안정화
 - `My Page > 카테고리`를 기준본으로 contract 검증
-- 이후 `todo` / `favoriteTodo` variant로 확장 가능한 타입/이벤트 구조 확보
+- iOS `todo` variant를 `NativeTodoManagedList` wrapper로 Todo 계열 화면에 pilot 적용
+- `TODO SCREEN > 카테고리별 순서`와 `ALL TODOS SCREEN`에서 같은 category-grouped interaction model 재사용
+- 이후 `favoriteTodo` variant로 확장 가능한 타입/이벤트 구조 확보
 
 현재 바로 하지 않는 범위는 아래다.
 
 - Android production 구현
-- `TODO SCREEN` / `CATEGORY SCREEN` / `ALL TODOS` 즉시 교체
+- `CATEGORY SCREEN` / `FAVORITE SCREEN` 교체
 - Favorite feature 자체 구현
 - order schema 재설계
 
 즉 이 spec의 현재 목적은 "공통 엔진의 최종 범위를 한 번에 다 구현"이 아니라,
-"category를 기준으로 공통 계약을 먼저 고정"하는 것이다.
+"category를 기준으로 공통 계약을 먼저 고정하고, iOS Todo 계열 pilot으로 그 계약을 검증"하는 것이다.
 
 ## Product Intent
 
@@ -93,7 +97,7 @@
 8. handle 기반 reorder는 기본 UX로 사용하지 않는다.
 9. v0 production path는 category부터 시작한다.
 10. Favorite 기능은 contract에서 막지 않되, 실제 데이터 모델 구현은 별도 feature로 미룬다.
-11. 현재 rollout에서는 iOS category path를 기준본으로 삼고, Android는 같은 contract를 따르는 후속 구현으로 둔다.
+11. 현재 rollout에서는 iOS category path를 기준본으로 삼고, iOS todo category-grouped path는 같은 contract의 pilot 검증 경로로 둔다. Android는 같은 contract를 따르는 후속 구현으로 둔다.
 12. `custom_order / category_order / favorite_order` 같은 order lane 해석은 feature wrapper가 담당한다.
 
 ## Functional Requirements
@@ -107,16 +111,20 @@ type NativeManagedListProps = {
   listId?: string;
   variant: ManagedListVariant;
   sections: ManagedListSection[];
+  contentInsetBottom?: number;
   onPressItem?: (event: ManagedListPressEvent) => void;
   onAction?: (event: ManagedListActionEvent) => void;
   onControlAction?: (event: ManagedListControlEvent) => void;
   onReorderCommit?: (event: ManagedListReorderCommitEvent) => void;
+  onSectionExpandRequest?: (event: ManagedListSectionExpandRequestEvent) => void;
   onError?: (event: ManagedListErrorEvent) => void;
 };
 ```
 
 `variant`는 row 디자인과 일부 platform affordance를 결정한다.
 domain business logic을 결정하지 않는다.
+`contentInsetBottom`은 floating tab bar 같은 overlay가 collection view의 마지막 drop target을 가리지 않도록 native scroll inset에 전달한다.
+`iosCategoryGestureMode`는 현재 rollout/debug용 bridge prop이며, product wrapper 밖으로 무분별하게 노출하지 않는다.
 
 ### FR-2: Variants
 
@@ -165,10 +173,12 @@ item은 최소 아래를 가져야 한다.
 ```ts
 type ManagedListItem = {
   id: string;
-  kind: 'category' | 'todo';
+  kind: 'category' | 'todo' | 'sectionHeader';
   title: string;
   subtitle?: string;
   metaText?: string;
+  collapsed?: boolean;
+  hidden?: boolean;
   subLabels?: ManagedListSubLabel[];
   enabled?: boolean;
   loading?: boolean;
@@ -194,6 +204,10 @@ type ManagedListItem = {
 - 시간
 - 반복 설정 텍스트
 - TODO SCREEN 상단 즐겨찾기 그룹의 `다음 일정`
+
+`sectionHeader`는 `todo` variant의 category-grouped mode에서 카테고리 그룹 헤더를 표현한다.
+헤더는 category처럼 보일 수 있지만 domain item이 아니며, 클릭하면 접기/펼치기, long press drag이면 category section reorder를 의미한다.
+`hidden`은 접힌 section의 todo row를 snapshot에서 제외하기 위한 표시 상태이고, native는 domain 삭제로 해석하지 않는다.
 
 규칙:
 
@@ -251,7 +265,7 @@ type ManagedListPressEvent = {
   listId?: string;
   sectionId: string;
   itemId: string;
-  kind: 'category' | 'todo';
+  itemKind: 'category' | 'todo' | 'sectionHeader';
 };
 
 type ManagedListActionEvent = {
@@ -280,6 +294,11 @@ type ManagedListReorderCommitEvent = {
     orderedItemIds: string[];
   }>;
 };
+
+type ManagedListSectionExpandRequestEvent = {
+  listId?: string;
+  sectionId: string;
+};
 ```
 
 Reorder 규칙:
@@ -288,6 +307,9 @@ Reorder 규칙:
 - draggable subset만 emit하지 않는다.
 - cross-section 이동이면 affected section들을 모두 포함한다.
 - caller는 이 payload만으로 최종 순서를 저장할 수 있어야 한다.
+- category-grouped todo mode에서 `orderedItemIds`에는 section header item ID가 포함될 수 있으므로, wrapper는 todo ID만 필터링해서 todo order를 저장한다.
+- category section reorder는 section 순서로 표현하며, Inbox 같은 pinned/system category는 wrapper와 native drop constraint가 함께 보호한다.
+- collapsed section hover auto-expand는 native가 UI continuity를 담당하고, 영구 펼침 상태 저장은 `onSectionExpandRequest`를 받은 wrapper가 처리한다.
 
 ### FR-8: iOS Interaction
 
@@ -300,6 +322,20 @@ iOS v0 목표:
 - reorder handle 없음
 
 category variant는 현재 `custom-lifted` prototype의 UX를 기준으로 한다.
+todo category-grouped mode는 built-in interactive movement가 아니라 floating snapshot 기반 custom drag engine을 사용한다.
+이유는 drag 중 collapsed section expand, cross-section drop, same-gesture continuity가 UIKit built-in reorder의 전제와 맞지 않기 때문이다.
+
+Todo category-grouped iOS 목표:
+
+- todo row long press -> custom native menu
+- menu/preview 상태에서 움직이면 floating snapshot drag 시작
+- 같은 카테고리 안 reorder 가능
+- 다른 카테고리로 cross-section move 가능
+- 접힌 카테고리 header hover 유지 시 자동 펼침 가능
+- 펼쳐진 뒤 같은 gesture 안에서 보이는 gap에 drop 가능
+- collection view edge 근처에서 auto-scroll 가능
+- section header long press -> 해당 category를 임시 collapse 후 category reorder 가능
+- Inbox/system category는 최상단 pinned 상태를 유지하고 그 위로 drop할 수 없음
 
 ### FR-9: Android Interaction
 

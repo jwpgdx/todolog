@@ -133,10 +133,10 @@ export default function CategoryFormScreen() {
             <TouchableOpacity
               onPress={handleSubmit}
               disabled={!name.trim() || isLoading}
-              className="mr-2"
+              className="mr-2 rounded-lg px-2 py-1 active:bg-blue-50"
             >
               <Text
-                className={`text-base font-semibold ${!name.trim() || isLoading ? 'text-gray-400' : 'text-blue-600'}`}
+                className={`text-base font-semibold ${!name.trim() || isLoading ? 'text-gray-400' : 'text-gray-700'}`}
               >
                 {isLoading ? '저장 중' : '완료'}
               </Text>

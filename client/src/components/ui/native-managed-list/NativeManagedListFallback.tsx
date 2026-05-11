@@ -53,7 +53,9 @@ export default function NativeManagedListFallback({
               backgroundColor: '#FFFFFF',
             }}
           >
-            {section.items.map((item, index) => (
+            {section.items
+              .filter((item) => item.hidden !== true)
+              .map((item, index, visibleItems) => (
               <Pressable
                 key={`${section.id}:${item.id}`}
                 disabled={item.enabled === false || item.loading === true}
@@ -70,11 +72,18 @@ export default function NativeManagedListFallback({
                   });
                 }}
                 style={{
-                  paddingHorizontal: 16,
-                  paddingVertical: 14,
-                  borderBottomWidth: index === section.items.length - 1 ? 0 : 1,
+                  paddingHorizontal: item.kind === 'sectionHeader' ? 12 : 16,
+                  paddingVertical: item.kind === 'sectionHeader' ? 10 : 14,
+                  borderBottomWidth: index === visibleItems.length - 1 ? 0 : 1,
                   borderBottomColor: '#E5E7EB',
-                  opacity: item.enabled === false ? 0.45 : 1,
+                  opacity:
+                    item.kind === 'sectionHeader'
+                      ? 1
+                      : item.enabled === false
+                        ? 0.45
+                        : 1,
+                  backgroundColor:
+                    item.kind === 'sectionHeader' ? '#F9FAFB' : '#FFFFFF',
                 }}
               >
                 <View
@@ -88,14 +97,16 @@ export default function NativeManagedListFallback({
                   <View style={{ flex: 1, gap: 4 }}>
                     <Text
                       style={{
-                        fontSize: 16,
-                        fontWeight: '700',
-                        color: '#111827',
+                        fontSize: item.kind === 'sectionHeader' ? 12 : 16,
+                        fontWeight: item.kind === 'sectionHeader' ? '700' : '700',
+                        color: item.kind === 'sectionHeader' ? '#6B7280' : '#111827',
+                        textTransform:
+                          item.kind === 'sectionHeader' ? 'uppercase' : 'none',
                       }}
                     >
                       {item.title}
                     </Text>
-                    {item.subLabels?.length ? (
+                    {item.kind === 'sectionHeader' ? null : item.subLabels?.length ? (
                       <View style={{ gap: 2 }}>
                         {item.subLabels.map((subLabel) => (
                           <Text
@@ -129,7 +140,11 @@ export default function NativeManagedListFallback({
                       color: '#9CA3AF',
                     }}
                   >
-                    {variant}
+                    {item.kind === 'sectionHeader'
+                      ? item.collapsed
+                        ? '▾'
+                        : '▴'
+                      : variant}
                   </Text>
                 </View>
               </Pressable>

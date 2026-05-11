@@ -13,12 +13,17 @@ public final class NativeListInteractionsModule: Module {
         view.updateIOSCategoryGestureMode(mode)
       }
 
+      Prop("contentInsetBottom") { (view: NativeListInteractionsView, contentInsetBottom: Double?) in
+        view.updateContentInsetBottom(contentInsetBottom)
+      }
+
       Events(
         "onItemPress",
         "onMenuAction",
         "onDelete",
         "onReorder",
-        "onToggleSwitch"
+        "onToggleSwitch",
+        "onSectionExpandRequest"
       )
     }
   }

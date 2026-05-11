@@ -11,7 +11,7 @@ export type ManagedListReorderMode =
   | 'withinSection'
   | 'acrossSections';
 
-export type ManagedListItemKind = 'category' | 'todo';
+export type ManagedListItemKind = 'category' | 'todo' | 'sectionHeader';
 
 export type ManagedListActionRole = 'normal' | 'destructive';
 
@@ -56,6 +56,8 @@ export type ManagedListItem = {
   title: string;
   subtitle?: string;
   metaText?: string;
+  collapsed?: boolean;
+  hidden?: boolean;
   subLabels?: ManagedListSubLabel[];
   enabled?: boolean;
   loading?: boolean;

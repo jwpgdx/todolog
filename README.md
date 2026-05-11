@@ -258,6 +258,7 @@ Device-build note:
 - Physical-device dev builds now use `expo-dev-client` launcher mode. After this native config changes, rebuild once with `npm run ios:device`; after that, network changes should only require `npm run dev:device` plus reopening the dev build or QR link.
 - Simulator builds do not require provisioning profiles and should use `npm run dev:ios:sim` or `npm run ios`.
 - `npm run dev:ios:sim` now defaults to `host=lan`; this project’s iOS dev-client reopen path was not reliable with `localhost`.
+- For the currently validated local iOS simulator workflow, see `client/docs/IOS_SIMULATOR_RUNBOOK.md`.
 
 Notes for parallel Codex sessions:
 

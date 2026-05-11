@@ -11,14 +11,21 @@ export const useReorderCategory = () => {
   const { syncAll } = useSyncContext();
 
   return useMutation({
-    mutationFn: async ({ id, order }) => {
+    mutationFn: async (variables) => {
+      const orders = Array.isArray(variables?.orders)
+        ? variables.orders
+        : [{ _id: variables.id, order: variables.order }];
+
       await ensureDatabase();
-      await updateCategoryOrders([{ _id: id, order }]);
-      await addPendingChange({
-        type: 'updateCategory',
-        entityId: id,
-        data: { order },
-      });
+      await updateCategoryOrders(orders);
+
+      for (const { _id, order } of orders) {
+        await addPendingChange({
+          type: 'updateCategory',
+          entityId: _id,
+          data: { order },
+        });
+      }
 
       try {
         const netInfo = await NetInfo.fetch();
@@ -27,18 +34,27 @@ export const useReorderCategory = () => {
         }
       } catch { }
 
-      return { id, order };
+      return { orders };
     },
-    onMutate: async ({ id, order }) => {
+    onMutate: async (variables) => {
+      const orders = Array.isArray(variables?.orders)
+        ? variables.orders
+        : [{ _id: variables.id, order: variables.order }];
+      const orderMap = new Map(orders.map(({ _id, order }) => [_id, order]));
+
       await queryClient.cancelQueries({ queryKey: ['categories'] });
 
       const previousCategories = queryClient.getQueryData(['categories']);
 
       queryClient.setQueryData(['categories'], (old) => {
         if (!old) return [];
-        return old.map((cat) => 
-          cat._id === id ? { ...cat, order } : cat
-        ).sort((a, b) => {
+        return old
+          .map((cat) =>
+            orderMap.has(cat._id)
+              ? { ...cat, order: orderMap.get(cat._id) }
+              : cat
+          )
+          .sort((a, b) => {
           const aInbox = a?.systemKey === 'inbox';
           const bInbox = b?.systemKey === 'inbox';
           if (aInbox && !bInbox) return -1;

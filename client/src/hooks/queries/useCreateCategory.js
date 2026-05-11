@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import NetInfo from '@react-native-community/netinfo';
-import { upsertCategory } from '../../services/db/categoryService';
+import { getNextUserCategoryOrder, upsertCategory } from '../../services/db/categoryService';
 import { addPendingChange } from '../../services/db/pendingService';
 import { ensureDatabase } from '../../services/db/database';
 import { generateId } from '../../utils/idGenerator';
@@ -19,9 +19,11 @@ export const useCreateCategory = () => {
 
       const categoryId = generateId();
       const now = new Date().toISOString();
+      const order = await getNextUserCategoryOrder();
       const category = {
         _id: categoryId,
         ...data,
+        order,
         createdAt: now,
         updatedAt: now,
       };
@@ -32,7 +34,7 @@ export const useCreateCategory = () => {
       await addPendingChange({
         type: 'createCategory',
         entityId: categoryId,
-        data: { _id: categoryId, ...data },
+        data: { _id: categoryId, ...data, order },
       });
 
       try {

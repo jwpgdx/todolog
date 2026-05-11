@@ -102,7 +102,7 @@ export default function MyPageScreen() {
 
           <MenuLink
             title="일정 관리"
-            onPress={() => router.push('/(app)/(tabs)/calendar')}
+            onPress={() => router.push('/(app)/(tabs)/my-page/all-todos')}
           />
           <MenuLink
             title="구글 캘린더 연동"

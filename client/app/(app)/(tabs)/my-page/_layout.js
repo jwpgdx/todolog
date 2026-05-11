@@ -76,6 +76,13 @@ export default function MyPageLayout() {
           title: '색상 선택',
         }}
       />
+      <Stack.Screen
+        name="all-todos"
+        options={{
+          title: '일정 관리',
+          headerLargeTitle: isIOS,
+        }}
+      />
       <Stack.Screen name="debug" options={{ title: '디버그' }} />
     </Stack>
   );

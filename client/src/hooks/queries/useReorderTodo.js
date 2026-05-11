@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import NetInfo from '@react-native-community/netinfo';
-import { ensureDatabase } from '../../services/db/database';
+import { ensureDatabase, getDatabase } from '../../services/db/database';
 import { getTodoById, upsertTodo } from '../../services/db/todoService';
 import { addPendingChange } from '../../services/db/pendingService';
 import { useSyncContext } from '../../providers/SyncProvider';
@@ -39,13 +39,63 @@ export const updateTodoOrder = async ({ id, order, categoryId }) => {
   return updatedTodo;
 };
 
+export const updateTodoOrdersBatch = async (updates = []) => {
+  await ensureDatabase();
+
+  const db = getDatabase();
+  const updatedTodos = [];
+
+  await db.withTransactionAsync(async () => {
+    for (const update of updates) {
+      if (!update?.id) {
+        continue;
+      }
+
+      const existingTodo = await getTodoById(update.id);
+      if (!existingTodo) {
+        continue;
+      }
+
+      const updatedTodo = {
+        ...existingTodo,
+        categoryId: update.categoryId || existingTodo.categoryId,
+        order: {
+          custom: existingTodo.order?.custom ?? existingTodo.customOrder ?? 0,
+          category: existingTodo.order?.category ?? existingTodo.categoryOrder ?? 0,
+          favorite: existingTodo.order?.favorite ?? existingTodo.favoriteOrder ?? null,
+          ...(update.order || {}),
+        },
+        updatedAt: new Date().toISOString(),
+        syncStatus: 'pending',
+      };
+
+      await upsertTodo(updatedTodo);
+      await addPendingChange({
+        type: 'updateTodo',
+        entityId: update.id,
+        data: {
+          ...(update.categoryId ? { categoryId: update.categoryId } : {}),
+          order: updatedTodo.order,
+        },
+      });
+
+      updatedTodos.push(updatedTodo);
+    }
+  });
+
+  return updatedTodos;
+};
+
 export const useReorderTodo = (date) => {
   const queryClient = useQueryClient();
   const { syncAll } = useSyncContext();
 
   return useMutation({
     mutationFn: async (variables) => {
-      const result = await updateTodoOrder(variables);
+      const isBatch = Array.isArray(variables?.updates);
+      const result = isBatch
+        ? await updateTodoOrdersBatch(variables.updates)
+        : await updateTodoOrder(variables);
 
       try {
         const netInfo = await NetInfo.fetch();
@@ -56,7 +106,13 @@ export const useReorderTodo = (date) => {
 
       return result;
     },
-    onMutate: async ({ id, order, categoryId }) => {
+    onMutate: async (variables) => {
+      if (Array.isArray(variables?.updates)) {
+        await queryClient.cancelQueries({ queryKey: ['todos', date] });
+        return {};
+      }
+
+      const { id, order, categoryId } = variables;
       await queryClient.cancelQueries({ queryKey: ['todos', date] });
 
       const previousTodos = queryClient.getQueryData(['todos', date]);
@@ -89,6 +145,8 @@ export const useReorderTodo = (date) => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['todos', date] });
+      queryClient.invalidateQueries({ queryKey: ['todos'] });
+      queryClient.invalidateQueries({ queryKey: ['categories'] });
     },
   });
 };

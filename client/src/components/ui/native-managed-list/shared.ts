@@ -16,10 +16,12 @@ import type {
 
 type LegacyNativeListItem = {
   id: string;
-  kind: 'category' | 'todo';
+  kind: 'category' | 'todo' | 'sectionHeader';
   title: string;
   subtitle?: string;
   metaText?: string;
+  collapsed?: boolean;
+  hidden?: boolean;
   accentColor?: string;
   reorderable: boolean;
   deletable: boolean;
@@ -35,6 +37,7 @@ type LegacyNativeListSection = {
   id: string;
   title?: string;
   footer?: string;
+  reorderMode?: 'none' | 'withinSection' | 'acrossSections';
   items: LegacyNativeListItem[];
 };
 
@@ -72,9 +75,10 @@ export function estimateManagedListHeight(
   const rowHeight = variant === 'category' ? CATEGORY_ROW_HEIGHT : TODO_ROW_HEIGHT;
 
   return sections.reduce((total, section) => {
+    const visibleItems = section.items.filter((item) => item.hidden !== true);
     return (
       total +
-      section.items.length * rowHeight +
+      visibleItems.length * rowHeight +
       (section.title ? HEADER_HEIGHT : 0) +
       (section.footer ? FOOTER_HEIGHT : 0) +
       SECTION_GAP
@@ -111,6 +115,10 @@ export function validateManagedListSections(
       }
 
       if (variant === 'todo' && item.kind !== 'todo') {
+        if (item.kind === 'sectionHeader') {
+          return;
+        }
+
         warnings.push(
           `section "${section.id}" contains non-todo item "${item.id}". todo v0 renders todo rows only.`
         );
@@ -225,6 +233,7 @@ export function mapManagedSectionsToLegacyNativeSections(
     id: section.id,
     title: section.title,
     footer: section.footer,
+    reorderMode: getSectionReorderMode(section),
     items: section.items.map((item) => {
       const toggleControl = resolveNativeToggleControl(item);
 
@@ -234,6 +243,8 @@ export function mapManagedSectionsToLegacyNativeSections(
         title: item.title,
         subtitle: item.subtitle ?? formatSubLabels(item),
         metaText: item.metaText,
+        collapsed: item.collapsed,
+        hidden: item.hidden,
         accentColor: item.accentColor,
         reorderable:
           (getSectionReorderMode(section) === 'withinSection' ||
@@ -253,6 +264,58 @@ export function mapManagedSectionsToLegacyNativeSections(
       };
     }),
   }));
+}
+
+export function buildManagedReorderCommitEventFromNativeSections(
+  listId: string | undefined,
+  sections: ManagedListSection[],
+  payload: {
+    movedItemId?: string;
+    fromSectionId?: string;
+    toSectionId?: string;
+    sections?: Array<{
+      sectionId?: string;
+      orderedItemIds?: string[];
+    }>;
+  }
+): ManagedListReorderCommitEvent {
+  const knownItemIds = new Set(
+    sections.flatMap((section) => section.items.map((item) => item.id))
+  );
+  const fallbackSections = buildFallbackSectionOrders(sections);
+  const nativeSections = Array.isArray(payload.sections) ? payload.sections : [];
+
+  if (nativeSections.length === 0) {
+    return {
+      listId,
+      movedItemId: payload.movedItemId,
+      fromSectionId: payload.fromSectionId,
+      toSectionId: payload.toSectionId,
+      sections: fallbackSections,
+    };
+  }
+
+  const normalized = nativeSections
+    .filter((section) => typeof section?.sectionId === 'string')
+    .map((section) => ({
+      sectionId: section.sectionId as string,
+      orderedItemIds: Array.isArray(section?.orderedItemIds)
+        ? section.orderedItemIds.filter((itemId) => knownItemIds.has(itemId))
+        : [],
+    }));
+
+  const normalizedSectionIdSet = new Set(normalized.map((section) => section.sectionId));
+  const remainingSections = fallbackSections.filter(
+    (section) => !normalizedSectionIdSet.has(section.sectionId)
+  );
+
+  return {
+    listId,
+    movedItemId: payload.movedItemId,
+    fromSectionId: payload.fromSectionId,
+    toSectionId: payload.toSectionId,
+    sections: [...normalized, ...remainingSections],
+  };
 }
 
 export function findManagedItemLocation(

@@ -450,7 +450,22 @@ function safeParseRecurrence(rawValue) {
   }
 }
 
+function toFiniteNumber(value, fallback = 0) {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value === 'string' && value.trim() !== '') {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return fallback;
+}
+
 function deserializeTodoCandidate(row) {
+  const order = {
+    custom: toFiniteNumber(row.custom_order, 0),
+    category: toFiniteNumber(row.category_order, 0),
+    favorite: row.favorite_order == null ? null : toFiniteNumber(row.favorite_order, 0),
+  };
+
   return {
     _id: row._id,
     title: row.title,
@@ -467,6 +482,10 @@ function deserializeTodoCandidate(row) {
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     deletedAt: row.deleted_at,
+    customOrder: order.custom,
+    categoryOrder: order.category,
+    favoriteOrder: order.favorite,
+    order,
     category: row.category_name
       ? {
         _id: row.category_id,

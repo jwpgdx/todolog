@@ -11,6 +11,7 @@ import {
   buildManagedControlActionEvent,
   buildManagedPressEvent,
   buildManagedReorderCommitEvent,
+  buildManagedReorderCommitEventFromNativeSections,
   estimateManagedListHeight,
   extractNativePayload,
   mapManagedSectionsToLegacyNativeSections,
@@ -22,12 +23,14 @@ import NativeManagedListFallback from './NativeManagedListFallback';
 type NativeListInteractionsViewProps = {
   sectionsJson: string;
   iosCategoryGestureMode?: string;
+  contentInsetBottom?: number;
   style?: NativeManagedListProps['style'];
   onItemPress?: (event: unknown) => void;
   onMenuAction?: (event: unknown) => void;
   onDelete?: (event: unknown) => void;
   onReorder?: (event: unknown) => void;
   onToggleSwitch?: (event: unknown) => void;
+  onSectionExpandRequest?: (event: unknown) => void;
 };
 
 const NativeListInteractionsView =
@@ -100,17 +103,39 @@ export default function NativeManagedList({
   listId,
   variant,
   sections,
+  iosCategoryGestureMode,
+  contentInsetBottom = 0,
   style,
   onPressItem,
   onAction,
   onControlAction,
   onReorderCommit,
+  onSectionExpandRequest,
   onError,
 }: NativeManagedListProps) {
   const warnings = useMemo(
     () => validateManagedListSections(variant, sections),
     [sections, variant]
   );
+  const inferredHasReorderableTodoItems = useMemo(
+    () =>
+      (variant === 'todo' || variant === 'favoriteTodo') &&
+      sections.some((section) =>
+        section.items.some((item) => item.kind === 'todo' && item.reorderable === true)
+      ),
+    [sections, variant]
+  );
+  const resolvedIOSCategoryGestureMode = useMemo(() => {
+    if (iosCategoryGestureMode) {
+      return iosCategoryGestureMode;
+    }
+
+    if (variant === 'category' || inferredHasReorderableTodoItems) {
+      return 'custom-lifted';
+    }
+
+    return 'system';
+  }, [inferredHasReorderableTodoItems, iosCategoryGestureMode, variant]);
   const isUnsupportedVariant =
     Platform.OS !== 'ios' || (variant !== 'category' && variant !== 'todo');
   const legacySections = useMemo(
@@ -125,6 +150,13 @@ export default function NativeManagedList({
     () => Math.max(220, estimateManagedListHeight(sections, variant)),
     [sections, variant]
   );
+  const resolvedContainerStyle = useMemo(() => {
+    if (variant === 'todo') {
+      return [{ width: '100%', minHeight: 220, flex: 1 }, style];
+    }
+
+    return [{ width: '100%', height }, style];
+  }, [height, style, variant]);
 
   useEffect(() => {
     warnings.forEach((warning) => {
@@ -147,8 +179,9 @@ export default function NativeManagedList({
   return (
     <NativeListInteractionsView
       sectionsJson={sectionsJson}
-      iosCategoryGestureMode={variant === 'category' ? 'custom-lifted' : 'system'}
-      style={[{ width: '100%', height }, style]}
+      iosCategoryGestureMode={resolvedIOSCategoryGestureMode}
+      contentInsetBottom={contentInsetBottom}
+      style={resolvedContainerStyle}
       onItemPress={(event) => {
         const payload = extractNativePayload<{ itemId?: string }>(event);
         if (!payload.itemId) {
@@ -197,14 +230,33 @@ export default function NativeManagedList({
         }
       }}
       onReorder={(event) => {
-        const payload = extractNativePayload<{ orderedIds?: string[] }>(event);
-        if (!Array.isArray(payload.orderedIds)) {
+        const payload = extractNativePayload<{
+          orderedIds?: string[];
+          movedItemId?: string;
+          fromSectionId?: string;
+          toSectionId?: string;
+          sections?: Array<{
+            sectionId?: string;
+            orderedItemIds?: string[];
+          }>;
+        }>(event);
+
+        if (Array.isArray(payload.sections) && payload.sections.length > 0) {
+          onReorderCommit?.(
+            buildManagedReorderCommitEventFromNativeSections(
+              listId,
+              sections,
+              payload
+            )
+          );
           return;
         }
 
-        onReorderCommit?.(
-          buildManagedReorderCommitEvent(listId, sections, payload.orderedIds)
-        );
+        if (Array.isArray(payload.orderedIds)) {
+          onReorderCommit?.(
+            buildManagedReorderCommitEvent(listId, sections, payload.orderedIds)
+          );
+        }
       }}
       onToggleSwitch={(event) => {
         const payload = extractNativePayload<{
@@ -232,6 +284,17 @@ export default function NativeManagedList({
         if (controlEvent) {
           onControlAction?.(controlEvent);
         }
+      }}
+      onSectionExpandRequest={(event) => {
+        const payload = extractNativePayload<{ sectionId?: string }>(event);
+        if (!payload.sectionId) {
+          return;
+        }
+
+        onSectionExpandRequest?.({
+          listId,
+          sectionId: payload.sectionId,
+        });
       }}
     />
   );

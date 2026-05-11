@@ -136,6 +136,22 @@ function buildDefaultTrailingSwipeActions() {
   ];
 }
 
+function buildCategoryHeaderItem(category, options = {}) {
+  return {
+    id: `section-header:${category._id}`,
+    kind: 'sectionHeader',
+    title: category.name || '',
+    accentColor: category.color,
+    collapsed: options.collapsed === true,
+    enabled: true,
+    loading: false,
+    reorderable: options.reorderable === true,
+    menuActions: [],
+    leadingSwipeActions: [],
+    trailingSwipeActions: [],
+  };
+}
+
 function buildTodoItem(todo, options = {}) {
   return buildManagedTodoItem(todo, {
     enabled: options.enabled,
@@ -185,10 +201,12 @@ export function buildManagedTodoSections({
   mode = TODO_MANAGED_LIST_MODE.CUSTOM,
   todos = [],
   categories = [],
+  collapsedCategoryIds = [],
   favoriteTodos = [],
   includeFavoriteSection = false,
   includeEmptyCategorySections = false,
   nextOccurrenceLabelByTodoId = {},
+  itemOptions = {},
 } = {}) {
   const sections = [];
   const favoriteSection = includeFavoriteSection
@@ -213,6 +231,7 @@ export function buildManagedTodoSections({
         .sort(compareByTimeMode)
         .map((todo) =>
           buildTodoItem(todo, {
+            ...itemOptions,
             reorderable: false,
             showFavoriteBadge: false,
           })
@@ -231,6 +250,7 @@ export function buildManagedTodoSections({
         .sort(compareByCustomOrder)
         .map((todo) =>
           buildTodoItem(todo, {
+            ...itemOptions,
             reorderable: true,
             showFavoriteBadge: false,
           })
@@ -241,6 +261,7 @@ export function buildManagedTodoSections({
   }
 
   const sortedCategories = [...categories].sort(compareCategories);
+  const collapsedCategoryIdSet = new Set(collapsedCategoryIds);
   const todosByCategoryId = new Map();
 
   todos.forEach((todo) => {
@@ -254,23 +275,31 @@ export function buildManagedTodoSections({
 
   sortedCategories.forEach((category) => {
     const categoryTodos = todosByCategoryId.get(category._id) ?? [];
+    const isCollapsed = collapsedCategoryIdSet.has(category._id);
     if (!includeEmptyCategorySections && categoryTodos.length === 0) {
       return;
     }
 
     sections.push({
       id: category._id,
-      title: category.name,
       role: 'category',
       reorderMode: 'acrossSections',
-      items: [...categoryTodos]
-        .sort(compareByCategoryOrder)
-        .map((todo) =>
-          buildTodoItem(todo, {
-            reorderable: true,
-            showFavoriteBadge: false,
-          })
-        ),
+      items: [
+        buildCategoryHeaderItem(category, {
+          collapsed: isCollapsed,
+          reorderable: category?.systemKey !== 'inbox',
+        }),
+        ...[...categoryTodos]
+          .sort(compareByCategoryOrder)
+          .map((todo) => ({
+            ...buildTodoItem(todo, {
+              ...itemOptions,
+              reorderable: true,
+              showFavoriteBadge: false,
+            }),
+            hidden: isCollapsed,
+          })),
+      ],
     });
   });
 

@@ -1,0 +1,12 @@
+{
+  "name": "native-todo-form-session",
+  "version": "1.0.0",
+  "description": "Local Expo module for the native todo form session prototype shell.",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "sideEffects": false,
+  "peerDependencies": {
+    "expo": "*",
+    "react-native": "*"
+  }
+}

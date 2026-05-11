@@ -25,12 +25,17 @@ export async function getAllCategories() {
     const db = getDatabase();
 
     const result = await db.getAllAsync(`
-    SELECT * FROM categories 
-    WHERE deleted_at IS NULL
+    SELECT
+      c.*,
+      COUNT(t._id) as todo_count
+    FROM categories c
+    LEFT JOIN todos t ON c._id = t.category_id AND t.deleted_at IS NULL
+    WHERE c.deleted_at IS NULL
+    GROUP BY c._id
     ORDER BY
-      CASE WHEN system_key = 'inbox' THEN 0 ELSE 1 END,
-      order_index ASC,
-      created_at ASC
+      CASE WHEN c.system_key = 'inbox' THEN 0 ELSE 1 END,
+      c.order_index ASC,
+      c.created_at ASC
   `);
 
     return result.map(deserializeCategory);
@@ -150,6 +155,21 @@ export async function getCategoryByName(name) {
     return result ? deserializeCategory(result) : null;
 }
 
+export async function getNextUserCategoryOrder() {
+    await ensureDatabase();
+    const db = getDatabase();
+
+    const result = await db.getFirstAsync(
+        `SELECT COALESCE(MAX(order_index), ?) as max_order
+         FROM categories
+         WHERE deleted_at IS NULL
+           AND COALESCE(system_key, '') != ?`,
+        [INBOX_ORDER, INBOX_SYSTEM_KEY]
+    );
+
+    return Number(result?.max_order || INBOX_ORDER) + 100;
+}
+
 // ============================================================
 // 쓰기
 // ============================================================
@@ -172,7 +192,7 @@ export async function upsertCategory(category) {
         category.name,
         category.color || null,
         category.icon || null,
-        category.order || category.order_index || 0,
+        category.order ?? category.order_index ?? 0,
         category.systemKey || category.system_key || null,
         category.createdAt || category.created_at || new Date().toISOString(),
         category.updatedAt || category.updated_at || new Date().toISOString(),
@@ -200,7 +220,7 @@ export async function upsertCategories(categories) {
                 cat.name,
                 cat.color || null,
                 cat.icon || null,
-                cat.order || cat.order_index || 0,
+                cat.order ?? cat.order_index ?? 0,
                 cat.systemKey || cat.system_key || null,
                 cat.createdAt || cat.created_at || new Date().toISOString(),
                 cat.updatedAt || cat.updated_at || new Date().toISOString(),
@@ -287,6 +307,15 @@ export async function updateCategoryOrders(orders) {
 
     await db.withTransactionAsync(async () => {
         for (const { _id, order } of orders) {
+            const category = await db.getFirstAsync(
+                'SELECT system_key FROM categories WHERE _id = ?',
+                [_id]
+            );
+
+            if (category?.system_key === INBOX_SYSTEM_KEY) {
+                continue;
+            }
+
             await db.runAsync(
                 'UPDATE categories SET order_index = ?, updated_at = ? WHERE _id = ?',
                 [order, now, _id]
@@ -362,6 +391,7 @@ function deserializeCategory(row) {
         icon: row.icon,
         systemKey: row.system_key || null,
         order: row.order_index,
+        todoCount: Number(row.todo_count || 0),
         createdAt: row.created_at,
         updatedAt: row.updated_at,
         deletedAt: row.deleted_at,

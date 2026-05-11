@@ -1,7 +1,7 @@
 # Todolog Project Context
 
-Last Updated: 2026-03-24
-Status: Sync hardening complete (Pending Push -> Delta Pull), Phase 3 Step 1 recurrence engine complete/validated, Phase 3 Step 2 common query/aggregation complete/validated, Phase 3 Step 3 screen-adapter layer complete/validated, category write unification complete/validated, completion write unification implemented/validated, completion coalescing implemented/validated, completion local tombstone implemented/validated, guest local-only bootstrap + all-to-Inbox migration implemented/validated, cache-policy unification complete/validated, Expo Router migration implemented (parity validation ongoing), Expo SDK 55 upgrade complete/validated, Todo Calendar V2 line-monthly baseline complete, readiness complete, primary monthly tab cutover implemented (post-cutover promoted native smoke pending), and floating tab bar implementation landed (iOS simulator validated; Android/manual parity pending)
+Last Updated: 2026-05-09
+Status: Sync hardening complete (Pending Push -> Delta Pull), Phase 3 Step 1 recurrence engine complete/validated, Phase 3 Step 2 common query/aggregation complete/validated, Phase 3 Step 3 screen-adapter layer complete/validated, category write unification complete/validated, completion write unification implemented/validated, completion coalescing implemented/validated, completion local tombstone implemented/validated, guest local-only bootstrap + all-to-Inbox migration implemented/validated, cache-policy unification complete/validated, Expo Router migration implemented (parity validation ongoing), Expo SDK 55 upgrade complete/validated, Todo Calendar V2 line-monthly baseline complete, readiness complete, primary monthly tab cutover implemented (post-cutover promoted native smoke pending), floating tab bar implementation landed (iOS simulator validated; Android/manual parity pending), and NativeManagedList iOS Todo category-grouped pilot implemented/stabilization pending
 
 ## 1. Purpose
 
@@ -58,6 +58,8 @@ Server:
 - Floating tab bar visuals: menu shell and `+` surface share the same blurred detached background via `expo-blur` (`intensity=8`), current geometry is defined in `client/src/navigation/tabBarMetrics.js`, tab icons are SVG-based components under `client/src/navigation/icons/`, and the `Todo` icon renders the current day number via `useTodayDate`
 - My Page subtree routing: My Page에서 여는 Settings/Profile/Category/Debug 화면은 `client/app/(app)/(tabs)/my-page/*` 아래로 push되어 iOS Large Title/back label UX를 유지
 - Floating tab bar validation: iOS simulator dev-client rebuild succeeded after adding `expo-blur`/`react-native-svg`, and native smoke confirmed the detached bar, moving selected pill, and SVG tab icons on `Todo / Calendar / My Page`; Android/manual parity verification remains pending
+- NativeManagedList iOS pilot: `NativeManagedList` is the shared JS facade, `NativeTodoManagedList` wraps todo domain data, and `NativeListInteractionsView.swift` currently backs iOS `category` plus `todo` variants. `TODO SCREEN > 카테고리별 순서` and `ALL TODOS SCREEN` reuse the same category-grouped interaction model with todo reorder, cross-category move, collapsed category hover auto-expand, section header category reorder, Inbox pinned ordering, and native bottom inset support.
+- NativeManagedList stabilization: the iOS implementation is still concentrated in `client/modules/native-list-interactions/ios/NativeListInteractionsView.swift`; before adding more managed-list features, split the Swift implementation into model/data source/layout/menu/todo-drag/section-header-drag/auto-scroll files per `.kiro/specs/native-managed-list/design.md`.
 - Real-server recovery web E2E: category/todo/completion recovery specs validated; completion extended matrix (`rapid toggle`, `recurring`, `mixed queue`, `dead_letter`, `restart`) validated
 - Guest migration server validation: completion import preserves exported active `_id`, and forced signup partial-failure rolls back imported todos/completions so the server account remains Inbox-only
 
@@ -69,6 +71,7 @@ Server:
 - `expo-blur` and `react-native-svg` are now active client dependencies for the floating tab bar shell and SVG tab icons; adding or upgrading either requires a native dev-client rebuild before simulator/device verification.
 - `react-native-wheel-pick` is still present and is the only known non-blocking `expo-doctor` warning after the SDK 55 upgrade; replacement is planned with a native implementation later.
 - Codex local skill `upgrading-expo` is installed and listed in `AGENTS.md` for future Expo SDK upgrade work.
+- Current validated local iOS baseline is recorded in `client/docs/IOS_SIMULATOR_RUNBOOK.md`: macOS `15.7.3`, Xcode `26.2`, build SDK `iPhoneSimulator26.2.sdk`, simulator runtime `iOS 26.3.1`, simulator device `iPhone 17`. When Codex runs `xcodebuild`, `xcrun simctl`, or Maestro, run them outside the sandbox to avoid misleading CoreSimulator failures.
 
 ## 3. Non-Negotiable Architecture Commitments
 

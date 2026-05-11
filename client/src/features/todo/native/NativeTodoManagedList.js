@@ -10,37 +10,48 @@ export default function NativeTodoManagedList({
   mode = TODO_MANAGED_LIST_MODE.CUSTOM,
   todos = [],
   categories = [],
+  collapsedCategoryIds = [],
   favoriteTodos = [],
   includeFavoriteSection = false,
   includeEmptyCategorySections = false,
   nextOccurrenceLabelByTodoId = {},
+  itemOptions = {},
+  contentInsetBottom = 0,
   style,
   onPressTodo,
+  onPressSectionHeader,
+  onRequestExpandSection,
   onToggleComplete,
   onToggleFavorite,
   onTodoAction,
   onReorderCommit,
   onError,
 }) {
+  const iosCategoryGestureMode =
+    mode === TODO_MANAGED_LIST_MODE.TIME ? 'system' : 'custom-lifted';
   const sections = useMemo(
     () =>
       buildManagedTodoSections({
         mode,
         todos,
         categories,
+        collapsedCategoryIds,
         favoriteTodos,
         includeFavoriteSection,
         includeEmptyCategorySections,
         nextOccurrenceLabelByTodoId,
+        itemOptions,
       }),
     [
       mode,
       todos,
       categories,
+      collapsedCategoryIds,
       favoriteTodos,
       includeFavoriteSection,
       includeEmptyCategorySections,
       nextOccurrenceLabelByTodoId,
+      itemOptions,
     ]
   );
 
@@ -54,8 +65,15 @@ export default function NativeTodoManagedList({
       listId={listId}
       variant="todo"
       sections={sections}
+      iosCategoryGestureMode={iosCategoryGestureMode}
+      contentInsetBottom={contentInsetBottom}
       style={style}
-      onPressItem={({ itemId }) => {
+      onPressItem={(event) => {
+        if (event?.itemKind === 'sectionHeader') {
+          onPressSectionHeader?.(event?.sectionId);
+          return;
+        }
+        const { itemId } = event ?? {};
         const todo = todoById.get(itemId);
         if (todo) {
           onPressTodo?.(todo);
@@ -83,6 +101,7 @@ export default function NativeTodoManagedList({
         }
       }}
       onReorderCommit={onReorderCommit}
+      onSectionExpandRequest={onRequestExpandSection}
       onError={onError}
     />
   );

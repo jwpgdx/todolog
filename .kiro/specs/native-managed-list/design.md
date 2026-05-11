@@ -25,11 +25,21 @@
 1. `NativeManagedList` contract 고정
 2. iOS `category` variant 기준본 안정화
 3. `My Page > 카테고리`를 production validation path로 사용
-4. 그다음 `todo` / `favoriteTodo` variant 확장
-5. Android 구현은 같은 contract 뒤에서 후속 진행
+4. iOS `todo` variant를 Todo 계열 category-grouped 화면에서 pilot 검증
+5. 그다음 `favoriteTodo` variant 확장
+6. Android 구현은 같은 contract 뒤에서 후속 진행
+
+현재 구현 상태:
+
+- `NativeManagedList` JS facade는 `category`와 iOS `todo` variant를 native path로 연결한다.
+- `NativeTodoManagedList`는 Todo domain data를 `ManagedListSection[]`로 변환하는 wrapper다.
+- `TODO SCREEN > 카테고리별 순서`는 selected date 기준 todo만 보여주되 category-grouped interaction model을 사용한다.
+- `ALL TODOS SCREEN`은 같은 category-grouped interaction model을 사용하되 날짜 필터 없이 전체 todo를 보여준다.
+- iOS todo category-grouped path는 floating snapshot 기반 custom drag engine으로 same-gesture cross-section reorder와 collapsed section auto-expand를 처리한다.
+- Android 구현은 아직 production 범위가 아니며 JS fallback/후속 native implementation 대상으로 둔다.
 
 따라서 현재 design의 핵심은 "공통 primitive를 화면 전체에 즉시 적용"이 아니라,
-"category path를 통해 공통 contract를 동결"하는 데 있다.
+"category path로 contract를 고정하고, iOS todo category-grouped pilot으로 cross-section interaction을 검증"하는 데 있다.
 
 ## Conceptual Model
 
@@ -151,10 +161,12 @@ type ManagedListSection = {
 
 type ManagedListItem = {
   id: string;
-  kind: 'category' | 'todo';
+  kind: 'category' | 'todo' | 'sectionHeader';
   title: string;
   subtitle?: string;
   metaText?: string;
+  collapsed?: boolean;
+  hidden?: boolean;
   subLabels?: ManagedListSubLabel[];
   enabled?: boolean;
   loading?: boolean;
@@ -174,6 +186,8 @@ type ManagedListItem = {
 
 `subtitle` / `metaText`는 category 계열의 단순 보조 텍스트에 주로 사용한다.
 `todo` 계열은 여러 보조 라벨을 동시에 표현해야 하므로 `subLabels`를 기본 surface로 사용한다.
+`sectionHeader`는 `todo` variant의 category-grouped mode에서 카테고리 group header를 표현하기 위해 사용한다.
+`hidden`은 collapsed category의 todo rows를 화면에서 제외하기 위한 표시 상태이며, native는 이를 삭제나 domain mutation으로 해석하지 않는다.
 
 `subLabels` 예:
 
@@ -193,6 +207,7 @@ Native가 emit하는 최소 event:
 - `onAction`
 - `onControlAction`
 - `onReorderCommit`
+- `onSectionExpandRequest`
 - `onError`
 
 `onAction`은 menu/swipe를 하나로 받는다.
@@ -235,6 +250,8 @@ type ManagedListReorderCommitEvent = {
 - native index는 public으로 노출하지 않는다.
 - pinned/non-reorderable item도 최종 visible order에 포함한다.
 - 어떤 order lane(`category`, `custom`, `favorite`)을 실제로 갱신할지는 caller가 결정한다.
+- `todo` category-grouped mode의 payload는 section header item ID를 포함할 수 있으므로 feature wrapper가 todo/category item을 분리해서 저장한다.
+- collapsed section hover auto-expand는 native UI state로 먼저 처리하고, drop commit 후 wrapper가 `onSectionExpandRequest`를 받아 영구 collapsed state를 갱신한다.
 
 ## Variant Rendering
 
@@ -273,7 +290,14 @@ iOS / Android 공통 개념:
 - swipe actions
 - reorder
 
-세부 디자인은 v0에서 확정하지 않는다.
+iOS pilot 범위:
+
+- `NativeTodoManagedList` wrapper가 `TodoScreen`과 `AllTodosScreen`에 category-grouped sections를 공급한다.
+- `sectionHeader` item으로 카테고리 group header를 표현한다.
+- 같은 category 안 reorder, 다른 category로 move, collapsed category hover auto-expand, category header reorder를 지원한다.
+- bottom floating tab bar와 겹치지 않도록 `contentInsetBottom`을 native collection view inset으로 전달한다.
+
+Android와 favorite-specific 세부 디자인은 v0에서 확정하지 않는다.
 
 ### `favoriteTodo`
 
@@ -288,6 +312,7 @@ iOS / Android 공통 개념:
 ## iOS Implementation Direction
 
 현재 iOS 구현은 `category` variant를 먼저 production quality로 끌어올린다.
+동시에 `todo` variant의 category-grouped pilot이 `NativeListInteractionsView.swift` 안에 추가되어 있다.
 
 이 단계에서 필요한 결정:
 
@@ -295,8 +320,9 @@ iOS / Android 공통 개념:
 - `NativeCategoryManager`를 category adapter로 유지할지, 더 얇게 줄일지 결정
 - `NativeManagedList` facade가 `sections -> native payload -> typed event` 흐름을 안정적으로 제공하는지 검증
 - `My Page > 카테고리`에서 menu / swipe / reorder path가 contract대로 동작하는지 검증
+- `TODO SCREEN > 카테고리별 순서`와 `ALL TODOS SCREEN`에서 같은 `NativeTodoManagedList` wrapper가 order lane을 올바르게 저장하는지 검증
 
-`todo` / `favoriteTodo`는 현재 즉시 구현 대상이 아니라, 같은 contract가 수용할 수 있도록 타입과 event surface를 먼저 고정하는 단계다.
+`favoriteTodo`는 현재 즉시 구현 대상이 아니라, 같은 contract가 수용할 수 있도록 타입과 event surface를 먼저 고정하는 단계다.
 
 iOS v0는 현재 `NativeListInteractionsView.swift`의 `custom-lifted` 경로를 기준으로 한다.
 
@@ -315,6 +341,34 @@ iOS v0는 현재 `NativeListInteractionsView.swift`의 `custom-lifted` 경로를
 - action schema를 string array에서 structured action으로 바꾼다.
 - reorder event를 section-aware payload로 바꾼다.
 - variant별 row renderer를 분리한다.
+
+### iOS Swift Stabilization Plan
+
+현재 `NativeListInteractionsView.swift`는 prototype, category path, todo custom drag path가 한 파일에 합쳐져 있다.
+기능 추가 전에 아래 순서로 분리한다. 이 작업은 동작 변경 없이 compile-safe refactor로 진행한다.
+
+권장 파일 분리:
+
+```text
+client/modules/native-list-interactions/ios/
+  NativeListInteractionsView.swift
+  NativeListInteractionsModels.swift
+  NativeListInteractionsDataSource.swift
+  NativeListInteractionsLayout.swift
+  NativeListInteractionsCategoryMenu.swift
+  NativeListInteractionsTodoDrag.swift
+  NativeListInteractionsSectionHeaderDrag.swift
+  NativeListInteractionsAutoScroll.swift
+```
+
+분리 원칙:
+
+- public Expo view/module API는 유지한다.
+- `sectionsJson` parsing, snapshot apply, event emit payload shape는 변경하지 않는다.
+- `CustomTodoDragSession`과 `CustomSectionHeaderDragSession`은 각각 별도 extension/file로 이동한다.
+- menu overlay와 drag engine을 분리해서 category menu 기능 추가가 todo drag 안정성에 영향을 주지 않게 한다.
+- `applySnapshot`과 `reloadData` 병행 호출은 drag 중 state transition별로 감사하고, 불필요한 `reloadData`는 후속 안정화에서 제거한다.
+- split 후 최소 검증은 iOS build, Todo category-grouped reorder, collapsed hover auto-expand, section header reorder, My Page category create/reorder다.
 
 ## Android Implementation Direction
 

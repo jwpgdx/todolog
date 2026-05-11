@@ -33,9 +33,8 @@ setQueryClient(queryClient);
 
 let hasRunCommonRangePrewarm = false;
 const PUBLIC_ROUTE_SEGMENTS = new Set([
-  'native-list-interactions',
+  'native-category-menu',
   'native-settings-catalog',
-  'test-menu-reorder',
 ]);
 
 function addDays(date, days) {
