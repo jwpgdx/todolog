@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useDateStore } from '../../../store/dateStore';
 import { useAuthStore } from '../../../store/authStore';
 import { useSettings, useUpdateSetting } from '../../../hooks/queries/useSettings';
@@ -72,12 +72,13 @@ const parseYearlyDateFromRRule = (recurrence) => {
     return null;
 };
 
-export const useTodoFormLogic = (initialTodo, onClose, visible) => {
+export const useTodoFormLogic = (initialTodo, onClose, visible, initialDraft = null) => {
     const { currentDate } = useDateStore();
     const { user } = useAuthStore();
     const { data: settings = {} } = useSettings();
     const { mutate: updateSetting } = useUpdateSetting();
     const { data: categories } = useCategories();
+    const hasInitializedRef = useRef(false);
 
     // 사용자 타임존
     const userTimeZone = settings.timeZone || 'Asia/Seoul';
@@ -127,44 +128,69 @@ export const useTodoFormLogic = (initialTodo, onClose, visible) => {
     const updateTodo = useUpdateTodo();
     const createCategory = useCreateCategory();
 
+    const applyInitialDraft = useCallback((draft) => {
+        if (!draft) return;
+
+        setFormState(prev => ({
+            ...prev,
+            ...draft,
+        }));
+        setViewMode('default');
+    }, []);
+
     // 초기화 로직
     useEffect(() => {
-        if (visible) {
-            if (initialTodo) {
-                // 수정 모드: 기존 데이터 로드
-                setFormState(prev => ({
-                    ...prev,
-                    title: initialTodo.title || '',
-                    memo: initialTodo.memo || '',
-                    categoryId: initialTodo.categoryId || '',
-                    isAllDay: initialTodo.isAllDay ?? true,
-                    startDate: initialTodo.startDate || currentDate,
-                    endDate: initialTodo.endDate || initialTodo.startDate || currentDate,
-                    timeZone: initialTodo.timeZone || userTimeZone,
-                    // startDateTime이 있으면 시간 추출
-                    startTime: initialTodo.startDateTime
-                        ? dayjs(initialTodo.startDateTime).format('HH:mm')
-                        : prev.startTime,
-                    endTime: initialTodo.endDateTime
-                        ? dayjs(initialTodo.endDateTime).format('HH:mm')
-                        : prev.endTime,
-                    // ✅ 반복 설정 로드
-                    frequency: initialTodo.recurrence ? parseFrequencyFromRRule(initialTodo.recurrence) : 'none',
-                    weekdays: initialTodo.recurrence ? parseWeekdaysFromRRule(initialTodo.recurrence) : [],
-                    dayOfMonth: initialTodo.recurrence ? parseDayOfMonthFromRRule(initialTodo.recurrence) : [1],
-                    yearlyDate: initialTodo.recurrence ? parseYearlyDateFromRRule(initialTodo.recurrence) : null,
-                    recurrenceEndDate: initialTodo.recurrenceEndDate 
-                        ? dayjs(initialTodo.recurrenceEndDate).format('YYYY-MM-DD')
-                        : null,
-                }));
-            } else {
-                // 생성 모드: 폼 초기화
-                resetForm();
-                loadDefaultCategory();
-            }
+        if (!visible) {
+            hasInitializedRef.current = false;
+            return;
         }
+
+        if (hasInitializedRef.current) {
+            return;
+        }
+
+        hasInitializedRef.current = true;
+
+        if (initialTodo) {
+            // 수정 모드: 기존 데이터 로드
+            setFormState(prev => ({
+                ...prev,
+                title: initialTodo.title || '',
+                memo: initialTodo.memo || '',
+                categoryId: initialTodo.categoryId || '',
+                isAllDay: initialTodo.isAllDay ?? true,
+                startDate: initialTodo.startDate || currentDate,
+                endDate: initialTodo.endDate || initialTodo.startDate || currentDate,
+                timeZone: initialTodo.timeZone || userTimeZone,
+                // startDateTime이 있으면 시간 추출
+                startTime: initialTodo.startDateTime
+                    ? dayjs(initialTodo.startDateTime).format('HH:mm')
+                    : prev.startTime,
+                endTime: initialTodo.endDateTime
+                    ? dayjs(initialTodo.endDateTime).format('HH:mm')
+                    : prev.endTime,
+                // ✅ 반복 설정 로드
+                frequency: initialTodo.recurrence ? parseFrequencyFromRRule(initialTodo.recurrence) : 'none',
+                weekdays: initialTodo.recurrence ? parseWeekdaysFromRRule(initialTodo.recurrence) : [],
+                dayOfMonth: initialTodo.recurrence ? parseDayOfMonthFromRRule(initialTodo.recurrence) : [1],
+                yearlyDate: initialTodo.recurrence ? parseYearlyDateFromRRule(initialTodo.recurrence) : null,
+                recurrenceEndDate: initialTodo.recurrenceEndDate
+                    ? dayjs(initialTodo.recurrenceEndDate).format('YYYY-MM-DD')
+                    : null,
+            }));
+            return;
+        }
+
+        if (initialDraft) {
+            applyInitialDraft(initialDraft);
+            return;
+        }
+
+        // 생성 모드: 폼 초기화
+        resetForm();
+        loadDefaultCategory();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [visible, initialTodo, currentDate, userTimeZone]);
+    }, [visible, initialTodo, initialDraft, currentDate, userTimeZone, applyInitialDraft]);
 
     // 기본 카테고리 로드
     const loadDefaultCategory = async () => {

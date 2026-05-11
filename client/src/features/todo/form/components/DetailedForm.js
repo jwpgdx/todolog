@@ -62,6 +62,14 @@ export default function DetailedForm({
     const titleTimerRef = useRef(null);
     const memoTimerRef = useRef(null);
 
+    useEffect(() => {
+        if (initialFocusTarget !== 'DATE') {
+            return;
+        }
+
+        setActiveInput((current) => current || 'startDate');
+    }, [initialFocusTarget]);
+
     // Title 핸들러 (Debounce only)
     const handleChangeTitle = useCallback((text) => {
         if (titleTimerRef.current) clearTimeout(titleTimerRef.current);

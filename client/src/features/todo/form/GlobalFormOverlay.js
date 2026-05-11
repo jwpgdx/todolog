@@ -1,6 +1,8 @@
-import React, { useCallback } from 'react';
+import React, { useCallback, useEffect, useRef } from 'react';
 import { Platform, useWindowDimensions, Keyboard } from 'react-native';
+import { router } from 'expo-router';
 import { useTodoFormStore } from '../../../store/todoFormStore';
+import { useTodoFormV2Store } from '../../../store/todoFormV2Store';
 import { useTodoFormLogic } from './useTodoFormLogic';
 
 // Containers (플랫폼별 자동 선택)
@@ -24,9 +26,11 @@ import DetailContent from './content/DetailContent';
  * @see PLATFORM_ARCHITECTURE.md
  */
 export default function GlobalFormOverlay() {
-    const { mode, activeTodo, close, openDetail: storeOpenDetail, initialFocusTarget } = useTodoFormStore();
+    const { mode, activeTodo, close, initialFocusTarget } = useTodoFormStore();
+    const setDetailV2Draft = useTodoFormV2Store((state) => state.setDraft);
     const { width } = useWindowDimensions();
     const isIOS = Platform.OS === 'ios';
+    const hasRedirectedDesktopQuickRef = useRef(false);
 
     // ⚠️ Hooks는 항상 조건부 return 전에 호출해야 함 (Rules of Hooks)
     const visible = mode !== 'CLOSED';
@@ -42,11 +46,23 @@ export default function GlobalFormOverlay() {
 
     // Quick → Detail 전환
     const handleExpandToDetail = useCallback((target = null) => {
+        setDetailV2Draft({
+            activeTodo,
+            formState: logic.formState,
+            focusTarget: target,
+        });
         Keyboard.dismiss();
+        close();
         setTimeout(() => {
-            storeOpenDetail(null, target);
+            router.push({
+                pathname: '/todo-form/v2',
+                params: {
+                    handoff: 'quick',
+                    focusTarget: target || '',
+                },
+            });
         }, 100);
-    }, [storeOpenDetail]);
+    }, [activeTodo, close, logic.formState, setDetailV2Draft]);
 
     // Detail Mode 닫기 후 추가 액션 (submit 후 호출됨)
     const handleDetailSubmit = useCallback(() => {
@@ -56,7 +72,22 @@ export default function GlobalFormOverlay() {
     // 데스크탑 웹은 Quick Mode 없음 (바로 Detail)
     const isDesktopWeb = Platform.OS === 'web' && width > 768;
     const showQuickMode = mode === 'QUICK' && !isDesktopWeb;
-    const showDetailMode = mode === 'DETAIL' || (mode === 'QUICK' && isDesktopWeb);
+    const showDetailMode = mode === 'DETAIL';
+
+    useEffect(() => {
+        if (!(mode === 'QUICK' && isDesktopWeb)) {
+            hasRedirectedDesktopQuickRef.current = false;
+            return;
+        }
+
+        if (hasRedirectedDesktopQuickRef.current) {
+            return;
+        }
+
+        hasRedirectedDesktopQuickRef.current = true;
+        close();
+        router.push('/todo-form/v2');
+    }, [close, isDesktopWeb, mode]);
 
     return (
         <>
