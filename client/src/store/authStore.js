@@ -286,24 +286,6 @@ export const useAuthStore = create((set, get) => ({
     }
   },
 
-  loginAsGuest: async () => {
-    try {
-      const guestUser = await bootstrapLocalGuestSession(get().user);
-      set({
-        token: null,
-        user: guestUser,
-        isLoading: false,
-        isLoggedIn: false,
-        shouldShowLogin: false,
-      });
-      return guestUser;
-    } catch (error) {
-      console.error('Guest login error:', error);
-      set({ isLoading: false });
-      throw error;
-    }
-  },
-
   loadAuth: async () => {
     try {
       const token = await AsyncStorage.getItem('token');

@@ -289,27 +289,17 @@ export default function LoginScreen() {
       </TouchableOpacity>
 
       <TouchableOpacity
-        className={`rounded-xl py-3 mb-3 border ${(isLoading || isCheckingGuestData) ? 'bg-gray-100 border-gray-300' : 'bg-white border-amber-300 active:bg-amber-50'}`}
-        onPress={() => router.push('/test-menu-reorder')}
-        disabled={isLoading || isCheckingGuestData}
-      >
-        <Text className="text-amber-700 text-center font-semibold">
-          Menu + Reorder 테스트 화면
-        </Text>
-      </TouchableOpacity>
-
-      <TouchableOpacity
         className={`rounded-xl py-3 mb-2 border ${(isLoading || isCheckingGuestData) ? 'bg-gray-100 border-gray-300' : 'bg-white border-emerald-300 active:bg-emerald-50'}`}
-        onPress={() => router.push('/native-list-interactions')}
+        onPress={() => router.push('/native-category-menu')}
         disabled={isLoading || isCheckingGuestData}
       >
         <Text className="text-emerald-700 text-center font-semibold">
-          Native List Interactions 테스트 화면
+          Native Managed List 테스트 화면
         </Text>
       </TouchableOpacity>
 
       <Text className="text-xs text-gray-400 text-center mt-3 mb-6 leading-5">
-        위 테스트 화면들은 public route라서 로그인 없이도 바로 확인할 수 있습니다.
+        위 테스트 화면은 public route라서 로그인 없이도 바로 확인할 수 있습니다.
       </Text>
     </ScrollView>
   );
