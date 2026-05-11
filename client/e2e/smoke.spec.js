@@ -1,36 +1,7 @@
 const { test, expect } = require('@playwright/test');
 
 async function mockGuestAuth(page) {
-  await page.route('**/api/auth/guest', async (route) => {
-    await route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify({
-        accessToken: 'e2e-access-token',
-        refreshToken: 'e2e-refresh-token',
-        user: {
-          _id: 'guest_e2e_user',
-          name: 'E2E Guest',
-          settings: {
-            theme: 'system',
-            language: 'ko',
-            timeZone: 'Asia/Seoul',
-          },
-        },
-      }),
-    });
-  });
-
-  // 실제 서버가 켜져 있어도 mock 토큰의 401 -> refresh 단계에서 로그아웃되지 않도록 고정 응답
-  await page.route('**/api/auth/refresh', async (route) => {
-    await route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify({
-        accessToken: 'e2e-access-token',
-      }),
-    });
-  });
+  return page;
 }
 
 async function enterMainByGuest(page) {
@@ -48,13 +19,7 @@ async function enterMainByGuest(page) {
     return;
   }
 
-  const guestResponse = page.waitForResponse((response) => {
-    return response.request().method() === 'POST' && /\/api\/auth\/guest$/.test(response.url());
-  }, { timeout: 10_000 });
-
   await startButton.click();
-  await guestResponse;
-
   await expect(mainTab).toBeVisible({ timeout: 30_000 });
 }
 
