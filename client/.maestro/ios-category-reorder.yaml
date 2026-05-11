@@ -1,0 +1,20 @@
+appId: com.anonymous.client
+---
+# Manual helper only:
+# NativeManagedList iOS reorder handoff requires keeping the same press alive
+# while crossing the drag threshold. Maestro cannot reproduce that reliably yet.
+- launchApp:
+    appId: com.anonymous.client
+- openLink: com.anonymous.client://native-category-menu
+- swipe:
+    start: 50%, 25%
+    end: 50%, 85%
+- swipe:
+    start: 50%, 25%
+    end: 50%, 85%
+- tapOn: Reset Mock
+- tapOn: Clear Logs
+- assertVisible: Native Managed List
+- assertVisible: Work
+- assertVisible: Home
+- assertVisible: Event Log

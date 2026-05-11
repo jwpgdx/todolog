@@ -1,0 +1,18 @@
+appId: com.anonymous.client
+---
+- launchApp:
+    appId: com.anonymous.client
+- openLink: com.anonymous.client://native-category-menu
+- swipe:
+    start: 50%, 25%
+    end: 50%, 85%
+- swipe:
+    start: 50%, 25%
+    end: 50%, 85%
+- tapOn: Reset Mock
+- tapOn: Clear Logs
+- assertVisible: Work
+- longPressOn: Work
+- assertVisible: 이름 변경
+- tapOn: 이름 변경
+- assertVisible: ".*onAction -> cat-work / rename / menu.*"
