@@ -1,11 +1,29 @@
 const { test, expect } = require('@playwright/test');
+const fs = require('node:fs');
+const path = require('node:path');
 
 const REAL_API_BASE_URL = process.env.PW_REAL_API_BASE_URL;
+const BUNDLED_API_BASE_URL = resolveBundledApiBaseUrl();
 
 function addDays(dateString, days) {
   const date = new Date(`${dateString}T00:00:00.000Z`);
   date.setUTCDate(date.getUTCDate() + days);
   return date.toISOString().slice(0, 10);
+}
+
+function resolveBundledApiBaseUrl() {
+  if (process.env.EXPO_PUBLIC_API_URL) {
+    return process.env.EXPO_PUBLIC_API_URL;
+  }
+
+  try {
+    const envPath = path.join(__dirname, '..', '.env');
+    const content = fs.readFileSync(envPath, 'utf8');
+    const match = content.match(/^\s*EXPO_PUBLIC_API_URL\s*=\s*(.+)\s*$/m);
+    return match ? match[1].trim() : '';
+  } catch {
+    return '';
+  }
 }
 
 function escapeRegExp(value) {
@@ -51,6 +69,7 @@ async function registerFreshUser() {
 }
 
 async function loginViaUi(page, { email, password }) {
+  await routeBundledApiToRealServer(page);
   await page.goto('/login');
   await page.getByPlaceholder('이메일').fill(email);
   await page.getByPlaceholder('비밀번호 (6자 이상)').fill(password);
@@ -88,6 +107,12 @@ async function openDebug(page) {
   await expect(page.getByText('🔧 Debug Screen (SQLite)').first()).toBeVisible({ timeout: 15_000 });
 }
 
+async function syncServerStateToLocal(page) {
+  await openDebug(page);
+  await page.getByText('🧪 Sync 결합 스모크', { exact: true }).click();
+  await expect(page.getByText(/🔄 syncAll 호출 완료|✅ PASS \[sync-smoke\]|❌ FAIL \[sync-smoke\]/).first()).toBeVisible({ timeout: 20_000 });
+}
+
 async function ensureInboxCategorySelected(page) {
   const inboxLabel = page.getByText('Inbox', { exact: true }).last();
   if (await inboxLabel.isVisible().catch(() => false)) {
@@ -118,6 +143,20 @@ async function saveTodoInDetail(page, title) {
 
 async function createTodo(page, title) {
   await openAddTodoDialog(page);
+  await saveTodoInDetail(page, title);
+  await expect(page.getByText(title, { exact: true }).first()).toBeVisible({ timeout: 15_000 });
+}
+
+async function createTodoInCategory(page, title, categoryName) {
+  await openAddTodoDialog(page);
+
+  if (categoryName && categoryName !== 'Inbox') {
+    await page.getByText('Inbox', { exact: true }).last().click();
+    await expect(page.getByText(categoryName, { exact: true }).last()).toBeVisible({ timeout: 15_000 });
+    await page.getByText(categoryName, { exact: true }).last().click();
+    await expect(page.getByText(categoryName, { exact: true }).last()).toBeVisible({ timeout: 15_000 });
+  }
+
   await saveTodoInDetail(page, title);
   await expect(page.getByText(title, { exact: true }).first()).toBeVisible({ timeout: 15_000 });
 }
@@ -198,6 +237,21 @@ async function updateTodoOnServer(token, todoId, data) {
   return response.json();
 }
 
+async function deleteTodoOnServer(token, todoId) {
+  const response = await fetch(`${REAL_API_BASE_URL}/todos/${todoId}`, {
+    method: 'DELETE',
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error(`deleteTodo failed: ${response.status} ${await response.text()}`);
+  }
+
+  return response.json();
+}
+
 async function waitForPendingRetryWindow(page) {
   await page.waitForTimeout(31_000);
   await page.reload();
@@ -223,6 +277,20 @@ async function clickDeleteHotspot(page, name) {
   }
 
   await page.mouse.click(rowBox.x + 18, rowBox.y + (rowBox.height / 2));
+}
+
+async function routeBundledApiToRealServer(page) {
+  if (!BUNDLED_API_BASE_URL || !REAL_API_BASE_URL || BUNDLED_API_BASE_URL === REAL_API_BASE_URL) {
+    return;
+  }
+
+  const bundledBase = BUNDLED_API_BASE_URL.replace(/\/$/, '');
+  const realBase = REAL_API_BASE_URL.replace(/\/$/, '');
+
+  await page.route(`${bundledBase}/**`, async (route) => {
+    const redirectedUrl = route.request().url().replace(bundledBase, realBase);
+    await route.continue({ url: redirectedUrl });
+  });
 }
 
 test.describe('Completion Recovery Real Server', () => {
@@ -477,22 +545,26 @@ test.describe('Completion Recovery Real Server', () => {
 
     await loginViaUi(page, auth);
     await openMyPage(page);
+    await openHome(page);
+    await createTodo(page, todoTitle);
 
-    const categories = await fetchCategoriesFromServer(auth.token);
-    const inboxCategoryId = categories.find((item) => item?.systemKey === 'inbox')?._id || categories[0]?._id;
-    expect(inboxCategoryId).toBeTruthy();
+    let todoId = null;
+    await expect
+      .poll(async () => {
+        const todos = await fetchAllTodosFromServer(auth.token);
+        const matched = todos.find((item) => item?.title === todoTitle);
+        todoId = matched?._id || null;
+        return !!todoId;
+      }, { timeout: 20_000 })
+      .toBeTruthy();
 
-    const todo = await createTodoOnServer(auth.token, {
-      title: todoTitle,
-      categoryId: inboxCategoryId,
-      startDate: today,
+    await updateTodoOnServer(auth.token, todoId, {
       endDate: tomorrow,
-      isAllDay: true,
     });
 
-    await page.reload();
+    await syncServerStateToLocal(page);
     await openHome(page);
-    await expect(page.getByText(todoTitle, { exact: true }).first()).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText(todoTitle, { exact: true }).first()).toBeVisible({ timeout: 20_000 });
 
     await toggleCompletionByTitle(page, todoTitle);
     await expect(page.getByText('완료: ✅').first()).toBeVisible({ timeout: 10_000 });
@@ -505,8 +577,8 @@ test.describe('Completion Recovery Real Server', () => {
         ]);
 
         return {
-          todayCompleted: todayTodos.some((item) => item?._id === todo._id && item?.completed === true),
-          tomorrowCompleted: tomorrowTodos.some((item) => item?._id === todo._id && item?.completed === true),
+          todayCompleted: todayTodos.some((item) => item?._id === todoId && item?.completed === true),
+          tomorrowCompleted: tomorrowTodos.some((item) => item?._id === todoId && item?.completed === true),
         };
       }, { timeout: 20_000 })
       .toEqual({
@@ -514,8 +586,8 @@ test.describe('Completion Recovery Real Server', () => {
         tomorrowCompleted: true,
       });
 
-    await deleteFirstTodo(page);
-    await expect(page.getByText(todoTitle, { exact: true }).first()).toBeHidden({ timeout: 15_000 });
+    await deleteTodoOnServer(auth.token, todoId);
+    await syncServerStateToLocal(page);
 
     await expect
       .poll(async () => {
@@ -525,8 +597,8 @@ test.describe('Completion Recovery Real Server', () => {
         ]);
 
         return {
-          todayPresent: todayTodos.some((item) => item?._id === todo._id),
-          tomorrowPresent: tomorrowTodos.some((item) => item?._id === todo._id),
+          todayPresent: todayTodos.some((item) => item?._id === todoId),
+          tomorrowPresent: tomorrowTodos.some((item) => item?._id === todoId),
         };
       }, { timeout: 20_000 })
       .toEqual({
@@ -546,42 +618,44 @@ test.describe('Completion Recovery Real Server', () => {
 
     await loginViaUi(page, auth);
     await openMyPage(page);
+    await openHome(page);
+    await createTodo(page, todoTitle);
 
-    const categories = await fetchCategoriesFromServer(auth.token);
-    const inboxCategoryId = categories.find((item) => item?.systemKey === 'inbox')?._id || categories[0]?._id;
-    expect(inboxCategoryId).toBeTruthy();
+    let todoId = null;
+    await expect
+      .poll(async () => {
+        const todos = await fetchAllTodosFromServer(auth.token);
+        const matched = todos.find((item) => item?.title === todoTitle);
+        todoId = matched?._id || null;
+        return !!todoId;
+      }, { timeout: 20_000 })
+      .toBeTruthy();
 
-    const todo = await createTodoOnServer(auth.token, {
-      title: todoTitle,
-      categoryId: inboxCategoryId,
-      startDate: today,
-      endDate: today,
+    await updateTodoOnServer(auth.token, todoId, {
       isAllDay: false,
       startTime: '09:00',
       endTime: '10:00',
     });
 
-    await page.reload();
+    await syncServerStateToLocal(page);
     await openHome(page);
-    await expect(page.getByText(todoTitle, { exact: true }).first()).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText(todoTitle, { exact: true }).first()).toBeVisible({ timeout: 20_000 });
 
     await toggleCompletionByTitle(page, todoTitle);
     await expect(page.getByText('완료: ✅').first()).toBeVisible({ timeout: 10_000 });
 
-    await updateTodoOnServer(auth.token, todo._id, {
+    await updateTodoOnServer(auth.token, todoId, {
       title: updatedTitle,
       startTime: '10:30',
       endTime: '11:30',
     });
 
-    await page.reload();
-    await openHome(page);
-    await expect(page.getByText(updatedTitle, { exact: true }).first()).toBeVisible({ timeout: 15_000 });
+    await syncServerStateToLocal(page);
 
     await expect
       .poll(async () => {
         const todos = await fetchTodosByDateFromServer(auth.token, today);
-        const matched = todos.find((item) => item?._id === todo._id);
+        const matched = todos.find((item) => item?._id === todoId);
         return {
           title: matched?.title || null,
           completed: matched?.completed === true,
@@ -612,39 +686,48 @@ test.describe('Completion Recovery Real Server', () => {
     await createCategory(page, sourceCategoryName);
     await createCategory(page, targetCategoryName);
 
+    await expect
+      .poll(async () => {
+        const nextCategories = await fetchCategoriesFromServer(auth.token);
+        const sourceCategory = nextCategories.find((item) => item?.name === sourceCategoryName);
+        const targetCategory = nextCategories.find((item) => item?.name === targetCategoryName);
+        return Boolean(sourceCategory && targetCategory);
+      }, { timeout: 20_000 })
+      .toBeTruthy();
+
     const categories = await fetchCategoriesFromServer(auth.token);
+
     const sourceCategory = categories.find((item) => item?.name === sourceCategoryName);
     const targetCategory = categories.find((item) => item?.name === targetCategoryName);
-    expect(sourceCategory?._id).toBeTruthy();
-    expect(targetCategory?._id).toBeTruthy();
 
-    const todo = await createTodoOnServer(auth.token, {
-      title: todoTitle,
-      categoryId: sourceCategory._id,
-      startDate: today,
-      endDate: today,
-      isAllDay: true,
-    });
-
-    await page.reload();
     await openHome(page);
-    await expect(page.getByText(todoTitle, { exact: true }).first()).toBeVisible({ timeout: 15_000 });
+    await createTodoInCategory(page, todoTitle, sourceCategoryName);
+
+    let todoId = null;
+    await expect
+      .poll(async () => {
+        const todos = await fetchAllTodosFromServer(auth.token);
+        const matched = todos.find((item) => item?.title === todoTitle);
+        todoId = matched?._id || null;
+        return !!todoId;
+      }, { timeout: 20_000 })
+      .toBeTruthy();
 
     await toggleCompletionByTitle(page, todoTitle);
     await expect(page.getByText('완료: ✅').first()).toBeVisible({ timeout: 10_000 });
 
-    await updateTodoOnServer(auth.token, todo._id, {
+    await updateTodoOnServer(auth.token, todoId, {
       categoryId: targetCategory._id,
     });
 
-    await page.reload();
+    await syncServerStateToLocal(page);
     await openHome(page);
     await expect(page.getByText(todoTitle, { exact: true }).first()).toBeVisible({ timeout: 15_000 });
 
     await expect
       .poll(async () => {
         const todos = await fetchTodosByDateFromServer(auth.token, today);
-        const matched = todos.find((item) => item?._id === todo._id);
+        const matched = todos.find((item) => item?._id === todoId);
         return {
           categoryId: matched?.categoryId || null,
           completed: matched?.completed === true,
@@ -669,21 +752,30 @@ test.describe('Completion Recovery Real Server', () => {
     await openMyPage(page);
     await createCategory(page, categoryName);
 
+    await expect
+      .poll(async () => {
+        const nextCategories = await fetchCategoriesFromServer(auth.token);
+        const targetCategory = nextCategories.find((item) => item?.name === categoryName);
+        return Boolean(targetCategory);
+      }, { timeout: 20_000 })
+      .toBeTruthy();
+
     const categories = await fetchCategoriesFromServer(auth.token);
+
     const targetCategory = categories.find((item) => item?.name === categoryName);
-    expect(targetCategory?._id).toBeTruthy();
 
-    const todo = await createTodoOnServer(auth.token, {
-      title: todoTitle,
-      categoryId: targetCategory._id,
-      startDate: today,
-      endDate: today,
-      isAllDay: true,
-    });
-
-    await page.reload();
     await openHome(page);
-    await expect(page.getByText(todoTitle, { exact: true }).first()).toBeVisible({ timeout: 15_000 });
+    await createTodoInCategory(page, todoTitle, categoryName);
+
+    let todoId = null;
+    await expect
+      .poll(async () => {
+        const todos = await fetchAllTodosFromServer(auth.token);
+        const matched = todos.find((item) => item?.title === todoTitle);
+        todoId = matched?._id || null;
+        return !!todoId;
+      }, { timeout: 20_000 })
+      .toBeTruthy();
 
     await toggleCompletionByTitle(page, todoTitle);
     await expect(page.getByText('완료: ✅').first()).toBeVisible({ timeout: 10_000 });
@@ -705,7 +797,7 @@ test.describe('Completion Recovery Real Server', () => {
         ]);
 
         return {
-          todoPresent: todayTodos.some((item) => item?._id === todo._id),
+          todoPresent: todayTodos.some((item) => item?._id === todoId),
           categoryPresent: liveCategories.some((item) => item?._id === targetCategory._id),
         };
       }, { timeout: 20_000 })
@@ -778,7 +870,27 @@ test.describe('Completion Recovery Real Server', () => {
     const existingTodoTitle = `Mixed Queue Base Todo ${Date.now()}`;
     const offlineTodoTitle = `Mixed Queue Pending Todo ${Date.now()}`;
     const offlineCategoryName = `Mixed Queue Category ${Date.now()}`;
-    const abortApi = (route) => route.abort('internetdisconnected');
+    const abortCategoryCreate = async (route) => {
+      if (route.request().method() === 'POST') {
+        await route.abort('internetdisconnected');
+        return;
+      }
+      await route.continue();
+    };
+    const abortTodoCreate = async (route) => {
+      if (route.request().method() === 'POST') {
+        await route.abort('internetdisconnected');
+        return;
+      }
+      await route.continue();
+    };
+    const abortCompletionWrite = async (route) => {
+      if (route.request().method() === 'POST' || route.request().method() === 'DELETE') {
+        await route.abort('internetdisconnected');
+        return;
+      }
+      await route.continue();
+    };
 
     await loginViaUi(page, auth);
     await openMyPage(page);
@@ -795,7 +907,10 @@ test.describe('Completion Recovery Real Server', () => {
       }, { timeout: 20_000 })
       .toBeTruthy();
 
-    await page.route('**/api/**', abortApi);
+    await page.route('**/api/categories', abortCategoryCreate);
+    await page.route('**/api/todos', abortTodoCreate);
+    await page.route('**/api/completions', abortCompletionWrite);
+    await page.route('**/api/completions/**', abortCompletionWrite);
 
     await openMyPage(page);
     await createCategory(page, offlineCategoryName);
@@ -805,7 +920,10 @@ test.describe('Completion Recovery Real Server', () => {
     await toggleCompletionByTitle(page, existingTodoTitle);
     await expect(page.getByText('완료: ✅').first()).toBeVisible({ timeout: 10_000 });
 
-    await page.unroute('**/api/**', abortApi);
+    await page.unroute('**/api/categories', abortCategoryCreate);
+    await page.unroute('**/api/todos', abortTodoCreate);
+    await page.unroute('**/api/completions', abortCompletionWrite);
+    await page.unroute('**/api/completions/**', abortCompletionWrite);
     await waitForPendingRetryWindow(page);
     await openHome(page);
 

@@ -1,6 +1,24 @@
 const { test, expect } = require('@playwright/test');
+const fs = require('node:fs');
+const path = require('node:path');
 
 const REAL_API_BASE_URL = process.env.PW_REAL_API_BASE_URL;
+const BUNDLED_API_BASE_URL = resolveBundledApiBaseUrl();
+
+function resolveBundledApiBaseUrl() {
+  if (process.env.EXPO_PUBLIC_API_URL) {
+    return process.env.EXPO_PUBLIC_API_URL;
+  }
+
+  try {
+    const envPath = path.join(__dirname, '..', '.env');
+    const content = fs.readFileSync(envPath, 'utf8');
+    const match = content.match(/^\s*EXPO_PUBLIC_API_URL\s*=\s*(.+)\s*$/m);
+    return match ? match[1].trim() : '';
+  } catch {
+    return '';
+  }
+}
 
 async function registerFreshUser() {
   const stamp = `${Date.now()}_${Math.floor(Math.random() * 100000)}`;
@@ -35,6 +53,7 @@ async function registerFreshUser() {
 }
 
 async function loginViaUi(page, { email, password }) {
+  await routeBundledApiToRealServer(page);
   await page.goto('/login');
   await page.getByPlaceholder('이메일').fill(email);
   await page.getByPlaceholder('비밀번호 (6자 이상)').fill(password);
@@ -123,6 +142,20 @@ async function fetchTodosFromServer(token) {
 async function waitForPendingRetryWindow(page) {
   await page.waitForTimeout(31_000);
   await page.reload();
+}
+
+async function routeBundledApiToRealServer(page) {
+  if (!BUNDLED_API_BASE_URL || !REAL_API_BASE_URL || BUNDLED_API_BASE_URL === REAL_API_BASE_URL) {
+    return;
+  }
+
+  const bundledBase = BUNDLED_API_BASE_URL.replace(/\/$/, '');
+  const realBase = REAL_API_BASE_URL.replace(/\/$/, '');
+
+  await page.route(`${bundledBase}/**`, async (route) => {
+    const redirectedUrl = route.request().url().replace(bundledBase, realBase);
+    await route.continue({ url: redirectedUrl });
+  });
 }
 
 test.describe('Todo Recovery Real Server', () => {
