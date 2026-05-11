@@ -68,9 +68,9 @@ export default function EditProfileScreen() {
                         <TouchableOpacity
                             onPress={handleSave}
                             disabled={isLoading}
-                            className="mr-4"
+                            className="mr-4 rounded-lg px-2 py-1 active:bg-blue-50"
                         >
-                            <Text className={`text-base font-semibold ${isLoading ? 'text-gray-400' : 'text-blue-600'}`}>
+                            <Text className={`text-base font-semibold ${isLoading ? 'text-gray-400' : 'text-gray-700'}`}>
                                 {isLoading ? '저장 중' : '완료'}
                             </Text>
                         </TouchableOpacity>
@@ -161,10 +161,10 @@ export default function EditProfileScreen() {
                 <TouchableOpacity className="flex-row justify-between items-center">
                     <View>
                         <Text className="text-xs text-gray-500 mb-1">현재 이용 중인 플랜</Text>
-                        <Text className="text-lg font-bold text-blue-600">Free Plan</Text>
+                        <Text className="text-lg font-bold text-gray-900">Free Plan</Text>
                     </View>
-                    <View className="bg-blue-100 px-3 py-1 rounded-full">
-                        <Text className="text-blue-700 text-xs font-medium">업그레이드</Text>
+                    <View className="bg-gray-200 px-3 py-1 rounded-full">
+                        <Text className="text-gray-700 text-xs font-medium">업그레이드</Text>
                     </View>
                 </TouchableOpacity>
             </View>

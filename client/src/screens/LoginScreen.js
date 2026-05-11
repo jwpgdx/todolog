@@ -261,7 +261,7 @@ export default function LoginScreen() {
       />
 
       <TouchableOpacity
-        className={`rounded-xl py-4 mb-4 mt-2 ${(isLoading || isCheckingGuestData) ? 'bg-gray-400' : 'bg-blue-500 active:bg-blue-600'}`}
+        className={`rounded-xl py-4 mb-4 mt-2 ${(isLoading || isCheckingGuestData) ? 'bg-gray-400' : 'bg-gray-900 active:bg-blue-600'}`}
         onPress={handleSubmit}
         disabled={isLoading || isCheckingGuestData}
       >
@@ -283,7 +283,7 @@ export default function LoginScreen() {
         onPress={() => router.push('/(app)/guest/convert')}
         className="p-2 mb-8"
       >
-        <Text className="text-blue-500 text-center font-medium">
+        <Text className="text-gray-700 text-center font-medium">
           계정이 없으신가요? 회원가입
         </Text>
       </TouchableOpacity>

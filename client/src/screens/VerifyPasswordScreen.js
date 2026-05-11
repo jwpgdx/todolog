@@ -55,7 +55,7 @@ export default function VerifyPasswordScreen() {
                 />
 
                 <TouchableOpacity
-                    className={`py-4 rounded-xl ${isLoading ? 'bg-gray-400' : 'bg-blue-500 active:bg-blue-600'}`}
+                    className={`py-4 rounded-xl ${isLoading ? 'bg-gray-400' : 'bg-gray-900 active:bg-blue-600'}`}
                     onPress={handleVerify}
                     disabled={isLoading}
                 >

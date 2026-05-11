@@ -54,10 +54,10 @@ export default function FormHeader({
                     <TouchableOpacity
                         onPress={onBack}
                         hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                        className="flex-row items-center p-2 -ml-2"
+                        className="flex-row items-center p-2 -ml-2 rounded-lg active:bg-blue-50"
                     >
-                        <Ionicons name="chevron-back" size={24} color="#007AFF" />
-                        <Text className="text-primary text-base">뒤로</Text>
+                        <Ionicons name="chevron-back" size={24} color="#4B5563" />
+                        <Text className="text-gray-700 text-base">뒤로</Text>
                     </TouchableOpacity>
                 )}
             </View>
@@ -80,9 +80,9 @@ export default function FormHeader({
                             onExpand && onExpand();
                         }}
                         hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                        className="p-2 -mr-2"
+                        className="p-2 -mr-2 rounded-lg active:bg-blue-50"
                     >
-                        <Ionicons name="chevron-up" size={24} color="#007AFF" />
+                        <Ionicons name="chevron-up" size={24} color="#4B5563" />
                     </TouchableOpacity>
                 )}
                 {showSaveButton && (
@@ -90,9 +90,9 @@ export default function FormHeader({
                         onPress={onSave}
                         disabled={saveDisabled}
                         hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                        className="p-2 -mr-2"
+                        className="p-2 -mr-2 rounded-lg active:bg-blue-50"
                     >
-                        <Text className={`text-base font-semibold ${saveDisabled ? 'text-gray-300' : 'text-primary'}`}>
+                        <Text className={`text-base font-semibold ${saveDisabled ? 'text-gray-300' : 'text-gray-700'}`}>
                             {saveLabel}
                         </Text>
                     </TouchableOpacity>

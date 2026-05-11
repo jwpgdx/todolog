@@ -263,12 +263,12 @@ export default function ConvertGuestScreen() {
       </View>
 
       <ScrollView className="flex-1 px-6 py-6">
-        <View className="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-6">
+        <View className="bg-gray-50 border border-gray-200 rounded-xl p-4 mb-6">
           <View className="flex-row items-start">
-            <Ionicons name="information-circle" size={20} color="#3b82f6" />
+            <Ionicons name="information-circle" size={20} color="#6b7280" />
             <View className="flex-1 ml-2">
-              <Text className="text-blue-700 font-semibold mb-1">게스트 데이터 안내</Text>
-              <Text className="text-blue-600 text-sm leading-5">
+              <Text className="text-gray-800 font-semibold mb-1">게스트 데이터 안내</Text>
+              <Text className="text-gray-600 text-sm leading-5">
                 가져오기를 선택하면 게스트 일정은 새 계정 Inbox로 이동하고, 게스트 카테고리 구조는 유지되지 않습니다.
               </Text>
             </View>
@@ -332,7 +332,7 @@ export default function ConvertGuestScreen() {
         </View>
 
         <TouchableOpacity
-          className={`rounded-xl py-4 ${isLoading || isCheckingGuestData ? 'bg-gray-400' : 'bg-blue-500 active:bg-blue-600'}`}
+          className={`rounded-xl py-4 ${isLoading || isCheckingGuestData ? 'bg-gray-400' : 'bg-gray-900 active:bg-blue-600'}`}
           onPress={handleSubmit}
           disabled={isLoading || isCheckingGuestData}
         >
@@ -353,7 +353,7 @@ export default function ConvertGuestScreen() {
           onPress={openLoginScreen}
           disabled={isLoading || isCheckingGuestData}
         >
-          <Text className="text-blue-500 font-medium">이미 계정이 있으신가요? 로그인</Text>
+          <Text className="text-gray-700 font-medium">이미 계정이 있으신가요? 로그인</Text>
         </TouchableOpacity>
       </ScrollView>
     </SafeAreaView>
