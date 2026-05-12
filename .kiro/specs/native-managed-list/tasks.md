@@ -91,6 +91,7 @@
 - [x] collapsed category hover auto-expand
 - [x] drag 중 edge auto-scroll
 - [x] category header long press reorder
+- [x] category header long press menu action(rename/delete cascade)
 - [x] expanded category drag 시작 시 임시 collapse 처리
 - [x] Inbox/system category top pinned rule 적용
 - [x] bottom floating tab bar overlap 방지를 위한 native bottom inset 적용

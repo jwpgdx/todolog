@@ -23,6 +23,7 @@ import { useTodoFormStore } from '../store/todoFormStore';
 import NativeTodoManagedList, {
   TODO_MANAGED_LIST_MODE,
 } from '../features/todo/native/NativeTodoManagedList';
+import { useManagedCategoryHeaderActions } from '../features/todo/native/useManagedCategoryHeaderActions';
 import { ORDER_STEP } from '../services/db/todoService';
 
 const CATEGORY_ORDER_STEP = 100;
@@ -42,6 +43,7 @@ export default function AllTodosScreen() {
   const { openDetail } = useTodoFormStore();
   const [collapsedCategoryIds, setCollapsedCategoryIds] = useState([]);
   const bottomInset = useFloatingTabBarScrollPadding(DRAG_BOTTOM_BUFFER);
+  const { handleCategoryHeaderAction } = useManagedCategoryHeaderActions({ categories });
 
   useEffect(() => {
     let mounted = true;
@@ -301,6 +303,7 @@ export default function AllTodosScreen() {
             }}
             onToggleComplete={handleToggleComplete}
             onTodoAction={handleManagedAction}
+            onSectionHeaderAction={handleCategoryHeaderAction}
             onReorderCommit={handleManagedReorderCommit}
             onError={(event) => {
               console.warn('[AllTodosScreen:NativeTodoManagedList]', event?.message || event);

@@ -26,6 +26,7 @@ import DailyTodoList from '../features/todo/list/DailyTodoList';
 import NativeTodoManagedList, {
   TODO_MANAGED_LIST_MODE,
 } from '../features/todo/native/NativeTodoManagedList';
+import { useManagedCategoryHeaderActions } from '../features/todo/native/useManagedCategoryHeaderActions';
 import {
   TODO_SCREEN_COLLAPSED_CATEGORY_IDS_STORAGE_KEY,
   TODO_SCREEN_SORT_MODE,
@@ -53,6 +54,7 @@ export default function TodoScreen() {
   const [sortMode, setSortMode] = useState(TODO_SCREEN_SORT_MODE.TIME);
   const [collapsedCategoryIds, setCollapsedCategoryIds] = useState([]);
   const bottomInset = useFloatingTabBarScrollPadding(DRAG_BOTTOM_BUFFER);
+  const { handleCategoryHeaderAction } = useManagedCategoryHeaderActions({ categories });
 
   const currentDateRef = useRef(currentDate);
   currentDateRef.current = currentDate;
@@ -397,6 +399,7 @@ export default function TodoScreen() {
             }}
             onToggleComplete={handleManagedToggleComplete}
             onTodoAction={handleManagedAction}
+            onSectionHeaderAction={handleCategoryHeaderAction}
             onReorderCommit={handleManagedReorderCommit}
             onError={(event) => {
               console.warn('[TodoScreen:NativeTodoManagedList]', event?.message || event);

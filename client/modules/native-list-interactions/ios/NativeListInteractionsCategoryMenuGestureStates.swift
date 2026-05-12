@@ -46,6 +46,8 @@ extension NativeListInteractionsView {
     } else {
       dismissCustomCategoryMenuOverlay(animated: false)
     }
+
+    temporarilyCollapseSectionHeaderLongPressIfNeeded(for: item, at: indexPath)
   }
 
   func handleCategoryCustomLongPressChanged(
@@ -155,6 +157,9 @@ extension NativeListInteractionsView {
     } else if customCategoryMenuInteractionStyle == .pressAndSlide {
       performCustomCategoryMenuSelectionIfNeeded()
       dismissCustomCategoryMenuOverlay(animated: false)
+      discardTemporarilyCollapsedSectionsIfNeeded()
+    } else {
+      discardTemporarilyCollapsedSectionsIfNeeded()
     }
     customCategoryGestureSession = nil
     customInteractiveReorderActive = false

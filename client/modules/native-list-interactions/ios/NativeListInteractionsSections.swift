@@ -60,6 +60,10 @@ extension NativeListInteractionsView {
       return true
     }
 
+    return isSectionCollapsedByPayload(section)
+  }
+
+  func isSectionCollapsedByPayload(_ section: NativeSection) -> Bool {
     guard let headerItem = sectionHeaderItem(in: section) else {
       return false
     }

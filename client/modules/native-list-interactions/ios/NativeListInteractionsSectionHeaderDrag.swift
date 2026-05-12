@@ -1,6 +1,33 @@
 import UIKit
 
 extension NativeListInteractionsView {
+  func temporarilyCollapseSectionHeaderLongPressIfNeeded(
+    for item: NativeItem,
+    at indexPath: IndexPath
+  ) {
+    guard
+      item.kind == "sectionHeader",
+      iosCategoryGestureMode == .customLifted,
+      sections.indices.contains(indexPath.section)
+    else {
+      return
+    }
+
+    let section = sections[indexPath.section]
+    guard
+      isTodoCategoryModeSection(section),
+      !isSectionCollapsedByPayload(section),
+      !temporarilyCollapsedSectionIds.contains(section.id)
+    else {
+      return
+    }
+
+    temporarilyCollapsedSectionIds.insert(section.id)
+    applySnapshot(animatingDifferences: true) { [weak self] in
+      self?.reconfigureVisibleCellsForCurrentMode()
+    }
+  }
+
   func setCustomSectionHeaderDragSourceCellHidden(_ hidden: Bool) {
     guard
       let itemId = customSectionHeaderDragSession?.itemId,
@@ -191,10 +218,12 @@ extension NativeListInteractionsView {
       y: locationInOverlay.y - snapshotFrame.midY
     )
 
+    let wasInitiallyCollapsed = isSectionCollapsedByPayload(sourceSection)
+
     customSectionHeaderDragSession = CustomSectionHeaderDragSession(
       itemId: item.id,
       sectionId: sourceSection.id,
-      wasInitiallyCollapsed: isSectionCollapsed(sourceSection),
+      wasInitiallyCollapsed: wasInitiallyCollapsed,
       touchOffset: touchOffset
     )
     customSectionHeaderDragSnapshotView = snapshotView
@@ -205,7 +234,7 @@ extension NativeListInteractionsView {
 
     dismissCustomCategoryMenuOverlay(animated: false)
 
-    if !isSectionCollapsed(sourceSection) {
+    if !wasInitiallyCollapsed && !temporarilyCollapsedSectionIds.contains(sourceSection.id) {
       temporarilyCollapsedSectionIds.insert(sourceSection.id)
       applySnapshot(animatingDifferences: true) { [weak self] in
         guard let self else {

@@ -24,6 +24,7 @@ export default function NativeTodoManagedList({
   onToggleComplete,
   onToggleFavorite,
   onTodoAction,
+  onSectionHeaderAction,
   onReorderCommit,
   onError,
 }) {
@@ -60,6 +61,13 @@ export default function NativeTodoManagedList({
     return new Map(entries);
   }, [favoriteTodos, todos]);
 
+  const categoryByHeaderItemId = useMemo(() => {
+    const entries = categories
+      .filter((category) => category?._id)
+      .map((category) => [`section-header:${category._id}`, category]);
+    return new Map(entries);
+  }, [categories]);
+
   return (
     <NativeManagedList
       listId={listId}
@@ -95,6 +103,14 @@ export default function NativeTodoManagedList({
         }
       }}
       onAction={(event) => {
+        if (event?.itemId?.startsWith('section-header:')) {
+          const category = categoryByHeaderItemId.get(event.itemId);
+          if (category) {
+            onSectionHeaderAction?.(category, event);
+          }
+          return;
+        }
+
         const todo = todoById.get(event.itemId);
         if (todo) {
           onTodoAction?.(todo, event);

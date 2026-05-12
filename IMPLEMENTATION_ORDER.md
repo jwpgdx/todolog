@@ -34,9 +34,14 @@ Status: In Progress
 - `TODO SCREEN`
   - 정렬 모드 `시간순 / 사용자 지정 / 카테고리별 순서` UI 교체
   - 마지막 선택값 로컬 저장 / 복원
+  - `사용자 지정`은 단일 flat list 이므로 iOS UIKit built-in reorder 우선 적용
+  - `카테고리별 순서`는 category-grouped custom drag engine 유지
 - `CATEGORY SCREEN`
+  - 단일 카테고리 내부 일정 목록이므로 iOS UIKit built-in reorder 우선 적용
 - `ALL TODOS SCREEN`
+  - category-grouped custom drag engine 유지
 - `FAVORITE SCREEN`
+  - 단일 flat list 이므로 iOS UIKit built-in reorder 우선 적용
 
 ## Phase 4. 즐겨찾기 기능 추가
 

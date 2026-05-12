@@ -137,6 +137,8 @@ function buildDefaultTrailingSwipeActions() {
 }
 
 function buildCategoryHeaderItem(category, options = {}) {
+  const isSystemCategory = category?.systemKey === 'inbox';
+
   return {
     id: `section-header:${category._id}`,
     kind: 'sectionHeader',
@@ -145,8 +147,21 @@ function buildCategoryHeaderItem(category, options = {}) {
     collapsed: options.collapsed === true,
     enabled: true,
     loading: false,
-    reorderable: options.reorderable === true,
-    menuActions: [],
+    pinned: isSystemCategory,
+    reorderable: options.reorderable === true && !isSystemCategory,
+    menuActions: isSystemCategory
+      ? []
+      : [
+          {
+            id: 'rename',
+            title: '이름 변경',
+          },
+          {
+            id: 'delete',
+            title: '삭제',
+            role: 'destructive',
+          },
+        ],
     leadingSwipeActions: [],
     trailingSwipeActions: [],
   };
