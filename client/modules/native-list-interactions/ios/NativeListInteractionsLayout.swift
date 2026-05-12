@@ -16,54 +16,12 @@ private final class TodoCompleteAccessoryButton: UIButton {
 }
 
 extension NativeListInteractionsView {
-  func makeHeaderRegistration() -> UICollectionView.SupplementaryRegistration<UICollectionViewListCell> {
-    UICollectionView.SupplementaryRegistration<UICollectionViewListCell>(
-      elementKind: UICollectionView.elementKindSectionHeader
-    ) { [weak self] supplementaryView, _, indexPath in
-      guard let self, self.sections.indices.contains(indexPath.section) else {
-        return
-      }
-
-      let section = self.sections[indexPath.section]
-      var content = UIListContentConfiguration.cell()
-      content.text = section.title
-      content.textProperties.font = UIFont.systemFont(ofSize: 13, weight: .semibold)
-      content.textProperties.color = .secondaryLabel
-      supplementaryView.contentConfiguration = content
-      supplementaryView.accessories = []
-      supplementaryView.backgroundConfiguration = UIBackgroundConfiguration.clear()
-      supplementaryView.isAccessibilityElement = true
-      supplementaryView.accessibilityIdentifier = "section-header-\(section.id)"
-      supplementaryView.accessibilityLabel = section.title
-    }
-  }
-
-  func makeFooterRegistration() -> UICollectionView.SupplementaryRegistration<UICollectionViewListCell> {
-    UICollectionView.SupplementaryRegistration<UICollectionViewListCell>(
-      elementKind: UICollectionView.elementKindSectionFooter
-    ) { [weak self] supplementaryView, _, indexPath in
-      guard let self, self.sections.indices.contains(indexPath.section) else {
-        return
-      }
-
-      let section = self.sections[indexPath.section]
-      var content = UIListContentConfiguration.cell()
-      content.text = section.footer
-      content.textProperties.font = UIFont.systemFont(ofSize: 12, weight: .regular)
-      content.textProperties.color = .secondaryLabel
-      supplementaryView.contentConfiguration = content
-      supplementaryView.accessories = []
-      supplementaryView.backgroundConfiguration = UIBackgroundConfiguration.clear()
-      supplementaryView.isAccessibilityElement = true
-      supplementaryView.accessibilityIdentifier = "section-footer-\(section.id)"
-      supplementaryView.accessibilityLabel = section.footer
-    }
-  }
-
   func makeLayout() -> UICollectionViewLayout {
     var config = UICollectionLayoutListConfiguration(appearance: currentListAppearance())
-    config.headerMode = shouldShowSectionHeaders ? .supplementary : .none
-    config.footerMode = shouldShowSectionFooters ? .supplementary : .none
+    // Section labels are rendered by JS or normal list rows in v0. Keeping
+    // supplementary views enabled can assert during prop-driven layout swaps.
+    config.headerMode = .none
+    config.footerMode = .none
     config.backgroundColor = .clear
     config.trailingSwipeActionsConfigurationProvider = { [weak self] indexPath in
       self?.makeTrailingSwipeActions(for: indexPath)
@@ -156,26 +114,6 @@ extension NativeListInteractionsView {
     }
 
     return UIMenu(title: item.title, children: actions)
-  }
-
-  var shouldShowSectionHeaders: Bool {
-    sections.contains { section in
-      guard let title = section.title?.trimmingCharacters(in: .whitespacesAndNewlines) else {
-        return false
-      }
-
-      return !title.isEmpty
-    }
-  }
-
-  var shouldShowSectionFooters: Bool {
-    sections.contains { section in
-      guard let footer = section.footer?.trimmingCharacters(in: .whitespacesAndNewlines) else {
-        return false
-      }
-
-      return !footer.isEmpty
-    }
   }
 
   func updateCollectionViewScrollBehavior() {

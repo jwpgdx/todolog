@@ -16,44 +16,7 @@ extension NativeListInteractionsView {
       return cell
     }
 
-    dataSource.supplementaryViewProvider = { [weak self] collectionView, elementKind, indexPath in
-      guard let self else {
-        return nil
-      }
-
-      switch elementKind {
-      case UICollectionView.elementKindSectionHeader:
-        guard
-          self.shouldShowSectionHeaders,
-          self.sections.indices.contains(indexPath.section),
-          self.sections[indexPath.section].title?.isEmpty == false
-        else {
-          return nil
-        }
-
-        return collectionView.dequeueConfiguredReusableSupplementary(
-          using: self.headerRegistration,
-          for: indexPath
-        )
-
-      case UICollectionView.elementKindSectionFooter:
-        guard
-          self.shouldShowSectionFooters,
-          self.sections.indices.contains(indexPath.section),
-          self.sections[indexPath.section].footer?.isEmpty == false
-        else {
-          return nil
-        }
-
-        return collectionView.dequeueConfiguredReusableSupplementary(
-          using: self.footerRegistration,
-          for: indexPath
-        )
-
-      default:
-        return nil
-      }
-    }
+    dataSource.supplementaryViewProvider = nil
 
     dataSource.reorderingHandlers.canReorderItem = { [weak self] itemId in
       guard let self, let item = self.findItem(by: itemId) else {

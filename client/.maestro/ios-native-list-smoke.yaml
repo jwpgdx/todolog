@@ -1,8 +1,17 @@
-appId: com.anonymous.client
+appId: com.anonymous.client.r6l8abtkq3
 ---
 - launchApp:
-    appId: com.anonymous.client
-- openLink: com.anonymous.client://native-category-menu
+    appId: com.anonymous.client.r6l8abtkq3
+- tapOn:
+    text: "client, http://.*:8081"
+    optional: true
+- extendedWaitUntil:
+    visible: Native Managed List
+    timeout: 90000
+- tapOn: Native Managed List
+- extendedWaitUntil:
+    visible: Reset Mock
+    timeout: 20000
 - swipe:
     start: 50%, 25%
     end: 50%, 85%

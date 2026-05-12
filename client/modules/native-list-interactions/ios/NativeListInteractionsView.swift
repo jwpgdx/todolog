@@ -12,7 +12,7 @@ final class NativeListInteractionsView: ExpoView, UICollectionViewDelegate, UIGe
   var sections: [NativeSection] = []
   var dataSource: UICollectionViewDiffableDataSource<String, String>!
   var iosCategoryGestureMode: IOSCategoryGestureMode = .system
-  private var contentInsetBottom: CGFloat = 0
+  var contentInsetBottom: CGFloat = 0
   let cellReuseIdentifier = "NativeListInteractionsListCell"
   var customCategoryGestureSession: CustomCategoryGestureSession?
   var systemCategoryMenuDismissSession: SystemCategoryMenuDismissSession?
@@ -25,7 +25,7 @@ final class NativeListInteractionsView: ExpoView, UICollectionViewDelegate, UIGe
   weak var customCategoryMenuPreviewContainerView: UIView?
   weak var customCategoryMenuOverlayHostView: UIView?
   weak var customCategoryMenuSourceCell: UICollectionViewCell?
-  private var detachedCollectionViewContextMenuInteraction: UIContextMenuInteraction?
+  var detachedCollectionViewContextMenuInteraction: UIContextMenuInteraction?
   var customCategoryMenuSourceIndexPath: IndexPath?
   var customCategoryMenuItemId: String?
   var customCategoryMenuDescriptors: [CustomCategoryMenuActionDescriptor] = []
@@ -58,7 +58,7 @@ final class NativeListInteractionsView: ExpoView, UICollectionViewDelegate, UIGe
   weak var customSectionHeaderDragSourceCell: UICollectionViewCell?
   weak var customSectionHeaderInsertionIndicatorView: UIView?
   var customSectionHeaderDropTarget: CustomSectionHeaderDropTarget?
-  private lazy var categoryCustomLongPressRecognizer: UILongPressGestureRecognizer = {
+  lazy var categoryCustomLongPressRecognizer: UILongPressGestureRecognizer = {
     let recognizer = UILongPressGestureRecognizer(target: self, action: #selector(handleCategoryCustomLongPress(_:)))
     recognizer.minimumPressDuration = 0.5
     recognizer.allowableMovement = 40
@@ -66,7 +66,7 @@ final class NativeListInteractionsView: ExpoView, UICollectionViewDelegate, UIGe
     recognizer.delegate = self
     return recognizer
   }()
-  private lazy var categorySystemMenuTrackingRecognizer: UILongPressGestureRecognizer = {
+  lazy var categorySystemMenuTrackingRecognizer: UILongPressGestureRecognizer = {
     let recognizer = UILongPressGestureRecognizer(target: self, action: #selector(handleCategorySystemMenuTrackingLongPress(_:)))
     recognizer.minimumPressDuration = 0.35
     recognizer.allowableMovement = 1000
@@ -74,7 +74,7 @@ final class NativeListInteractionsView: ExpoView, UICollectionViewDelegate, UIGe
     recognizer.delegate = self
     return recognizer
   }()
-  private lazy var focusedCategoryMenuPanRecognizer: UIPanGestureRecognizer = {
+  lazy var focusedCategoryMenuPanRecognizer: UIPanGestureRecognizer = {
     let recognizer = UIPanGestureRecognizer(target: self, action: #selector(handleFocusedCategoryMenuPan(_:)))
     recognizer.cancelsTouchesInView = true
     recognizer.delegate = self
@@ -92,10 +92,6 @@ final class NativeListInteractionsView: ExpoView, UICollectionViewDelegate, UIGe
     view.alwaysBounceVertical = false
     return view
   }()
-
-  lazy var headerRegistration = makeHeaderRegistration()
-
-  lazy var footerRegistration = makeFooterRegistration()
 
   required init(appContext: AppContext? = nil) {
     super.init(appContext: appContext)
@@ -115,143 +111,6 @@ final class NativeListInteractionsView: ExpoView, UICollectionViewDelegate, UIGe
     configureDataSource()
     configureCategoryGestureMode()
     applyCollectionViewInsets()
-  }
-
-  func updateSectionsJson(_ sectionsJson: String) {
-    dismissCustomCategoryMenuOverlay(animated: false)
-    resetCustomCategoryGestureState()
-    resetSystemCategoryMenuDismissState()
-    cancelCollapsedSectionAutoExpand()
-
-    guard let data = sectionsJson.data(using: .utf8) else {
-      sections = []
-      temporarilyExpandedSectionIds.removeAll()
-      applySnapshot(animatingDifferences: false)
-      return
-    }
-
-    do {
-      sections = try JSONDecoder().decode([NativeSection].self, from: data)
-    } catch {
-      NSLog("[NativeListInteractionsView] Failed to decode sectionsJson: %@", String(describing: error))
-      sections = []
-    }
-
-    temporarilyExpandedSectionIds = temporarilyExpandedSectionIds.filter { sectionId in
-      guard let section = sections.first(where: { $0.id == sectionId }) else {
-        return false
-      }
-
-      let hasCollapsedHeader = section.items.contains { item in
-        item.kind == "sectionHeader" && item.collapsed == true
-      }
-      let hasHiddenItems = section.items.contains { item in
-        item.kind == "todo" && item.hidden == true
-      }
-      return hasCollapsedHeader && hasHiddenItems
-    }
-    temporarilyCollapsedSectionIds = temporarilyCollapsedSectionIds.filter { sectionId in
-      sections.contains(where: { section in
-        section.id == sectionId && section.items.contains(where: { $0.kind == "sectionHeader" })
-      })
-    }
-
-    updateCollectionViewScrollBehavior()
-    collectionView.setCollectionViewLayout(makeLayout(), animated: false)
-    applySnapshot(animatingDifferences: false)
-    DispatchQueue.main.async { [weak self] in
-      self?.reconfigureVisibleCellsForCurrentMode()
-    }
-  }
-
-  func updateIOSCategoryGestureMode(_ mode: String?) {
-    iosCategoryGestureMode = IOSCategoryGestureMode(rawValue: mode ?? "") ?? .system
-    cancelCollapsedSectionAutoExpand()
-    NSLog(
-      "[NativeListInteractionsView] updateIOSCategoryGestureMode mode=%@ hasTodoRows=%@",
-      iosCategoryGestureMode.rawValue,
-      containsTodoRows() ? "true" : "false"
-    )
-    configureCategoryGestureMode()
-    collectionView.reloadData()
-    collectionView.layoutIfNeeded()
-    reconfigureVisibleCellsForCurrentMode()
-  }
-
-  func updateContentInsetBottom(_ value: Double?) {
-    contentInsetBottom = CGFloat(max(0, value ?? 0))
-    applyCollectionViewInsets()
-  }
-
-  private func applyCollectionViewInsets() {
-    let bottomInset = contentInsetBottom
-    if collectionView.contentInset.bottom != bottomInset {
-      collectionView.contentInset.bottom = bottomInset
-    }
-    if collectionView.scrollIndicatorInsets.bottom != bottomInset {
-      collectionView.scrollIndicatorInsets.bottom = bottomInset
-    }
-  }
-
-  private func setCollectionViewContextMenuEnabled(_ enabled: Bool) {
-    if enabled {
-      if
-        let interaction = detachedCollectionViewContextMenuInteraction,
-        !collectionView.interactions.contains(where: { $0 === interaction })
-      {
-        collectionView.addInteraction(interaction)
-      }
-      detachedCollectionViewContextMenuInteraction = nil
-      return
-    }
-
-    if detachedCollectionViewContextMenuInteraction == nil {
-      detachedCollectionViewContextMenuInteraction = collectionView.contextMenuInteraction
-    }
-
-    if
-      let interaction = detachedCollectionViewContextMenuInteraction,
-      collectionView.interactions.contains(where: { $0 === interaction })
-    {
-      collectionView.removeInteraction(interaction)
-    }
-  }
-
-  private func configureCategoryGestureMode() {
-    switch iosCategoryGestureMode {
-    case .system:
-      setCollectionViewContextMenuEnabled(true)
-      if collectionView.gestureRecognizers?.contains(categoryCustomLongPressRecognizer) == true {
-        collectionView.removeGestureRecognizer(categoryCustomLongPressRecognizer)
-      }
-      if collectionView.gestureRecognizers?.contains(categorySystemMenuTrackingRecognizer) == true {
-        collectionView.removeGestureRecognizer(categorySystemMenuTrackingRecognizer)
-      }
-      dismissCustomCategoryMenuOverlay(animated: false)
-      resetCustomCategoryGestureState()
-      resetSystemCategoryMenuDismissState()
-    case .customExperiment, .customLifted, .systemCustom:
-      if iosCategoryGestureMode == .customExperiment || iosCategoryGestureMode == .customLifted {
-        setCollectionViewContextMenuEnabled(false)
-        if collectionView.gestureRecognizers?.contains(categorySystemMenuTrackingRecognizer) == true {
-          collectionView.removeGestureRecognizer(categorySystemMenuTrackingRecognizer)
-        }
-        if collectionView.gestureRecognizers?.contains(categoryCustomLongPressRecognizer) != true {
-          collectionView.addGestureRecognizer(categoryCustomLongPressRecognizer)
-        }
-        resetSystemCategoryMenuDismissState()
-      } else {
-        setCollectionViewContextMenuEnabled(true)
-        if collectionView.gestureRecognizers?.contains(categoryCustomLongPressRecognizer) == true {
-          collectionView.removeGestureRecognizer(categoryCustomLongPressRecognizer)
-        }
-        if collectionView.gestureRecognizers?.contains(categorySystemMenuTrackingRecognizer) != true {
-          collectionView.addGestureRecognizer(categorySystemMenuTrackingRecognizer)
-        }
-        dismissCustomCategoryMenuOverlay(animated: false)
-        resetCustomCategoryGestureState()
-      }
-    }
   }
 
   func cancelCollapsedSectionAutoExpand() {
@@ -324,142 +183,6 @@ final class NativeListInteractionsView: ExpoView, UICollectionViewDelegate, UIGe
     }
   }
 
-  func sectionHeaderItem(in section: NativeSection) -> NativeItem? {
-    section.items.first(where: { $0.kind == "sectionHeader" })
-  }
-
-  func minimumSectionHeaderInsertionIndex(
-    in layouts: [CustomSectionHeaderLayout]
-  ) -> Int {
-    var minimumIndex = 0
-
-    for layout in layouts {
-      if layout.reorderable {
-        break
-      }
-      minimumIndex += 1
-    }
-
-    return minimumIndex
-  }
-
-  func minimumSectionHeaderInsertionIndex(
-    in sections: [NativeSection]
-  ) -> Int {
-    var minimumIndex = 0
-
-    for section in sections {
-      if sectionHeaderItem(in: section)?.reorderable == true {
-        break
-      }
-      minimumIndex += 1
-    }
-
-    return minimumIndex
-  }
-
-  func todoItems(in section: NativeSection, excluding itemId: String? = nil) -> [NativeItem] {
-    section.items.filter { item in
-      guard item.kind == "todo" else {
-        return false
-      }
-      if let itemId, item.id == itemId {
-        return false
-      }
-      return true
-    }
-  }
-
-  func isSectionTemporarilyExpanded(_ sectionId: String) -> Bool {
-    temporarilyExpandedSectionIds.contains(sectionId)
-  }
-
-  func isSectionTemporarilyCollapsed(_ sectionId: String) -> Bool {
-    temporarilyCollapsedSectionIds.contains(sectionId)
-  }
-
-  func isSectionCollapsed(_ section: NativeSection) -> Bool {
-    if isSectionTemporarilyCollapsed(section.id) {
-      return true
-    }
-
-    guard let headerItem = sectionHeaderItem(in: section) else {
-      return false
-    }
-    return headerItem.collapsed == true && !isSectionTemporarilyExpanded(section.id)
-  }
-
-  func isTodoCategoryModeSection(_ section: NativeSection) -> Bool {
-    section.items.contains(where: { $0.kind == "sectionHeader" })
-  }
-
-  func shouldUseCustomTodoCategoryDragEngine(for item: NativeItem, at indexPath: IndexPath) -> Bool {
-    guard
-      item.kind == "todo",
-      item.reorderable == true,
-      iosCategoryGestureMode == .customLifted,
-      sections.indices.contains(indexPath.section)
-    else {
-      return false
-    }
-
-    return isTodoCategoryModeSection(sections[indexPath.section])
-  }
-
-  func shouldUseCustomSectionHeaderDragEngine(for item: NativeItem, at indexPath: IndexPath) -> Bool {
-    guard
-      item.kind == "sectionHeader",
-      item.reorderable == true,
-      iosCategoryGestureMode == .customLifted,
-      sections.indices.contains(indexPath.section)
-    else {
-      return false
-    }
-
-    return isTodoCategoryModeSection(sections[indexPath.section])
-  }
-
-  func rebuildTodoSection(_ section: NativeSection, todoItems: [NativeItem]) -> NativeSection {
-    let headerItem = sectionHeaderItem(in: section)
-    let nonTodoTrailingItems = section.items.filter { item in
-      item.kind != "todo" && item.kind != "sectionHeader"
-    }
-    let shouldHideTodos = isSectionCollapsed(section)
-    let rebuiltTodoItems = todoItems.map { item in
-      NativeItem(
-        id: item.id,
-        kind: item.kind,
-        variant: item.variant,
-        title: item.title,
-        subtitle: item.subtitle,
-        leadingIcon: item.leadingIcon,
-        destructive: item.destructive,
-        disabled: item.disabled,
-        valueText: item.valueText,
-        switchValue: item.switchValue,
-        menuActions: item.menuActions,
-        accentColor: item.accentColor,
-        metaText: item.metaText,
-        collapsed: item.collapsed,
-        hidden: shouldHideTodos,
-        reorderable: item.reorderable,
-        deletable: item.deletable,
-        supportsMenu: item.supportsMenu,
-        toggleControlId: item.toggleControlId,
-        toggleControlSource: item.toggleControlSource,
-        completed: item.completed
-      )
-    }
-
-    return NativeSection(
-      id: section.id,
-      title: section.title,
-      footer: section.footer,
-      reorderMode: section.reorderMode,
-      items: ([headerItem].compactMap { $0 }) + rebuiltTodoItems + nonTodoTrailingItems
-    )
-  }
-
   private func currentInteractiveReorderItemId() -> String? {
     if let itemId = customSectionHeaderDragSession?.itemId {
       return itemId
@@ -474,28 +197,6 @@ final class NativeListInteractionsView: ExpoView, UICollectionViewDelegate, UIGe
     }
 
     return focusedCategoryMenuSession?.itemId
-  }
-
-  func discardTemporarilyExpandedSectionsIfNeeded() {
-    guard !temporarilyExpandedSectionIds.isEmpty else {
-      return
-    }
-
-    temporarilyExpandedSectionIds.removeAll()
-    applySnapshot(animatingDifferences: false) { [weak self] in
-      self?.reconfigureVisibleCellsForCurrentMode()
-    }
-  }
-
-  func discardTemporarilyCollapsedSectionsIfNeeded() {
-    guard !temporarilyCollapsedSectionIds.isEmpty else {
-      return
-    }
-
-    temporarilyCollapsedSectionIds.removeAll()
-    applySnapshot(animatingDifferences: false) { [weak self] in
-      self?.reconfigureVisibleCellsForCurrentMode()
-    }
   }
 
   func collectionView(_ collectionView: UICollectionView, didSelectItemAt indexPath: IndexPath) {
@@ -624,62 +325,6 @@ final class NativeListInteractionsView: ExpoView, UICollectionViewDelegate, UIGe
     if systemCategoryMenuDismissSession?.itemId == identifier {
       resetSystemCategoryMenuDismissState()
     }
-  }
-
-  func gestureRecognizer(
-    _ gestureRecognizer: UIGestureRecognizer,
-    shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer
-  ) -> Bool {
-    if gestureRecognizer === focusedCategoryMenuPanRecognizer || otherGestureRecognizer === focusedCategoryMenuPanRecognizer {
-      return false
-    }
-    if gestureRecognizer === categorySystemMenuTrackingRecognizer || otherGestureRecognizer === categorySystemMenuTrackingRecognizer {
-      return true
-    }
-    if gestureRecognizer === categoryCustomLongPressRecognizer || otherGestureRecognizer === categoryCustomLongPressRecognizer {
-      return false
-    }
-    return true
-  }
-
-  func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldReceive touch: UITouch) -> Bool {
-    if gestureRecognizer === focusedCategoryMenuPanRecognizer {
-      guard
-        currentCustomCategoryMenuUsesLiftedPreview(),
-        let previewContainer = customCategoryMenuPreviewContainerView,
-        focusedCategoryMenuSession != nil
-      else {
-        return false
-      }
-
-      let location = touch.location(in: currentCustomCategoryMenuOverlayHostView())
-      return previewContainer.frame.contains(location)
-    }
-
-    guard
-      gestureRecognizer === categoryCustomLongPressRecognizer ||
-      gestureRecognizer === categorySystemMenuTrackingRecognizer
-    else {
-      return true
-    }
-
-    let location = touch.location(in: collectionView)
-    guard
-      let indexPath = collectionView.indexPathForItem(at: location),
-      let item = item(at: indexPath)
-    else {
-      return false
-    }
-
-    if item.kind == "todo" {
-      return item.disabled != true
-    }
-
-    if item.kind == "sectionHeader" {
-      return item.disabled != true && item.reorderable == true
-    }
-
-    return item.kind == "category" && item.disabled != true
   }
 
   private func reorderableIndexRange(in sectionIndex: Int, kind: String) -> ClosedRange<Int>? {
