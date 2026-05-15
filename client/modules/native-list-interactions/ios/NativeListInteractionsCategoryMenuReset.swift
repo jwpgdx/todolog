@@ -2,9 +2,11 @@ import UIKit
 
 extension NativeListInteractionsView {
   func resetCustomCategoryGestureState() {
+    setSystemInteractiveReorderSourceCellDimmed(false)
     customCategoryGestureSession = nil
     customInteractiveReorderActive = false
     customCategoryMenuHighlightedIndex = nil
+    focusedCategoryMenuPanOrigin = nil
     lastInteractiveMovementLocation = nil
     lastInteractiveMovementOverlayLocation = nil
     cancelCollapsedSectionAutoExpand()
@@ -14,7 +16,7 @@ extension NativeListInteractionsView {
     customSectionHeaderDragSnapshotView?.removeFromSuperview()
     customSectionHeaderDragSnapshotView = nil
     removeCustomSectionHeaderInsertionIndicator()
-    setCustomSectionHeaderDragSourceCellHidden(false)
+    setCustomSectionHeaderDragSourceCellDimmed(false)
     customSectionHeaderDragSourceCell = nil
     discardTemporarilyCollapsedSectionsIfNeeded()
     customTodoDragSession = nil
@@ -22,7 +24,7 @@ extension NativeListInteractionsView {
     customTodoDragSnapshotView?.removeFromSuperview()
     customTodoDragSnapshotView = nil
     removeCustomTodoDragInsertionIndicator()
-    setCustomTodoDragSourceCellHidden(false)
+    setCustomTodoDragSourceCellDimmed(false)
     customTodoDragSourceCell = nil
   }
 }

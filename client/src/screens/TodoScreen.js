@@ -14,9 +14,11 @@ import { useRouter } from 'expo-router';
 
 import { useDateStore } from '../store/dateStore';
 import { useTodos } from '../hooks/queries/useTodos';
+import { useAllTodos } from '../hooks/queries/useAllTodos';
 import { useCategories } from '../hooks/queries/useCategories';
 import { useToggleCompletion } from '../hooks/queries/useToggleCompletion';
 import { useDeleteTodo } from '../hooks/queries/useDeleteTodo';
+import { useUpdateTodo } from '../hooks/queries/useUpdateTodo';
 import { useReorderTodo } from '../hooks/queries/useReorderTodo';
 import { useReorderCategory } from '../hooks/queries/useReorderCategory';
 import { useTodoFormStore } from '../store/todoFormStore';
@@ -28,6 +30,15 @@ import NativeTodoManagedList, {
 } from '../features/todo/native/NativeTodoManagedList';
 import { useManagedCategoryHeaderActions } from '../features/todo/native/useManagedCategoryHeaderActions';
 import {
+  buildFavoriteOrderUpdatesFromEvent,
+  getFavoriteTodoIdSet,
+  getSortedFavoriteTodos,
+  mergeTodoReorderUpdates,
+} from '../features/todo/native/todoFavoriteOrder';
+import {
+  compareByTodoScreenTimeMode,
+  hasTodoScheduledTime,
+  normalizeTodoScreenSortMode,
   TODO_SCREEN_COLLAPSED_CATEGORY_IDS_STORAGE_KEY,
   TODO_SCREEN_SORT_MODE,
   TODO_SCREEN_SORT_MODE_OPTIONS,
@@ -38,14 +49,26 @@ import { useFloatingTabBarScrollPadding } from '../navigation/useFloatingTabBarI
 
 const CATEGORY_ORDER_STEP = 100;
 const DRAG_BOTTOM_BUFFER = 32;
+const TODO_SCREEN_FAVORITES_COLLAPSED_STORAGE_KEY =
+  'todo_screen_favorites_collapsed';
+
+function areStringArraysEqual(a, b) {
+  if (a.length !== b.length) {
+    return false;
+  }
+
+  return a.every((value, index) => value === b[index]);
+}
 
 export default function TodoScreen() {
   const router = useRouter();
   const { currentDate } = useDateStore();
   const { data: todos, isLoading } = useTodos(currentDate);
+  const { data: allTodos } = useAllTodos(currentDate);
   const { data: categories = [] } = useCategories();
   const { mutate: toggleCompletion } = useToggleCompletion();
   const { mutate: deleteTodo } = useDeleteTodo();
+  const updateTodoMutation = useUpdateTodo();
   const reorderTodoMutation = useReorderTodo(currentDate);
   const reorderCategoryMutation = useReorderCategory();
   const { openDetail } = useTodoFormStore();
@@ -53,11 +76,40 @@ export default function TodoScreen() {
   const [nativeQuickPrototypeInstanceKey, setNativeQuickPrototypeInstanceKey] = useState(0);
   const [sortMode, setSortMode] = useState(TODO_SCREEN_SORT_MODE.TIME);
   const [collapsedCategoryIds, setCollapsedCategoryIds] = useState([]);
+  const [isFavoriteSectionCollapsed, setIsFavoriteSectionCollapsed] = useState(false);
   const bottomInset = useFloatingTabBarScrollPadding(DRAG_BOTTOM_BUFFER);
   const { handleCategoryHeaderAction } = useManagedCategoryHeaderActions({ categories });
 
   const currentDateRef = useRef(currentDate);
   currentDateRef.current = currentDate;
+
+  const favoriteTodos = useMemo(
+    () => getSortedFavoriteTodos(allTodos),
+    [allTodos]
+  );
+
+  const favoriteTodoIdSet = useMemo(
+    () => getFavoriteTodoIdSet(favoriteTodos),
+    [favoriteTodos]
+  );
+
+  const dateTodos = useMemo(
+    () => (Array.isArray(todos) ? todos : []),
+    [todos]
+  );
+
+  const visibleTodos = useMemo(
+    () =>
+      dateTodos.filter(
+        (todo) => !favoriteTodoIdSet.has(todo._id)
+      ),
+    [dateTodos, favoriteTodoIdSet]
+  );
+
+  const visibleTodoById = useMemo(
+    () => new Map([...visibleTodos, ...favoriteTodos].map((todo) => [todo._id, todo])),
+    [favoriteTodos, visibleTodos]
+  );
 
   useEffect(() => {
     let mounted = true;
@@ -65,14 +117,22 @@ export default function TodoScreen() {
     Promise.all([
       AsyncStorage.getItem(TODO_SCREEN_SORT_MODE_STORAGE_KEY),
       AsyncStorage.getItem(TODO_SCREEN_COLLAPSED_CATEGORY_IDS_STORAGE_KEY),
+      AsyncStorage.getItem(TODO_SCREEN_FAVORITES_COLLAPSED_STORAGE_KEY),
     ])
-      .then(([storedSortMode, storedCollapsedCategoryIds]) => {
+      .then(([storedSortMode, storedCollapsedCategoryIds, storedFavoritesCollapsed]) => {
         if (!mounted) {
           return;
         }
 
-        if (Object.values(TODO_SCREEN_SORT_MODE).includes(storedSortMode)) {
-          setSortMode(storedSortMode);
+        if (storedSortMode) {
+          const normalizedSortMode = normalizeTodoScreenSortMode(storedSortMode);
+          setSortMode(normalizedSortMode);
+          if (normalizedSortMode !== storedSortMode) {
+            AsyncStorage.setItem(
+              TODO_SCREEN_SORT_MODE_STORAGE_KEY,
+              normalizedSortMode
+            ).catch(() => {});
+          }
         }
 
         if (storedCollapsedCategoryIds) {
@@ -85,6 +145,10 @@ export default function TodoScreen() {
             // noop
           }
         }
+
+        if (storedFavoritesCollapsed != null) {
+          setIsFavoriteSectionCollapsed(storedFavoritesCollapsed === 'true');
+        }
       })
       .catch(() => {});
 
@@ -94,19 +158,18 @@ export default function TodoScreen() {
   }, []);
 
   const handleToggleComplete = useCallback((todoId) => {
-    const actualDate = currentDateRef.current;
-    const todo = (todos || []).find((item) => item._id === todoId);
+    const todo = visibleTodoById.get(todoId);
     if (!todo) {
       return;
     }
 
     toggleCompletion({
       todoId,
-      date: actualDate,
+      date: todo.occurrenceDate || currentDateRef.current,
       currentCompleted: todo.completed,
       todo,
     });
-  }, [todos, toggleCompletion]);
+  }, [toggleCompletion, visibleTodoById]);
 
   const handleOpenTodo = useCallback((todo, target = null) => {
     openDetail(todo, target);
@@ -128,8 +191,12 @@ export default function TodoScreen() {
   }, [deleteTodo]);
 
   const handleChangeSortMode = useCallback((nextMode) => {
-    setSortMode(nextMode);
-    AsyncStorage.setItem(TODO_SCREEN_SORT_MODE_STORAGE_KEY, nextMode).catch(() => {});
+    const normalizedSortMode = normalizeTodoScreenSortMode(nextMode);
+    setSortMode(normalizedSortMode);
+    AsyncStorage.setItem(
+      TODO_SCREEN_SORT_MODE_STORAGE_KEY,
+      normalizedSortMode
+    ).catch(() => {});
   }, []);
 
   const handleToggleCollapsedCategory = useCallback((categoryId) => {
@@ -170,6 +237,50 @@ export default function TodoScreen() {
     });
   }, []);
 
+  const handleToggleFavoriteSectionCollapsed = useCallback(() => {
+    setIsFavoriteSectionCollapsed((currentValue) => {
+      const nextValue = !currentValue;
+      AsyncStorage.setItem(
+        TODO_SCREEN_FAVORITES_COLLAPSED_STORAGE_KEY,
+        nextValue ? 'true' : 'false'
+      ).catch(() => {});
+
+      return nextValue;
+    });
+  }, []);
+
+  const handleExpandFavoriteSection = useCallback(() => {
+    setIsFavoriteSectionCollapsed((currentValue) => {
+      if (!currentValue) {
+        return currentValue;
+      }
+
+      AsyncStorage.setItem(
+        TODO_SCREEN_FAVORITES_COLLAPSED_STORAGE_KEY,
+        'false'
+      ).catch(() => {});
+      return false;
+    });
+  }, []);
+
+  const handlePressManagedSectionHeader = useCallback((sectionId) => {
+    if (sectionId === 'favorites') {
+      handleToggleFavoriteSectionCollapsed();
+      return;
+    }
+
+    handleToggleCollapsedCategory(sectionId);
+  }, [handleToggleCollapsedCategory, handleToggleFavoriteSectionCollapsed]);
+
+  const handleRequestExpandSection = useCallback((sectionId) => {
+    if (sectionId === 'favorites') {
+      handleExpandFavoriteSection();
+      return;
+    }
+
+    handleExpandCollapsedCategory(sectionId);
+  }, [handleExpandCollapsedCategory, handleExpandFavoriteSection]);
+
   const handleOpenNativeQuickPrototype = useCallback(() => {
     setNativeQuickPrototypeInstanceKey((current) => current + 1);
 
@@ -180,8 +291,6 @@ export default function TodoScreen() {
 
   const managedListMode = useMemo(() => {
     switch (sortMode) {
-      case TODO_SCREEN_SORT_MODE.CUSTOM:
-        return TODO_MANAGED_LIST_MODE.CUSTOM;
       case TODO_SCREEN_SORT_MODE.CATEGORY:
         return TODO_MANAGED_LIST_MODE.CATEGORY;
       case TODO_SCREEN_SORT_MODE.TIME:
@@ -190,17 +299,26 @@ export default function TodoScreen() {
     }
   }, [sortMode]);
 
-  const visibleTodos = useMemo(
-    () => (Array.isArray(todos) ? todos : []),
-    [todos]
-  );
-
   const handleManagedToggleComplete = useCallback((todo) => {
     if (!todo?._id) {
       return;
     }
     handleToggleComplete(todo._id);
   }, [handleToggleComplete]);
+
+  const handleFavoriteChange = useCallback((todo, isFavorite) => {
+    if (!todo?._id) {
+      return;
+    }
+
+    updateTodoMutation.mutate({
+      id: todo._id,
+      data: {
+        isFavorite,
+        startDate: todo.startDate || todo.date || currentDateRef.current,
+      },
+    });
+  }, [updateTodoMutation]);
 
   const handleManagedAction = useCallback((todo, event) => {
     switch (event?.actionId) {
@@ -211,51 +329,112 @@ export default function TodoScreen() {
       case 'move':
         handleOpenTodo(todo, 'CATEGORY');
         break;
+      case 'favorite':
+        handleFavoriteChange(todo, true);
+        break;
+      case 'unfavorite':
+        handleFavoriteChange(todo, false);
+        break;
       case 'delete':
         handleDelete(todo);
         break;
       default:
         break;
     }
-  }, [handleDelete, handleOpenTodo]);
+  }, [handleDelete, handleFavoriteChange, handleOpenTodo]);
 
   const handleManagedReorderCommit = useCallback(async (event) => {
-    if (managedListMode === TODO_MANAGED_LIST_MODE.TIME) {
-      return;
-    }
-
-    const visibleTodoById = new Map(visibleTodos.map((todo) => [todo._id, todo]));
+    const mainTodoById = new Map(visibleTodos.map((todo) => [todo._id, todo]));
+    const allTodoById = new Map([...visibleTodos, ...favoriteTodos].map((todo) => [todo._id, todo]));
     const updates = [];
     const categoryOrderUpdates = [];
+    const movedToFavorites = event?.toSectionId === 'favorites';
+    const movedFromFavorites =
+      event?.fromSectionId === 'favorites' &&
+      event?.toSectionId &&
+      event.toSectionId !== 'favorites';
+    const movedTodo = allTodoById.get(event?.movedItemId);
+    const favoriteOrderUpdates = buildFavoriteOrderUpdatesFromEvent(event, allTodoById);
 
-    if (managedListMode === TODO_MANAGED_LIST_MODE.CUSTOM) {
+    updates.push(...favoriteOrderUpdates);
+
+    if (!movedToFavorites && managedListMode === TODO_MANAGED_LIST_MODE.TIME) {
+      const shouldOnlyUnfavoriteTimedTodo =
+        movedFromFavorites && movedTodo && hasTodoScheduledTime(movedTodo);
+
       const todoSection = event?.sections?.find((section) => section.sectionId === 'todos');
+      const reorderTodoById = movedFromFavorites ? allTodoById : mainTodoById;
+      const timeModeTodos =
+        movedFromFavorites && movedTodo && !mainTodoById.has(movedTodo._id)
+          ? [...visibleTodos, movedTodo]
+          : visibleTodos;
       const orderedTodoIds = (todoSection?.orderedItemIds || []).filter((itemId) =>
-        visibleTodoById.has(itemId)
+        reorderTodoById.has(itemId)
       );
+      const orderedTodos = orderedTodoIds
+        .map((itemId) => reorderTodoById.get(itemId))
+        .filter(Boolean);
+      const firstUntimedIndex = orderedTodos.findIndex((todo) => !hasTodoScheduledTime(todo));
+      const hasTimedTodoAfterUntimedTodo =
+        firstUntimedIndex !== -1 &&
+        orderedTodos
+          .slice(firstUntimedIndex + 1)
+          .some((todo) => hasTodoScheduledTime(todo));
+      const expectedOrderedTodos = [...timeModeTodos].sort(compareByTodoScreenTimeMode);
+      const expectedTimedTodoIds = expectedOrderedTodos
+        .filter((todo) => hasTodoScheduledTime(todo))
+        .map((todo) => todo._id);
+      const orderedTimedTodoIds = orderedTodos
+        .filter((todo) => hasTodoScheduledTime(todo))
+        .map((todo) => todo._id);
 
-      orderedTodoIds.forEach((todoId, index) => {
-        const todo = visibleTodoById.get(todoId);
-        if (!todo) {
+      if (!shouldOnlyUnfavoriteTimedTodo && (todoSection || movedTodo)) {
+        if (
+          !todoSection ||
+          hasTimedTodoAfterUntimedTodo ||
+          (!movedFromFavorites && movedTodo && hasTodoScheduledTime(movedTodo)) ||
+          !areStringArraysEqual(orderedTimedTodoIds, expectedTimedTodoIds)
+        ) {
           return;
         }
 
-        const nextOrder = (index + 1) * ORDER_STEP;
-        const currentOrder = Number(todo.order?.custom ?? 0);
-        if (currentOrder === nextOrder) {
-          return;
-        }
-
-        updates.push({
-          id: todoId,
-          order: {
-            custom: nextOrder,
-          },
+        const orderedTodoIdsWithoutTime = orderedTodoIds.filter((itemId) => {
+          const todo = reorderTodoById.get(itemId);
+          return todo && !hasTodoScheduledTime(todo);
         });
-      });
+        const currentTodoIdsWithoutTime = expectedOrderedTodos
+          .filter((todo) => !hasTodoScheduledTime(todo))
+          .map((todo) => todo._id);
+
+        if (
+          movedFromFavorites ||
+          !areStringArraysEqual(orderedTodoIdsWithoutTime, currentTodoIdsWithoutTime)
+        ) {
+          orderedTodoIdsWithoutTime.forEach((todoId, index) => {
+            const todo = reorderTodoById.get(todoId);
+            if (!todo) {
+              return;
+            }
+
+            const nextOrder = (index + 1) * ORDER_STEP;
+            const currentOrder = Number(todo.order?.custom ?? 0);
+            if (currentOrder === nextOrder) {
+              return;
+            }
+
+            updates.push({
+              id: todoId,
+              order: {
+                custom: nextOrder,
+              },
+            });
+          });
+        }
+      }
     }
 
-    if (managedListMode === TODO_MANAGED_LIST_MODE.CATEGORY) {
+    if (!movedToFavorites && managedListMode === TODO_MANAGED_LIST_MODE.CATEGORY) {
+      const reorderTodoById = movedFromFavorites ? allTodoById : mainTodoById;
       const categoryById = new Map(categories.map((category) => [category._id, category]));
       const orderedCategoryIds = (event?.sections || [])
         .map((section) => section.sectionId)
@@ -288,11 +467,11 @@ export default function TodoScreen() {
         }
 
         const orderedTodoIds = (section.orderedItemIds || []).filter((itemId) =>
-          visibleTodoById.has(itemId)
+          reorderTodoById.has(itemId)
         );
 
         orderedTodoIds.forEach((todoId, index) => {
-          const todo = visibleTodoById.get(todoId);
+          const todo = reorderTodoById.get(todoId);
           if (!todo) {
             return;
           }
@@ -315,7 +494,9 @@ export default function TodoScreen() {
       });
     }
 
-    if (updates.length === 0 && categoryOrderUpdates.length === 0) {
+    const mergedUpdates = mergeTodoReorderUpdates(updates);
+
+    if (mergedUpdates.length === 0 && categoryOrderUpdates.length === 0) {
       return;
     }
 
@@ -324,13 +505,13 @@ export default function TodoScreen() {
         await reorderCategoryMutation.mutateAsync({ orders: categoryOrderUpdates });
       }
 
-      if (updates.length > 0) {
-        await reorderTodoMutation.mutateAsync({ updates });
+      if (mergedUpdates.length > 0) {
+        await reorderTodoMutation.mutateAsync({ updates: mergedUpdates });
       }
     } catch (error) {
       console.error('[TodoScreen] reorder commit failed:', error?.message || error);
     }
-  }, [categories, managedListMode, reorderCategoryMutation, reorderTodoMutation, visibleTodos]);
+  }, [categories, favoriteTodos, managedListMode, reorderCategoryMutation, reorderTodoMutation, visibleTodos]);
 
   return (
     <SafeAreaView style={styles.container}>
@@ -382,22 +563,35 @@ export default function TodoScreen() {
             todos={visibleTodos}
             categories={categories}
             collapsedCategoryIds={collapsedCategoryIds}
-            favoriteTodos={[]}
-            includeFavoriteSection={false}
+            favoriteTodos={favoriteTodos}
+            includeFavoriteSection
+            favoriteSectionReorderMode="withinSection"
+            favoriteReorderable
+            favoriteSectionCollapsed={isFavoriteSectionCollapsed}
+            favoriteItemOptions={{
+              includeFavoriteAction: true,
+              includeFavoriteToggle: false,
+              showFavoriteBadge: false,
+              leadingSwipeActions: [],
+            }}
             includeEmptyCategorySections={managedListMode === TODO_MANAGED_LIST_MODE.CATEGORY}
             contentInsetBottom={bottomInset}
             itemOptions={{
-              includeFavoriteAction: false,
+              includeFavoriteAction: true,
               includeFavoriteToggle: false,
               showFavoriteBadge: false,
+              leadingSwipeActions: [],
             }}
             style={{ paddingHorizontal: 16 }}
             onPressTodo={handleOpenTodo}
-            onPressSectionHeader={handleToggleCollapsedCategory}
+            onPressSectionHeader={handlePressManagedSectionHeader}
             onRequestExpandSection={({ sectionId }) => {
-              handleExpandCollapsedCategory(sectionId);
+              handleRequestExpandSection(sectionId);
             }}
             onToggleComplete={handleManagedToggleComplete}
+            onToggleFavorite={(todo) => {
+              handleFavoriteChange(todo, !todo?.isFavorite);
+            }}
             onTodoAction={handleManagedAction}
             onSectionHeaderAction={handleCategoryHeaderAction}
             onReorderCommit={handleManagedReorderCommit}
@@ -408,7 +602,7 @@ export default function TodoScreen() {
         </View>
       ) : (
         <DailyTodoList
-          todos={visibleTodos}
+          todos={dateTodos}
           categories={categories}
           isLoading={isLoading}
           sortMode={sortMode}

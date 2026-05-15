@@ -5,6 +5,8 @@ import { FlashList } from '@shopify/flash-list';
 import TodoListItem from './TodoListItem';
 import { useFloatingTabBarScrollPadding } from '../../../navigation/useFloatingTabBarInset';
 import {
+  compareByTodoScreenTimeMode,
+  normalizeTodoScreenSortMode,
   TODO_SCREEN_SORT_MODE,
   TODO_SCREEN_SORT_MODE_OPTIONS,
 } from './todoScreenSortMode';
@@ -15,42 +17,6 @@ function compareByCreatedAt(a, b) {
 
 function compareById(a, b) {
   return String(a?._id || '').localeCompare(String(b?._id || ''));
-}
-
-function compareByTime(a, b) {
-  const allDayA = a?.isAllDay === true ? 0 : 1;
-  const allDayB = b?.isAllDay === true ? 0 : 1;
-  if (allDayA !== allDayB) {
-    return allDayA - allDayB;
-  }
-
-  const startA = String(a?.startTime || '');
-  const startB = String(b?.startTime || '');
-  if (startA !== startB) {
-    return startA.localeCompare(startB);
-  }
-
-  const createdAtOrder = compareByCreatedAt(a, b);
-  if (createdAtOrder !== 0) {
-    return createdAtOrder;
-  }
-
-  return compareById(a, b);
-}
-
-function compareByCustom(a, b) {
-  const orderA = Number(a?.order?.custom ?? 0);
-  const orderB = Number(b?.order?.custom ?? 0);
-  if (orderA !== orderB) {
-    return orderA - orderB;
-  }
-
-  const createdAtOrder = compareByCreatedAt(a, b);
-  if (createdAtOrder !== 0) {
-    return createdAtOrder;
-  }
-
-  return compareById(a, b);
 }
 
 function compareByCategory(categoriesById, a, b) {
@@ -100,15 +66,14 @@ export default function DailyTodoList({
     }
 
     const items = [...todos];
+    const effectiveSortMode = normalizeTodoScreenSortMode(sortMode);
 
-    switch (sortMode) {
-      case TODO_SCREEN_SORT_MODE.CUSTOM:
-        return items.sort(compareByCustom);
+    switch (effectiveSortMode) {
       case TODO_SCREEN_SORT_MODE.CATEGORY:
         return items.sort((a, b) => compareByCategory(categoriesById, a, b));
       case TODO_SCREEN_SORT_MODE.TIME:
       default:
-        return items.sort(compareByTime);
+        return items.sort(compareByTodoScreenTimeMode);
     }
   }, [categoriesById, sortMode, todos]);
 

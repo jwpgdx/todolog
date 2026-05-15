@@ -24,11 +24,19 @@ import NativeTodoManagedList, {
   TODO_MANAGED_LIST_MODE,
 } from '../features/todo/native/NativeTodoManagedList';
 import { useManagedCategoryHeaderActions } from '../features/todo/native/useManagedCategoryHeaderActions';
+import {
+  buildFavoriteOrderUpdatesFromEvent,
+  getFavoriteTodoIdSet,
+  getSortedFavoriteTodos,
+  mergeTodoReorderUpdates,
+} from '../features/todo/native/todoFavoriteOrder';
 import { ORDER_STEP } from '../services/db/todoService';
 
 const CATEGORY_ORDER_STEP = 100;
 const ALL_TODOS_SCREEN_COLLAPSED_CATEGORY_IDS_STORAGE_KEY =
   'all_todos_screen_collapsed_category_ids';
+const ALL_TODOS_SCREEN_FAVORITES_COLLAPSED_STORAGE_KEY =
+  'all_todos_screen_favorites_collapsed';
 const DRAG_BOTTOM_BUFFER = 32;
 
 export default function AllTodosScreen() {
@@ -42,25 +50,35 @@ export default function AllTodosScreen() {
   const reorderCategoryMutation = useReorderCategory();
   const { openDetail } = useTodoFormStore();
   const [collapsedCategoryIds, setCollapsedCategoryIds] = useState([]);
+  const [isFavoriteSectionCollapsed, setIsFavoriteSectionCollapsed] = useState(false);
   const bottomInset = useFloatingTabBarScrollPadding(DRAG_BOTTOM_BUFFER);
   const { handleCategoryHeaderAction } = useManagedCategoryHeaderActions({ categories });
 
   useEffect(() => {
     let mounted = true;
 
-    AsyncStorage.getItem(ALL_TODOS_SCREEN_COLLAPSED_CATEGORY_IDS_STORAGE_KEY)
-      .then((storedIds) => {
-        if (!mounted || !storedIds) {
+    Promise.all([
+      AsyncStorage.getItem(ALL_TODOS_SCREEN_COLLAPSED_CATEGORY_IDS_STORAGE_KEY),
+      AsyncStorage.getItem(ALL_TODOS_SCREEN_FAVORITES_COLLAPSED_STORAGE_KEY),
+    ])
+      .then(([storedIds, storedFavoritesCollapsed]) => {
+        if (!mounted) {
           return;
         }
 
-        try {
-          const parsedIds = JSON.parse(storedIds);
-          if (Array.isArray(parsedIds)) {
-            setCollapsedCategoryIds(parsedIds.filter((value) => typeof value === 'string'));
+        if (storedIds) {
+          try {
+            const parsedIds = JSON.parse(storedIds);
+            if (Array.isArray(parsedIds)) {
+              setCollapsedCategoryIds(parsedIds.filter((value) => typeof value === 'string'));
+            }
+          } catch {
+            // noop
           }
-        } catch {
-          // noop
+        }
+
+        if (storedFavoritesCollapsed != null) {
+          setIsFavoriteSectionCollapsed(storedFavoritesCollapsed === 'true');
         }
       })
       .catch(() => {});
@@ -70,9 +88,22 @@ export default function AllTodosScreen() {
     };
   }, []);
 
-  const visibleTodos = useMemo(
-    () => (Array.isArray(todos) ? todos : []),
+  const favoriteTodos = useMemo(
+    () => getSortedFavoriteTodos(todos),
     [todos]
+  );
+
+  const favoriteTodoIdSet = useMemo(
+    () => getFavoriteTodoIdSet(favoriteTodos),
+    [favoriteTodos]
+  );
+
+  const visibleTodos = useMemo(
+    () =>
+      (Array.isArray(todos) ? todos : []).filter(
+        (todo) => !favoriteTodoIdSet.has(todo._id)
+      ),
+    [favoriteTodoIdSet, todos]
   );
 
   const handleToggleCollapsedCategory = useCallback((categoryId) => {
@@ -112,6 +143,50 @@ export default function AllTodosScreen() {
       return nextIds;
     });
   }, []);
+
+  const handleToggleFavoriteSectionCollapsed = useCallback(() => {
+    setIsFavoriteSectionCollapsed((currentValue) => {
+      const nextValue = !currentValue;
+      AsyncStorage.setItem(
+        ALL_TODOS_SCREEN_FAVORITES_COLLAPSED_STORAGE_KEY,
+        nextValue ? 'true' : 'false'
+      ).catch(() => {});
+
+      return nextValue;
+    });
+  }, []);
+
+  const handleExpandFavoriteSection = useCallback(() => {
+    setIsFavoriteSectionCollapsed((currentValue) => {
+      if (!currentValue) {
+        return currentValue;
+      }
+
+      AsyncStorage.setItem(
+        ALL_TODOS_SCREEN_FAVORITES_COLLAPSED_STORAGE_KEY,
+        'false'
+      ).catch(() => {});
+      return false;
+    });
+  }, []);
+
+  const handlePressManagedSectionHeader = useCallback((sectionId) => {
+    if (sectionId === 'favorites') {
+      handleToggleFavoriteSectionCollapsed();
+      return;
+    }
+
+    handleToggleCollapsedCategory(sectionId);
+  }, [handleToggleCollapsedCategory, handleToggleFavoriteSectionCollapsed]);
+
+  const handleRequestExpandSection = useCallback((sectionId) => {
+    if (sectionId === 'favorites') {
+      handleExpandFavoriteSection();
+      return;
+    }
+
+    handleExpandCollapsedCategory(sectionId);
+  }, [handleExpandCollapsedCategory, handleExpandFavoriteSection]);
 
   const handleOpenTodo = useCallback((todo, target = null) => {
     openDetail(todo, target);
@@ -184,8 +259,16 @@ export default function AllTodosScreen() {
 
   const handleManagedReorderCommit = useCallback(async (event) => {
     const visibleTodoById = new Map(visibleTodos.map((todo) => [todo._id, todo]));
+    const allTodoById = new Map([...visibleTodos, ...favoriteTodos].map((todo) => [todo._id, todo]));
     const updates = [];
     const categoryOrderUpdates = [];
+    const movedToFavorites = event?.toSectionId === 'favorites';
+    const movedFromFavorites =
+      event?.fromSectionId === 'favorites' &&
+      event?.toSectionId &&
+      event.toSectionId !== 'favorites';
+    const favoriteOrderUpdates = buildFavoriteOrderUpdatesFromEvent(event, allTodoById);
+    const reorderTodoById = movedFromFavorites ? allTodoById : visibleTodoById;
     const categoryById = new Map(categories.map((category) => [category._id, category]));
     const orderedCategoryIds = (event?.sections || [])
       .map((section) => section.sectionId)
@@ -211,40 +294,46 @@ export default function AllTodosScreen() {
       });
     }
 
-    (event?.sections || []).forEach((section) => {
-      const categoryId = section.sectionId;
-      if (!categoryId || categoryId === 'favorites') {
-        return;
-      }
+    updates.push(...favoriteOrderUpdates);
 
-      const orderedTodoIds = (section.orderedItemIds || []).filter((itemId) =>
-        visibleTodoById.has(itemId)
-      );
-
-      orderedTodoIds.forEach((todoId, index) => {
-        const todo = visibleTodoById.get(todoId);
-        if (!todo) {
+    if (!movedToFavorites) {
+      (event?.sections || []).forEach((section) => {
+        const categoryId = section.sectionId;
+        if (!categoryId || categoryId === 'favorites') {
           return;
         }
 
-        const nextOrder = (index + 1) * ORDER_STEP;
-        const currentOrder = Number(todo.order?.category ?? 0);
-        const categoryChanged = todo.categoryId !== categoryId;
-        if (!categoryChanged && currentOrder === nextOrder) {
-          return;
-        }
+        const orderedTodoIds = (section.orderedItemIds || []).filter((itemId) =>
+          reorderTodoById.has(itemId)
+        );
 
-        updates.push({
-          id: todoId,
-          categoryId,
-          order: {
-            category: nextOrder,
-          },
+        orderedTodoIds.forEach((todoId, index) => {
+          const todo = reorderTodoById.get(todoId);
+          if (!todo) {
+            return;
+          }
+
+          const nextOrder = (index + 1) * ORDER_STEP;
+          const currentOrder = Number(todo.order?.category ?? 0);
+          const categoryChanged = todo.categoryId !== categoryId;
+          if (!categoryChanged && currentOrder === nextOrder) {
+            return;
+          }
+
+          updates.push({
+            id: todoId,
+            categoryId,
+            order: {
+              category: nextOrder,
+            },
+          });
         });
       });
-    });
+    }
 
-    if (updates.length === 0 && categoryOrderUpdates.length === 0) {
+    const mergedUpdates = mergeTodoReorderUpdates(updates);
+
+    if (mergedUpdates.length === 0 && categoryOrderUpdates.length === 0) {
       return;
     }
 
@@ -253,13 +342,13 @@ export default function AllTodosScreen() {
         await reorderCategoryMutation.mutateAsync({ orders: categoryOrderUpdates });
       }
 
-      if (updates.length > 0) {
-        await reorderTodoMutation.mutateAsync({ updates });
+      if (mergedUpdates.length > 0) {
+        await reorderTodoMutation.mutateAsync({ updates: mergedUpdates });
       }
     } catch (error) {
       console.error('[AllTodosScreen] reorder commit failed:', error?.message || error);
     }
-  }, [categories, reorderCategoryMutation, reorderTodoMutation, visibleTodos]);
+  }, [categories, favoriteTodos, reorderCategoryMutation, reorderTodoMutation, visibleTodos]);
 
   if (isLoading) {
     return (
@@ -275,7 +364,7 @@ export default function AllTodosScreen() {
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.content}>
-        {visibleTodos.length === 0 ? (
+        {visibleTodos.length === 0 && favoriteTodos.length === 0 ? (
           <View style={styles.centerContainer}>
             <Text style={styles.emptyText}>등록된 일정이 없습니다.</Text>
           </View>
@@ -286,20 +375,30 @@ export default function AllTodosScreen() {
             todos={visibleTodos}
             categories={categories}
             collapsedCategoryIds={collapsedCategoryIds}
-            favoriteTodos={[]}
-            includeFavoriteSection={false}
+            favoriteTodos={favoriteTodos}
+            includeFavoriteSection
+            favoriteSectionReorderMode="withinSection"
+            favoriteReorderable
+            favoriteSectionCollapsed={isFavoriteSectionCollapsed}
+            favoriteItemOptions={{
+              includeFavoriteAction: true,
+              includeFavoriteToggle: false,
+              showFavoriteBadge: false,
+              leadingSwipeActions: [],
+            }}
             includeEmptyCategorySections
             contentInsetBottom={bottomInset}
             itemOptions={{
               includeFavoriteAction: true,
               includeFavoriteToggle: false,
-              showFavoriteBadge: true,
+              showFavoriteBadge: false,
+              leadingSwipeActions: [],
             }}
             style={{ paddingHorizontal: 16 }}
             onPressTodo={handleOpenTodo}
-            onPressSectionHeader={handleToggleCollapsedCategory}
+            onPressSectionHeader={handlePressManagedSectionHeader}
             onRequestExpandSection={({ sectionId }) => {
-              handleExpandCollapsedCategory(sectionId);
+              handleRequestExpandSection(sectionId);
             }}
             onToggleComplete={handleToggleComplete}
             onTodoAction={handleManagedAction}

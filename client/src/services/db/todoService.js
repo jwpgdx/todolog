@@ -398,6 +398,7 @@ function deserializeTodo(row) {
     customOrder: order.custom,
     categoryOrder: order.category,
     favoriteOrder: order.favorite,
+    isFavorite: order.favorite != null,
     order,
     // JOIN된 카테고리 정보
     category: row.category_name ? {

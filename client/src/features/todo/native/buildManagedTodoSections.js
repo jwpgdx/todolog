@@ -1,4 +1,8 @@
 import { buildManagedTodoItem } from './managedTodoItemAdapter';
+import {
+  compareByTodoScreenTimeMode,
+  hasTodoScheduledTime,
+} from '../list/todoScreenSortMode';
 
 export const TODO_MANAGED_LIST_MODE = {
   TIME: 'time',
@@ -12,27 +16,6 @@ function compareByCreatedAt(a, b) {
 
 function compareById(a, b) {
   return String(a?._id || '').localeCompare(String(b?._id || ''));
-}
-
-function compareByTimeMode(a, b) {
-  const allDayA = a?.isAllDay === true ? 0 : 1;
-  const allDayB = b?.isAllDay === true ? 0 : 1;
-  if (allDayA !== allDayB) {
-    return allDayA - allDayB;
-  }
-
-  const startA = String(a?.startTime || '');
-  const startB = String(b?.startTime || '');
-  if (startA !== startB) {
-    return startA.localeCompare(startB);
-  }
-
-  const createdOrder = compareByCreatedAt(a, b);
-  if (createdOrder !== 0) {
-    return createdOrder;
-  }
-
-  return compareById(a, b);
 }
 
 function compareByCustomOrder(a, b) {
@@ -138,32 +121,82 @@ function buildDefaultTrailingSwipeActions() {
 
 function buildCategoryHeaderItem(category, options = {}) {
   const isSystemCategory = category?.systemKey === 'inbox';
+  const todoCount = Number(options.todoCount ?? 0);
 
   return {
     id: `section-header:${category._id}`,
     kind: 'sectionHeader',
     title: category.name || '',
+    metaText: String(todoCount),
     accentColor: category.color,
     collapsed: options.collapsed === true,
     enabled: true,
     loading: false,
     pinned: isSystemCategory,
     reorderable: options.reorderable === true && !isSystemCategory,
-    menuActions: isSystemCategory
-      ? []
-      : [
-          {
-            id: 'rename',
-            title: '이름 변경',
-          },
-          {
-            id: 'delete',
-            title: '삭제',
-            role: 'destructive',
-          },
-        ],
+    menuActions: [
+      {
+        id: 'openCategory',
+        title: '카테고리로 이동',
+      },
+      ...(isSystemCategory
+        ? []
+        : [
+            {
+              id: 'rename',
+              title: '이름 변경',
+            },
+            {
+              id: 'delete',
+              title: '삭제',
+              role: 'destructive',
+            },
+          ]),
+    ],
     leadingSwipeActions: [],
     trailingSwipeActions: [],
+  };
+}
+
+function buildFavoriteHeaderItem(options = {}) {
+  const todoCount = Number(options.todoCount ?? 0);
+
+  return {
+    id: 'section-header:favorites',
+    kind: 'sectionHeader',
+    title: '즐겨찾기',
+    metaText: String(todoCount),
+    accentColor: '#F59E0B',
+    collapsed: options.collapsed === true,
+    enabled: true,
+    loading: false,
+    pinned: true,
+    reorderable: false,
+    menuActions: [],
+    leadingSwipeActions: [],
+    trailingSwipeActions: [],
+  };
+}
+
+function buildFavoriteDividerSection() {
+  return {
+    id: 'favorites-divider',
+    role: 'divider',
+    reorderMode: 'none',
+    items: [
+      {
+        id: 'section-divider:favorites',
+        kind: 'sectionDivider',
+        title: '',
+        enabled: false,
+        loading: false,
+        pinned: true,
+        reorderable: false,
+        menuActions: [],
+        leadingSwipeActions: [],
+        trailingSwipeActions: [],
+      },
+    ],
   };
 }
 
@@ -184,22 +217,23 @@ function buildTodoItem(todo, options = {}) {
       options.leadingSwipeActions ?? buildDefaultLeadingSwipeActions(todo, options),
     trailingSwipeActions:
       options.trailingSwipeActions ?? buildDefaultTrailingSwipeActions(),
+    dropTargetable: options.dropTargetable,
   });
 }
 
 function buildFavoriteSection(favoriteTodos, options = {}) {
-  if (!favoriteTodos?.length) {
-    return null;
-  }
-
-  const items = [...favoriteTodos]
+  const isCollapsed = options.collapsed === true;
+  const items = [...(favoriteTodos ?? [])]
     .sort(compareByFavoriteOrder)
     .map((todo) =>
-      buildTodoItem(todo, {
-        ...options.favoriteItemOptions,
-        reorderable: options.favoriteReorderable !== false,
-        showFavoriteBadge: false,
-        nextOccurrenceLabel: options.nextOccurrenceLabelByTodoId?.[todo._id],
+      ({
+        ...buildTodoItem(todo, {
+          ...options.favoriteItemOptions,
+          reorderable: options.favoriteReorderable !== false,
+          showFavoriteBadge: false,
+          nextOccurrenceLabel: options.nextOccurrenceLabelByTodoId?.[todo._id],
+        }),
+        hidden: isCollapsed,
       })
     );
 
@@ -208,7 +242,13 @@ function buildFavoriteSection(favoriteTodos, options = {}) {
     title: '즐겨찾기',
     role: 'favorites',
     reorderMode: options.favoriteSectionReorderMode ?? 'withinSection',
-    items,
+    items: [
+      buildFavoriteHeaderItem({
+        collapsed: isCollapsed,
+        todoCount: items.length,
+      }),
+      ...items,
+    ],
   };
 }
 
@@ -219,6 +259,10 @@ export function buildManagedTodoSections({
   collapsedCategoryIds = [],
   favoriteTodos = [],
   includeFavoriteSection = false,
+  favoriteSectionReorderMode,
+  favoriteReorderable,
+  favoriteSectionCollapsed = false,
+  favoriteItemOptions,
   includeEmptyCategorySections = false,
   nextOccurrenceLabelByTodoId = {},
   itemOptions = {},
@@ -227,30 +271,38 @@ export function buildManagedTodoSections({
   const favoriteSection = includeFavoriteSection
     ? buildFavoriteSection(favoriteTodos, {
         favoriteSectionReorderMode:
-          mode === TODO_MANAGED_LIST_MODE.TIME ? 'none' : 'acrossSections',
-        favoriteReorderable: mode !== TODO_MANAGED_LIST_MODE.TIME,
+          favoriteSectionReorderMode ??
+          (mode === TODO_MANAGED_LIST_MODE.TIME ? 'none' : 'acrossSections'),
+        favoriteReorderable:
+          favoriteReorderable ?? mode !== TODO_MANAGED_LIST_MODE.TIME,
+        collapsed: favoriteSectionCollapsed,
+        favoriteItemOptions,
         nextOccurrenceLabelByTodoId,
       })
     : null;
 
   if (favoriteSection) {
     sections.push(favoriteSection);
+    sections.push(buildFavoriteDividerSection());
   }
 
   if (mode === TODO_MANAGED_LIST_MODE.TIME) {
     sections.push({
       id: 'todos',
       role: 'date',
-      reorderMode: 'none',
+      reorderMode: includeFavoriteSection ? 'acrossSections' : 'withinSection',
+      dropOutsideReorderRangeBehavior: 'returnOriginal',
       items: [...todos]
-        .sort(compareByTimeMode)
-        .map((todo) =>
-          buildTodoItem(todo, {
+        .sort(compareByTodoScreenTimeMode)
+        .map((todo) => {
+          const hasScheduledTime = hasTodoScheduledTime(todo);
+          return buildTodoItem(todo, {
             ...itemOptions,
-            reorderable: false,
+            reorderable: true,
+            dropTargetable: !hasScheduledTime,
             showFavoriteBadge: false,
-          })
-        ),
+          });
+        }),
     });
 
     return sections;
@@ -303,6 +355,7 @@ export function buildManagedTodoSections({
         buildCategoryHeaderItem(category, {
           collapsed: isCollapsed,
           reorderable: category?.systemKey !== 'inbox',
+          todoCount: categoryTodos.length,
         }),
         ...[...categoryTodos]
           .sort(compareByCategoryOrder)

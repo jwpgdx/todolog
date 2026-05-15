@@ -13,6 +13,10 @@ export default function NativeTodoManagedList({
   collapsedCategoryIds = [],
   favoriteTodos = [],
   includeFavoriteSection = false,
+  favoriteSectionReorderMode,
+  favoriteReorderable,
+  favoriteSectionCollapsed = false,
+  favoriteItemOptions,
   includeEmptyCategorySections = false,
   nextOccurrenceLabelByTodoId = {},
   itemOptions = {},
@@ -28,8 +32,7 @@ export default function NativeTodoManagedList({
   onReorderCommit,
   onError,
 }) {
-  const iosCategoryGestureMode =
-    mode === TODO_MANAGED_LIST_MODE.TIME ? 'system' : 'custom-lifted';
+  const iosCategoryGestureMode = 'custom-lifted';
   const sections = useMemo(
     () =>
       buildManagedTodoSections({
@@ -39,6 +42,10 @@ export default function NativeTodoManagedList({
         collapsedCategoryIds,
         favoriteTodos,
         includeFavoriteSection,
+        favoriteSectionReorderMode,
+        favoriteReorderable,
+        favoriteSectionCollapsed,
+        favoriteItemOptions,
         includeEmptyCategorySections,
         nextOccurrenceLabelByTodoId,
         itemOptions,
@@ -50,6 +57,10 @@ export default function NativeTodoManagedList({
       collapsedCategoryIds,
       favoriteTodos,
       includeFavoriteSection,
+      favoriteSectionReorderMode,
+      favoriteReorderable,
+      favoriteSectionCollapsed,
+      favoriteItemOptions,
       includeEmptyCategorySections,
       nextOccurrenceLabelByTodoId,
       itemOptions,

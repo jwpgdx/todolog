@@ -485,6 +485,7 @@ function deserializeTodoCandidate(row) {
     customOrder: order.custom,
     categoryOrder: order.category,
     favoriteOrder: order.favorite,
+    isFavorite: order.favorite != null,
     order,
     category: row.category_name
       ? {

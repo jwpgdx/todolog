@@ -19,12 +19,16 @@ import { useCategories } from '../hooks/queries/useCategories';
 import { useTodosByCategory } from '../hooks/queries/useTodosByCategory';
 import { useDeleteTodo } from '../hooks/queries/useDeleteTodo';
 import { useToggleCompletion } from '../hooks/queries/useToggleCompletion';
+import { useReorderTodo } from '../hooks/queries/useReorderTodo';
 import { useTodayDate } from '../hooks/useTodayDate';
 import { useTodoFormStore } from '../store/todoFormStore';
 import { useFloatingTabBarScrollPadding } from '../navigation/useFloatingTabBarInset';
 import { hasRecurrenceRule } from '../utils/recurrenceEngine';
 import NativeManagedList from '../components/ui/native-managed-list/NativeManagedList';
 import { buildManagedTodoItem } from '../features/todo/native/managedTodoItemAdapter';
+import { ORDER_STEP } from '../services/db/todoService';
+
+const DEFAULT_CONTROL_TINT = '#007AFF';
 
 const formatDateLabel = (date) => {
     if (!date) {
@@ -89,7 +93,6 @@ const buildMetaItems = (todo) => {
 
 function CategoryTodoRow({
     todo,
-    categoryColor,
     onDelete,
     onOpen,
     onOpenActions,
@@ -121,8 +124,8 @@ function CategoryTodoRow({
                         onPress={() => onToggleComplete(todo)}
                         style={[
                             styles.checkButton,
-                            { borderColor: categoryColor },
-                            isCompleted && { backgroundColor: categoryColor },
+                            { borderColor: DEFAULT_CONTROL_TINT },
+                            isCompleted && { backgroundColor: DEFAULT_CONTROL_TINT },
                         ]}
                     >
                         {isCompleted ? <Ionicons color="#FFFFFF" name="checkmark" size={16} /> : null}
@@ -190,12 +193,12 @@ export default function CategoryTodosScreen() {
         () => categories?.find((cat) => cat?._id === categoryId) || null,
         [categories, categoryId]
     );
-    const categoryColor = category?.color || '#3B82F6';
     const bottomInset = useFloatingTabBarScrollPadding(16);
 
     const { data: todos = [], isLoading } = useTodosByCategory(categoryId, todayDate);
     const { mutate: toggleCompletion } = useToggleCompletion();
     const { mutate: deleteTodo } = useDeleteTodo();
+    const reorderTodoMutation = useReorderTodo(todayDate);
 
     const sortedTodos = useMemo(() => {
         return [...todos].sort((a, b) => {
@@ -215,8 +218,6 @@ export default function CategoryTodosScreen() {
     }, [todos]);
 
     const headerTitle = category?.name || '카테고리';
-    const headerColor = category?.color || '#3B82F6';
-
     const handleOpenTodo = useCallback((todo, target = null) => {
         openDetail(todo, target);
     }, [openDetail]);
@@ -279,19 +280,69 @@ export default function CategoryTodosScreen() {
 
     const renderItem = useCallback(({ item }) => (
         <CategoryTodoRow
-            categoryColor={categoryColor}
             onDelete={handleDelete}
             onOpen={handleOpenTodo}
             onOpenActions={handleOpenActions}
             onToggleComplete={handleToggleComplete}
             todo={item}
         />
-    ), [categoryColor, handleDelete, handleOpenActions, handleOpenTodo, handleToggleComplete]);
+    ), [handleDelete, handleOpenActions, handleOpenTodo, handleToggleComplete]);
 
     const todoById = useMemo(
         () => new Map(sortedTodos.map((todo) => [todo._id, todo])),
         [sortedTodos]
     );
+
+    const handleManagedReorderCommit = useCallback(async (event) => {
+        const sectionId = categoryId || 'category-todos';
+        const section = event?.sections?.find((candidate) => candidate.sectionId === sectionId);
+        if (!section) {
+            return;
+        }
+
+        const orderedTodoIds = (section.orderedItemIds || []).filter((itemId) => todoById.has(itemId));
+        const currentTodoIds = sortedTodos.map((todo) => todo._id);
+        const hasSameOrder =
+            orderedTodoIds.length === currentTodoIds.length &&
+            orderedTodoIds.every((todoId, index) => todoId === currentTodoIds[index]);
+
+        if (hasSameOrder) {
+            return;
+        }
+
+        const updates = orderedTodoIds
+            .map((todoId, index) => {
+                const todo = todoById.get(todoId);
+                if (!todo) {
+                    return null;
+                }
+
+                const nextOrder = (index + 1) * ORDER_STEP;
+                const currentOrder = Number(todo.order?.category ?? 0);
+                if (currentOrder === nextOrder && todo.categoryId === categoryId) {
+                    return null;
+                }
+
+                return {
+                    id: todoId,
+                    categoryId,
+                    order: {
+                        category: nextOrder,
+                    },
+                };
+            })
+            .filter(Boolean);
+
+        if (updates.length === 0) {
+            return;
+        }
+
+        try {
+            await reorderTodoMutation.mutateAsync({ updates });
+        } catch (error) {
+            console.error('[CategoryTodosScreen] reorder commit failed:', error?.message || error);
+        }
+    }, [categoryId, reorderTodoMutation, sortedTodos, todoById]);
 
     const managedSections = useMemo(() => {
         if (sortedTodos.length === 0) {
@@ -302,11 +353,10 @@ export default function CategoryTodosScreen() {
             {
                 id: categoryId || 'category-todos',
                 role: 'normal',
-                reorderMode: 'none',
+                reorderMode: 'withinSection',
                 items: sortedTodos.map((todo) =>
                     buildManagedTodoItem(todo, {
-                        accentColor: categoryColor,
-                        reorderable: false,
+                        reorderable: true,
                         showFavoriteBadge: true,
                         includeCompleteToggle: true,
                         includeFavoriteAction: false,
@@ -325,7 +375,7 @@ export default function CategoryTodosScreen() {
                 ),
             },
         ];
-    }, [categoryColor, categoryId, sortedTodos]);
+    }, [categoryId, sortedTodos]);
 
     if (!categoryId) {
         return (
@@ -338,7 +388,7 @@ export default function CategoryTodosScreen() {
     if (isLoading || (isCategoriesLoading && !category)) {
         return (
             <SafeAreaView style={styles.centeredScreen}>
-                <ActivityIndicator size="large" color={categoryColor} />
+                <ActivityIndicator size="large" />
             </SafeAreaView>
         );
     }
@@ -348,10 +398,6 @@ export default function CategoryTodosScreen() {
             <Stack.Screen
                 options={{
                     title: headerTitle,
-                    headerStyle: {
-                        backgroundColor: headerColor,
-                    },
-                    headerTintColor: '#fff',
                 }}
             />
             {Platform.OS === 'ios' ? (
@@ -363,8 +409,9 @@ export default function CategoryTodosScreen() {
                 ) : (
                     <View
                         style={{
+                            flex: 1,
                             padding: 16,
-                            paddingBottom: bottomInset,
+                            paddingBottom: 0,
                         }}
                     >
                         <View style={styles.listHeader}>
@@ -377,6 +424,7 @@ export default function CategoryTodosScreen() {
                             listId={`category-todos:${categoryId || 'unknown'}`}
                             variant="todo"
                             sections={managedSections}
+                            contentInsetBottom={bottomInset}
                             onPressItem={({ itemId }) => {
                                 const todo = todoById.get(itemId);
                                 if (todo) {
@@ -414,6 +462,7 @@ export default function CategoryTodosScreen() {
                                         break;
                                 }
                             }}
+                            onReorderCommit={handleManagedReorderCommit}
                             onError={(event) => {
                                 console.warn('[CategoryTodosScreen:NativeManagedList]', event?.message || event);
                             }}

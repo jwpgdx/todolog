@@ -37,6 +37,7 @@ function buildBaseItem(todo) {
       category: todo.categoryOrder ?? todo.order?.category ?? 0,
       favorite: todo.favoriteOrder ?? todo.order?.favorite ?? null,
     },
+    isFavorite: (todo.favoriteOrder ?? todo.order?.favorite ?? null) != null,
     isAllDay: Boolean(todo.isAllDay),
     startTime: todo.startTime || null,
     endTime: todo.endTime || null,

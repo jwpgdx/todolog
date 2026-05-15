@@ -31,6 +31,15 @@ extension NativeListInteractionsView {
       }
 
       let finalSnapshot = transaction.finalSnapshot
+      if self.shouldRejectReorder(finalSnapshot: finalSnapshot) {
+        self.dismissCustomCategoryMenuOverlay(animated: false)
+        self.resetCustomCategoryGestureState()
+        DispatchQueue.main.async { [weak self] in
+          self?.applySnapshot(animatingDifferences: true)
+        }
+        return
+      }
+
       self.rebuildSections(from: finalSnapshot)
       let expandedSectionIdsToPersist = Array(self.temporarilyExpandedSectionIds)
       self.dismissCustomCategoryMenuOverlay(animated: false)
@@ -71,6 +80,39 @@ extension NativeListInteractionsView {
     }
 
     dataSource.apply(snapshot, animatingDifferences: animatingDifferences, completion: completion)
+  }
+
+  func shouldRejectReorder(finalSnapshot: NSDiffableDataSourceSnapshot<String, String>) -> Bool {
+    for section in sections {
+      guard section.dropOutsideReorderRangeBehavior == "returnOriginal" else {
+        continue
+      }
+
+      let originalVisibleItems = visibleItems(in: section)
+      let originalIndexByItemId = Dictionary(
+        uniqueKeysWithValues: originalVisibleItems.enumerated().map { index, item in
+          (item.id, index)
+        }
+      )
+      let finalItemIds = finalSnapshot.itemIdentifiers(inSection: section.id)
+      let finalIndexByItemId = Dictionary(
+        uniqueKeysWithValues: finalItemIds.enumerated().map { index, itemId in
+          (itemId, index)
+        }
+      )
+
+      for item in originalVisibleItems where item.kind == "todo" && item.dropTargetable == false {
+        guard
+          let originalIndex = originalIndexByItemId[item.id],
+          let finalIndex = finalIndexByItemId[item.id],
+          originalIndex == finalIndex
+        else {
+          return true
+        }
+      }
+    }
+
+    return false
   }
 
   func item(at indexPath: IndexPath) -> NativeItem? {
@@ -145,6 +187,7 @@ extension NativeListInteractionsView {
         title: section.title,
         footer: section.footer,
         reorderMode: section.reorderMode,
+        dropOutsideReorderRangeBehavior: section.dropOutsideReorderRangeBehavior,
         items: {
           let visibleIds = snapshot.itemIdentifiers(inSection: sectionId)
           let visibleIdSet = Set(visibleIds)

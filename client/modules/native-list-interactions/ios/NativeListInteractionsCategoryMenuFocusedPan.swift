@@ -13,6 +13,7 @@ extension NativeListInteractionsView {
 
     switch recognizer.state {
     case .began:
+      focusedCategoryMenuPanOrigin = locationInOverlay
       return
 
     case .changed:
@@ -45,15 +46,20 @@ extension NativeListInteractionsView {
 
       let translation = recognizer.translation(in: self)
       let distance = hypot(translation.x, translation.y)
-      if findItem(by: session.itemId)?.kind == "todo" {
-        NSLog(
-          "[NativeListInteractionsView] focused pan changed item=%@ distance=%.1f threshold=%.1f",
-          session.itemId,
-          distance,
-          focusedCategoryMenuReorderThreshold
-        )
-      }
       guard distance >= focusedCategoryMenuReorderThreshold else {
+        return
+      }
+
+      if
+        let item = findItem(by: session.itemId),
+        shouldUseCustomSectionHeaderDragEngine(for: item, at: session.sourceIndexPath)
+      {
+        beginCustomSectionHeaderDrag(
+          for: item,
+          at: session.sourceIndexPath,
+          locationInCollection: locationInCollection,
+          locationInOverlay: locationInOverlay
+        )
         return
       }
 
@@ -72,26 +78,23 @@ extension NativeListInteractionsView {
 
       restoreCustomCategoryMenuSourceCellAppearance()
       let didBegin = collectionView.beginInteractiveMovementForItem(at: session.sourceIndexPath)
-      if findItem(by: session.itemId)?.kind == "todo" {
-        NSLog(
-          "[NativeListInteractionsView] focused pan beginInteractiveMovement item=%@ didBegin=%@ section=%ld item=%ld",
-          session.itemId,
-          didBegin ? "true" : "false",
-          session.sourceIndexPath.section,
-          session.sourceIndexPath.item
-        )
-      }
       guard didBegin else {
         customCategoryMenuSourceCell?.alpha = 0
         return
       }
 
       customInteractiveReorderActive = true
+      setSystemInteractiveReorderSourceCellDimmed(true)
+      DispatchQueue.main.async { [weak self] in
+        self?.setSystemInteractiveReorderSourceCellDimmed(true)
+      }
       dismissCustomCategoryMenuOverlay(animated: false)
       lastInteractiveMovementLocation = locationInCollection
       collectionView.updateInteractiveMovementTargetPosition(locationInCollection)
 
     case .ended:
+      focusedCategoryMenuPanOrigin = nil
+
       if customSectionHeaderDragSession != nil {
         completeCustomSectionHeaderDrag(cancelled: false)
         return
@@ -104,7 +107,9 @@ extension NativeListInteractionsView {
 
       if customInteractiveReorderActive {
         collectionView.endInteractiveMovement()
+        setSystemInteractiveReorderSourceCellDimmed(false)
         customInteractiveReorderActive = false
+        reconfigureVisibleCellsForCurrentMode()
         return
       }
 
@@ -116,6 +121,8 @@ extension NativeListInteractionsView {
       }
 
     case .cancelled, .failed:
+      focusedCategoryMenuPanOrigin = nil
+
       if customSectionHeaderDragSession != nil {
         completeCustomSectionHeaderDrag(cancelled: true)
         return
@@ -128,7 +135,9 @@ extension NativeListInteractionsView {
 
       if customInteractiveReorderActive {
         collectionView.cancelInteractiveMovement()
+        setSystemInteractiveReorderSourceCellDimmed(false)
         customInteractiveReorderActive = false
+        reconfigureVisibleCellsForCurrentMode()
       }
       discardTemporarilyExpandedSectionsIfNeeded()
 

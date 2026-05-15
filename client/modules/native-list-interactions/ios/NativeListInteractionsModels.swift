@@ -5,6 +5,7 @@ struct NativeSection: Decodable {
   let title: String?
   let footer: String?
   let reorderMode: String?
+  let dropOutsideReorderRangeBehavior: String?
   let items: [NativeItem]
 }
 
@@ -25,6 +26,7 @@ struct NativeItem: Decodable {
   let collapsed: Bool?
   let hidden: Bool?
   let reorderable: Bool?
+  let dropTargetable: Bool?
   let deletable: Bool?
   let supportsMenu: Bool?
   let toggleControlId: String?
@@ -32,7 +34,7 @@ struct NativeItem: Decodable {
   let completed: Bool?
 }
 
-struct CustomCategoryMenuActionDescriptor {
+struct NativeListMenuActionDescriptor {
   let title: String
   let actionId: String?
   let destructive: Bool
@@ -93,6 +95,7 @@ struct CustomTodoSectionLayout {
   let sectionId: String
   let sectionIndex: Int
   let collapsed: Bool
+  let dropFrame: CGRect
   let headerFrame: CGRect?
   let todoEntries: [CustomTodoVisibleTodoEntry]
 }
@@ -118,4 +121,24 @@ struct CustomSectionHeaderLayout {
 struct CategoryPreviewCornerStyle {
   let radius: CGFloat
   let maskedCorners: CACornerMask
+}
+
+enum NativeListPreviewStylePhase {
+  case normal
+  case menuPreviewInitial
+  case menuPreviewLifted
+  case dragPreview
+}
+
+struct NativeListPreviewShadowStyle {
+  let opacity: Float
+  let radius: CGFloat
+  let offset: CGSize
+}
+
+struct NativeListPreviewStyle {
+  let cornerStyle: CategoryPreviewCornerStyle
+  let shadow: NativeListPreviewShadowStyle
+  let scale: CGFloat
+  let translationY: CGFloat
 }

@@ -17,16 +17,8 @@ extension NativeListInteractionsView {
       return
     }
 
-    let menuDescriptors = makeCustomCategoryMenuDescriptors(for: item)
+    let menuDescriptors = makeNativeMenuActionDescriptors(for: item)
     let cellFrame = cell.convert(cell.bounds, to: overlayHost)
-    if item.kind == "todo" {
-      NSLog(
-        "[NativeListInteractionsView] todo long-press began item=%@ reorderable=%@",
-        item.id,
-        item.reorderable == true ? "true" : "false"
-      )
-    }
-
     customCategoryGestureSession = CustomCategoryGestureSession(
       sourceIndexPath: indexPath,
       itemId: item.id,
@@ -87,15 +79,6 @@ extension NativeListInteractionsView {
     }
 
     let shouldBegin = shouldBeginCustomCategoryReorder(for: session, at: overlayLocation)
-    if session.itemKind == "todo" {
-      NSLog(
-        "[NativeListInteractionsView] todo long-press changed item=%@ shouldBegin=%@ point=(%.1f, %.1f)",
-        session.itemId,
-        shouldBegin ? "true" : "false",
-        location.x,
-        location.y
-      )
-    }
     guard shouldBegin else {
       return
     }
@@ -128,17 +111,12 @@ extension NativeListInteractionsView {
 
     dismissCustomCategoryMenuOverlay(animated: !currentCustomCategoryMenuUsesLiftedPreview())
     let didBegin = collectionView.beginInteractiveMovementForItem(at: session.sourceIndexPath)
-    if session.itemKind == "todo" {
-      NSLog(
-        "[NativeListInteractionsView] todo beginInteractiveMovement item=%@ didBegin=%@ section=%ld item=%ld",
-        session.itemId,
-        didBegin ? "true" : "false",
-        session.sourceIndexPath.section,
-        session.sourceIndexPath.item
-      )
-    }
     if didBegin {
       customInteractiveReorderActive = true
+      setSystemInteractiveReorderSourceCellDimmed(true)
+      DispatchQueue.main.async { [weak self] in
+        self?.setSystemInteractiveReorderSourceCellDimmed(true)
+      }
       lastInteractiveMovementLocation = location
       collectionView.updateInteractiveMovementTargetPosition(location)
     }
@@ -153,16 +131,19 @@ extension NativeListInteractionsView {
       dismissCustomCategoryMenuOverlay(animated: false)
     } else if customInteractiveReorderActive {
       collectionView.endInteractiveMovement()
+      setSystemInteractiveReorderSourceCellDimmed(false)
       dismissCustomCategoryMenuOverlay(animated: false)
     } else if customCategoryMenuInteractionStyle == .pressAndSlide {
       performCustomCategoryMenuSelectionIfNeeded()
       dismissCustomCategoryMenuOverlay(animated: false)
-      discardTemporarilyCollapsedSectionsIfNeeded()
     } else {
-      discardTemporarilyCollapsedSectionsIfNeeded()
+      if customCategoryMenuCardView == nil {
+        discardTemporarilyCollapsedSectionsIfNeeded()
+      }
     }
     customCategoryGestureSession = nil
     customInteractiveReorderActive = false
+    reconfigureVisibleCellsForCurrentMode()
   }
 
   func handleCategoryCustomLongPressCancelled() {
@@ -172,6 +153,7 @@ extension NativeListInteractionsView {
       completeCustomTodoDrag(cancelled: true)
     } else if customInteractiveReorderActive {
       collectionView.cancelInteractiveMovement()
+      setSystemInteractiveReorderSourceCellDimmed(false)
     }
     dismissCustomCategoryMenuOverlay(animated: true)
     discardTemporarilyExpandedSectionsIfNeeded()

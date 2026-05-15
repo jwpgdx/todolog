@@ -28,13 +28,16 @@ final class NativeListInteractionsView: ExpoView, UICollectionViewDelegate, UIGe
   var detachedCollectionViewContextMenuInteraction: UIContextMenuInteraction?
   var customCategoryMenuSourceIndexPath: IndexPath?
   var customCategoryMenuItemId: String?
-  var customCategoryMenuDescriptors: [CustomCategoryMenuActionDescriptor] = []
+  var customCategoryMenuDescriptors: [NativeListMenuActionDescriptor] = []
   var customCategoryMenuButtons: [UIButton] = []
   var customCategoryMenuInteractionStyle: CustomCategoryMenuInteractionStyle = .tapButtons
   var customCategoryMenuHighlightedIndex: Int?
   var focusedCategoryMenuSession: FocusedCategoryMenuSession?
+  var focusedCategoryMenuPanOrigin: CGPoint?
   let focusedCategoryMenuReorderThreshold: CGFloat = 6
   let collapsedSectionAutoExpandDelay: TimeInterval = 0.5
+  let collapsedSectionAutoExpandHitSlop: CGFloat = 26
+  let customDragSourceCellDimmedAlpha: CGFloat = 0.32
   var hoveredCollapsedSectionId: String?
   var collapsedSectionAutoExpandWorkItem: DispatchWorkItem?
   var temporarilyExpandedSectionIds = Set<String>()
@@ -183,7 +186,7 @@ final class NativeListInteractionsView: ExpoView, UICollectionViewDelegate, UIGe
     }
   }
 
-  private func currentInteractiveReorderItemId() -> String? {
+  func currentInteractiveReorderItemId() -> String? {
     if let itemId = customSectionHeaderDragSession?.itemId {
       return itemId
     }
@@ -197,6 +200,28 @@ final class NativeListInteractionsView: ExpoView, UICollectionViewDelegate, UIGe
     }
 
     return focusedCategoryMenuSession?.itemId
+  }
+
+  func setSystemInteractiveReorderSourceCellDimmed(_ dimmed: Bool) {
+    let alpha = dimmed ? customDragSourceCellDimmedAlpha : 1
+    let sourceItemId = customCategoryGestureSession?.itemId ?? focusedCategoryMenuSession?.itemId
+    let sourceIndexPath = customCategoryGestureSession?.sourceIndexPath ?? focusedCategoryMenuSession?.sourceIndexPath
+
+    if
+      let sourceItemId,
+      let indexPath = dataSource.indexPath(for: sourceItemId),
+      let cell = collectionView.cellForItem(at: indexPath)
+    {
+      cell.alpha = alpha
+      return
+    }
+
+    if
+      let sourceIndexPath,
+      let cell = collectionView.cellForItem(at: sourceIndexPath)
+    {
+      cell.alpha = alpha
+    }
   }
 
   func collectionView(_ collectionView: UICollectionView, didSelectItemAt indexPath: IndexPath) {
@@ -230,6 +255,10 @@ final class NativeListInteractionsView: ExpoView, UICollectionViewDelegate, UIGe
       return true
     }
 
+    if item.kind == "sectionDivider" {
+      return false
+    }
+
     if item.kind == "category" && shouldDisableCustomCategoryHighlightAppearance() {
       return false
     }
@@ -248,8 +277,8 @@ final class NativeListInteractionsView: ExpoView, UICollectionViewDelegate, UIGe
       sections.indices.contains(sectionIndex),
       let sourceItem = item(at: originalIndexPath),
       sourceItem.reorderable == true,
-      let validRange = reorderableIndexRange(in: sectionIndex, kind: sourceItem.kind),
-      validRange.contains(originalIndexPath.item)
+      let sourceRange = reorderableIndexRange(in: sectionIndex, kind: sourceItem.kind),
+      sourceRange.contains(originalIndexPath.item)
     else {
       return originalIndexPath
     }
@@ -259,10 +288,18 @@ final class NativeListInteractionsView: ExpoView, UICollectionViewDelegate, UIGe
     let targetSection = allowsCrossSection && sections.indices.contains(proposedIndexPath.section)
       ? proposedIndexPath.section
       : originalIndexPath.section
-    let targetRange = reorderableIndexRange(in: targetSection, kind: sourceItem.kind)
+    let targetRange = dropTargetableIndexRange(in: targetSection, kind: sourceItem.kind)
+    if
+      let targetRange,
+      !targetRange.contains(proposedIndexPath.item),
+      sections[targetSection].dropOutsideReorderRangeBehavior == "returnOriginal"
+    {
+      return originalIndexPath
+    }
+
     let clampedItem = min(
-      max(proposedIndexPath.item, targetRange?.lowerBound ?? validRange.lowerBound),
-      targetRange?.upperBound ?? validRange.upperBound
+      max(proposedIndexPath.item, targetRange?.lowerBound ?? sourceRange.lowerBound),
+      targetRange?.upperBound ?? sourceRange.upperBound
     )
     return IndexPath(item: clampedItem, section: targetSection)
   }
@@ -291,9 +328,7 @@ final class NativeListInteractionsView: ExpoView, UICollectionViewDelegate, UIGe
       return nil
     }
 
-    let hasMenuActions = item.supportsMenu == true && !(item.menuActions ?? []).isEmpty
-    let hasDeleteAction = item.deletable == true
-    guard hasMenuActions || hasDeleteAction else {
+    guard hasNativeMenuActions(for: item) else {
       return nil
     }
 
@@ -353,8 +388,36 @@ final class NativeListInteractionsView: ExpoView, UICollectionViewDelegate, UIGe
     return firstIndex...lastIndex
   }
 
+  private func dropTargetableIndexRange(in sectionIndex: Int, kind: String) -> ClosedRange<Int>? {
+    guard sections.indices.contains(sectionIndex) else {
+      return nil
+    }
+
+    let visibleSectionItems = visibleItems(in: sections[sectionIndex])
+    let targetableIndices = visibleSectionItems.enumerated().compactMap { index, item in
+      item.kind == kind && item.reorderable == true && item.dropTargetable != false ? index : nil
+    }
+
+    if targetableIndices.isEmpty, kind == "todo" {
+      let headerIndex = visibleSectionItems.firstIndex(where: { $0.kind == "sectionHeader" }) ?? -1
+      let insertionIndex = max(0, headerIndex + 1)
+      return insertionIndex...insertionIndex
+    }
+
+    guard
+      let firstIndex = targetableIndices.first,
+      let lastIndex = targetableIndices.last
+    else {
+      return nil
+    }
+
+    return firstIndex...lastIndex
+  }
+
   func label(for action: String) -> String {
     switch action {
+    case "openCategory":
+      return "카테고리로 이동"
     case "open":
       return "열기"
     case "view":

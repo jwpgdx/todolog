@@ -16,12 +16,13 @@ import type {
 
 type LegacyNativeListItem = {
   id: string;
-  kind: 'category' | 'todo' | 'sectionHeader';
+  kind: 'category' | 'todo' | 'sectionHeader' | 'sectionDivider';
   title: string;
   subtitle?: string;
   metaText?: string;
   collapsed?: boolean;
   hidden?: boolean;
+  dropTargetable?: boolean;
   accentColor?: string;
   reorderable: boolean;
   deletable: boolean;
@@ -38,6 +39,7 @@ type LegacyNativeListSection = {
   title?: string;
   footer?: string;
   reorderMode?: 'none' | 'withinSection' | 'acrossSections';
+  dropOutsideReorderRangeBehavior?: 'returnOriginal';
   items: LegacyNativeListItem[];
 };
 
@@ -46,6 +48,7 @@ const TODO_ROW_HEIGHT = Platform.OS === 'ios' ? 64 : 68;
 const HEADER_HEIGHT = Platform.OS === 'ios' ? 30 : 24;
 const FOOTER_HEIGHT = Platform.OS === 'ios' ? 34 : 28;
 const SECTION_GAP = Platform.OS === 'ios' ? 18 : 16;
+const SECTION_DIVIDER_HEIGHT = Platform.OS === 'ios' ? 16 : 14;
 const BASE_LIST_PADDING = 24;
 
 function getSectionReorderMode(section: ManagedListSection) {
@@ -76,9 +79,17 @@ export function estimateManagedListHeight(
 
   return sections.reduce((total, section) => {
     const visibleItems = section.items.filter((item) => item.hidden !== true);
+    const itemsHeight = visibleItems.reduce((itemsTotal, item) => {
+      if (item.kind === 'sectionDivider') {
+        return itemsTotal + SECTION_DIVIDER_HEIGHT;
+      }
+
+      return itemsTotal + rowHeight;
+    }, 0);
+
     return (
       total +
-      visibleItems.length * rowHeight +
+      itemsHeight +
       (section.title ? HEADER_HEIGHT : 0) +
       (section.footer ? FOOTER_HEIGHT : 0) +
       SECTION_GAP
@@ -115,7 +126,7 @@ export function validateManagedListSections(
       }
 
       if (variant === 'todo' && item.kind !== 'todo') {
-        if (item.kind === 'sectionHeader') {
+        if (item.kind === 'sectionHeader' || item.kind === 'sectionDivider') {
           return;
         }
 
@@ -234,6 +245,7 @@ export function mapManagedSectionsToLegacyNativeSections(
     title: section.title,
     footer: section.footer,
     reorderMode: getSectionReorderMode(section),
+    dropOutsideReorderRangeBehavior: section.dropOutsideReorderRangeBehavior,
     items: section.items.map((item) => {
       const toggleControl = resolveNativeToggleControl(item);
 
@@ -241,10 +253,12 @@ export function mapManagedSectionsToLegacyNativeSections(
         id: item.id,
         kind: item.kind,
         title: item.title,
+        disabled: item.enabled === false || item.loading === true,
         subtitle: item.subtitle ?? formatSubLabels(item),
         metaText: item.metaText,
         collapsed: item.collapsed,
         hidden: item.hidden,
+        dropTargetable: item.dropTargetable,
         accentColor: item.accentColor,
         reorderable:
           (getSectionReorderMode(section) === 'withinSection' ||

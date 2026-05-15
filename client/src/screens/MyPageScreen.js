@@ -105,6 +105,10 @@ export default function MyPageScreen() {
             onPress={() => router.push('/(app)/(tabs)/my-page/all-todos')}
           />
           <MenuLink
+            title="즐겨찾기"
+            onPress={() => router.push('/(app)/(tabs)/my-page/favorites')}
+          />
+          <MenuLink
             title="구글 캘린더 연동"
             onPress={() => router.push('/(app)/(tabs)/my-page/settings/google-calendar')}
             isLast

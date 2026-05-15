@@ -14,6 +14,14 @@ export function useManagedCategoryHeaderActions({ categories = [] } = {}) {
       return;
     }
 
+    if (event?.actionId === 'openCategory') {
+      router.push({
+        pathname: '/(app)/category/[categoryId]',
+        params: { categoryId: category._id },
+      });
+      return;
+    }
+
     if (category.systemKey === 'inbox') {
       Toast.show({ type: 'info', text1: 'Inbox 카테고리는 변경할 수 없습니다.' });
       return;

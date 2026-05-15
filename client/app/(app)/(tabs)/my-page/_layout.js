@@ -83,6 +83,13 @@ export default function MyPageLayout() {
           headerLargeTitle: isIOS,
         }}
       />
+      <Stack.Screen
+        name="favorites"
+        options={{
+          title: '즐겨찾기',
+          headerLargeTitle: isIOS,
+        }}
+      />
       <Stack.Screen name="debug" options={{ title: '디버그' }} />
     </Stack>
   );

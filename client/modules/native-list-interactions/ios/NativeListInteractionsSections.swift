@@ -74,6 +74,12 @@ extension NativeListInteractionsView {
     section.items.contains(where: { $0.kind == "sectionHeader" })
   }
 
+  func isCustomTodoDragTargetSection(_ section: NativeSection) -> Bool {
+    section.id == "favorites" ||
+      isTodoCategoryModeSection(section) ||
+      section.reorderMode == "acrossSections"
+  }
+
   func shouldUseCustomTodoCategoryDragEngine(for item: NativeItem, at indexPath: IndexPath) -> Bool {
     guard
       item.kind == "todo",
@@ -84,7 +90,12 @@ extension NativeListInteractionsView {
       return false
     }
 
-    return isTodoCategoryModeSection(sections[indexPath.section])
+    let section = sections[indexPath.section]
+    let isTopFavoritesSection = section.id == "favorites" && sections.count > 1
+
+    return isTopFavoritesSection ||
+      isTodoCategoryModeSection(section) ||
+      section.reorderMode == "acrossSections"
   }
 
   func shouldUseCustomSectionHeaderDragEngine(for item: NativeItem, at indexPath: IndexPath) -> Bool {
@@ -124,6 +135,7 @@ extension NativeListInteractionsView {
         collapsed: item.collapsed,
         hidden: shouldHideTodos,
         reorderable: item.reorderable,
+        dropTargetable: item.dropTargetable,
         deletable: item.deletable,
         supportsMenu: item.supportsMenu,
         toggleControlId: item.toggleControlId,
@@ -137,6 +149,7 @@ extension NativeListInteractionsView {
       title: section.title,
       footer: section.footer,
       reorderMode: section.reorderMode,
+      dropOutsideReorderRangeBehavior: section.dropOutsideReorderRangeBehavior,
       items: ([headerItem].compactMap { $0 }) + rebuiltTodoItems + nonTodoTrailingItems
     )
   }

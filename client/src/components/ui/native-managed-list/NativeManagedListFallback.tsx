@@ -55,100 +55,116 @@ export default function NativeManagedListFallback({
           >
             {section.items
               .filter((item) => item.hidden !== true)
-              .map((item, index, visibleItems) => (
-              <Pressable
-                key={`${section.id}:${item.id}`}
-                disabled={item.enabled === false || item.loading === true}
-                onPress={() => {
-                  if (item.enabled === false || item.loading === true) {
-                    return;
-                  }
-
-                  onPressItem?.({
-                    listId: undefined,
-                    sectionId: section.id,
-                    itemId: item.id,
-                    itemKind: item.kind,
-                  });
-                }}
-                style={{
-                  paddingHorizontal: item.kind === 'sectionHeader' ? 12 : 16,
-                  paddingVertical: item.kind === 'sectionHeader' ? 10 : 14,
-                  borderBottomWidth: index === visibleItems.length - 1 ? 0 : 1,
-                  borderBottomColor: '#E5E7EB',
-                  opacity:
-                    item.kind === 'sectionHeader'
-                      ? 1
-                      : item.enabled === false
-                        ? 0.45
-                        : 1,
-                  backgroundColor:
-                    item.kind === 'sectionHeader' ? '#F9FAFB' : '#FFFFFF',
-                }}
-              >
-                <View
-                  style={{
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    gap: 12,
-                  }}
-                >
-                  <View style={{ flex: 1, gap: 4 }}>
-                    <Text
+              .map((item, index, visibleItems) => {
+                if (item.kind === 'sectionDivider') {
+                  return (
+                    <View
+                      key={`${section.id}:${item.id}`}
                       style={{
-                        fontSize: item.kind === 'sectionHeader' ? 12 : 16,
-                        fontWeight: item.kind === 'sectionHeader' ? '700' : '700',
-                        color: item.kind === 'sectionHeader' ? '#6B7280' : '#111827',
-                        textTransform:
-                          item.kind === 'sectionHeader' ? 'uppercase' : 'none',
+                        height: 14,
+                        backgroundColor: '#EEF0F3',
+                        borderBottomWidth: index === visibleItems.length - 1 ? 0 : 1,
+                        borderBottomColor: '#E5E7EB',
+                      }}
+                    />
+                  );
+                }
+
+                return (
+                  <Pressable
+                    key={`${section.id}:${item.id}`}
+                    disabled={item.enabled === false || item.loading === true}
+                    onPress={() => {
+                      if (item.enabled === false || item.loading === true) {
+                        return;
+                      }
+
+                      onPressItem?.({
+                        listId: undefined,
+                        sectionId: section.id,
+                        itemId: item.id,
+                        itemKind: item.kind,
+                      });
+                    }}
+                    style={{
+                      paddingHorizontal: item.kind === 'sectionHeader' ? 12 : 16,
+                      paddingVertical: item.kind === 'sectionHeader' ? 10 : 14,
+                      borderBottomWidth: index === visibleItems.length - 1 ? 0 : 1,
+                      borderBottomColor: '#E5E7EB',
+                      opacity:
+                        item.kind === 'sectionHeader'
+                          ? 1
+                          : item.enabled === false
+                            ? 0.45
+                            : 1,
+                      backgroundColor:
+                        item.kind === 'sectionHeader' ? '#F9FAFB' : '#FFFFFF',
+                    }}
+                  >
+                    <View
+                      style={{
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        gap: 12,
                       }}
                     >
-                      {item.title}
-                    </Text>
-                    {item.kind === 'sectionHeader' ? null : item.subLabels?.length ? (
-                      <View style={{ gap: 2 }}>
-                        {item.subLabels.map((subLabel) => (
+                      <View style={{ flex: 1, gap: 4 }}>
+                        <Text
+                          style={{
+                            fontSize: item.kind === 'sectionHeader' ? 12 : 16,
+                            fontWeight: item.kind === 'sectionHeader' ? '700' : '700',
+                            color: item.kind === 'sectionHeader' ? '#6B7280' : '#111827',
+                            textTransform:
+                              item.kind === 'sectionHeader' ? 'uppercase' : 'none',
+                          }}
+                        >
+                          {item.title}
+                        </Text>
+                        {item.kind === 'sectionHeader' ? null : item.subLabels?.length ? (
+                          <View style={{ gap: 2 }}>
+                            {item.subLabels.map((subLabel) => (
+                              <Text
+                                key={subLabel.id}
+                                style={{
+                                  fontSize: 12,
+                                  color: getSubLabelColor(subLabel.tone),
+                                }}
+                              >
+                                {subLabel.icon ? `${subLabel.icon} ` : ''}
+                                {subLabel.text}
+                              </Text>
+                            ))}
+                          </View>
+                        ) : item.subtitle || item.metaText ? (
                           <Text
-                            key={subLabel.id}
                             style={{
                               fontSize: 12,
-                              color: getSubLabelColor(subLabel.tone),
+                              color: '#6B7280',
                             }}
                           >
-                            {subLabel.icon ? `${subLabel.icon} ` : ''}
-                            {subLabel.text}
+                            {item.subtitle || item.metaText}
                           </Text>
-                        ))}
+                        ) : null}
                       </View>
-                    ) : item.subtitle || item.metaText ? (
+
                       <Text
                         style={{
                           fontSize: 12,
-                          color: '#6B7280',
+                          fontWeight: '700',
+                          color: '#9CA3AF',
                         }}
                       >
-                        {item.subtitle || item.metaText}
+                        {item.kind === 'sectionHeader'
+                          ? item.collapsed
+                            ? '▾'
+                            : '▴'
+                          : variant}
                       </Text>
-                    ) : null}
-                  </View>
-
-                  <Text
-                    style={{
-                      fontSize: 12,
-                      fontWeight: '700',
-                      color: '#9CA3AF',
-                    }}
-                  >
-                    {item.kind === 'sectionHeader'
-                      ? item.collapsed
-                        ? '▾'
-                        : '▴'
-                      : variant}
-                  </Text>
-                </View>
-              </Pressable>
-            ))}
+                    </View>
+                  </Pressable>
+                );
+              })}
           </View>
 
           {section.footer ? (

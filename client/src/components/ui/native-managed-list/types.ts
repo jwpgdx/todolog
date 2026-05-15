@@ -4,14 +4,21 @@ export type ManagedListSectionRole =
   | 'normal'
   | 'favorites'
   | 'category'
-  | 'date';
+  | 'date'
+  | 'divider';
 
 export type ManagedListReorderMode =
   | 'none'
   | 'withinSection'
   | 'acrossSections';
 
-export type ManagedListItemKind = 'category' | 'todo' | 'sectionHeader';
+export type ManagedListDropOutsideReorderRangeBehavior = 'returnOriginal';
+
+export type ManagedListItemKind =
+  | 'category'
+  | 'todo'
+  | 'sectionHeader'
+  | 'sectionDivider';
 
 export type ManagedListActionRole = 'normal' | 'destructive';
 
@@ -63,6 +70,7 @@ export type ManagedListItem = {
   loading?: boolean;
   pinned?: boolean;
   reorderable?: boolean;
+  dropTargetable?: boolean;
   selected?: boolean;
   completed?: boolean;
   favorite?: boolean;
@@ -80,5 +88,6 @@ export type ManagedListSection = {
   footer?: string;
   role?: ManagedListSectionRole;
   reorderMode?: ManagedListReorderMode;
+  dropOutsideReorderRangeBehavior?: ManagedListDropOutsideReorderRangeBehavior;
   items: ManagedListItem[];
 };

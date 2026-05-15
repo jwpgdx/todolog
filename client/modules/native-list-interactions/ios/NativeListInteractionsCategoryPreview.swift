@@ -184,6 +184,152 @@ extension NativeListInteractionsView {
     view.layer.maskedCorners = style.maskedCorners
   }
 
+  func listHeaderPreviewStyle(
+    for indexPath: IndexPath,
+    phase: NativeListPreviewStylePhase
+  ) -> NativeListPreviewStyle {
+    let cornerStyle: CategoryPreviewCornerStyle
+    switch phase {
+    case .normal, .menuPreviewInitial:
+      cornerStyle = categoryPreviewCornerStyle(for: indexPath, expanded: false)
+    case .menuPreviewLifted:
+      cornerStyle = categoryPreviewCornerStyle(for: indexPath, expanded: true)
+    case .dragPreview:
+      cornerStyle = fullCategoryPreviewCornerStyle(radius: 16)
+    }
+
+    return nativeListPreviewStyle(
+      cornerStyle: cornerStyle,
+      phase: phase
+    )
+  }
+
+  func listTodoPreviewStyle(
+    for indexPath: IndexPath,
+    phase: NativeListPreviewStylePhase
+  ) -> NativeListPreviewStyle {
+    let cornerStyle: CategoryPreviewCornerStyle
+    switch phase {
+    case .normal, .menuPreviewInitial:
+      cornerStyle = categoryPreviewCornerStyle(for: indexPath, expanded: false)
+    case .menuPreviewLifted:
+      cornerStyle = fullCategoryPreviewCornerStyle(radius: 18)
+    case .dragPreview:
+      cornerStyle = fullCategoryPreviewCornerStyle(radius: 16)
+    }
+
+    return nativeListPreviewStyle(
+      cornerStyle: cornerStyle,
+      phase: phase
+    )
+  }
+
+  func groupCategoryPreviewStyle(
+    for indexPath: IndexPath,
+    phase: NativeListPreviewStylePhase
+  ) -> NativeListPreviewStyle {
+    let cornerStyle: CategoryPreviewCornerStyle
+    switch phase {
+    case .normal, .menuPreviewInitial:
+      cornerStyle = categoryPreviewCornerStyle(for: indexPath, expanded: false)
+    case .menuPreviewLifted:
+      cornerStyle = fullCategoryPreviewCornerStyle(radius: 18)
+    case .dragPreview:
+      cornerStyle = fullCategoryPreviewCornerStyle(radius: 16)
+    }
+
+    return nativeListPreviewStyle(
+      cornerStyle: cornerStyle,
+      phase: phase
+    )
+  }
+
+  func nativeListPreviewStyle(
+    for item: NativeItem,
+    at indexPath: IndexPath,
+    phase: NativeListPreviewStylePhase
+  ) -> NativeListPreviewStyle {
+    switch item.kind {
+    case "category":
+      return groupCategoryPreviewStyle(for: indexPath, phase: phase)
+    case "todo":
+      return listTodoPreviewStyle(for: indexPath, phase: phase)
+    default:
+      return listHeaderPreviewStyle(for: indexPath, phase: phase)
+    }
+  }
+
+  func nativeListPreviewStyle(
+    cornerStyle: CategoryPreviewCornerStyle,
+    phase: NativeListPreviewStylePhase
+  ) -> NativeListPreviewStyle {
+    let shadow: NativeListPreviewShadowStyle
+    let scale: CGFloat
+
+    switch phase {
+    case .normal:
+      shadow = NativeListPreviewShadowStyle(
+        opacity: 0,
+        radius: 0,
+        offset: .zero
+      )
+      scale = 1
+
+    case .menuPreviewInitial:
+      shadow = NativeListPreviewShadowStyle(
+        opacity: 0.08,
+        radius: 12,
+        offset: CGSize(width: 0, height: 8)
+      )
+      scale = 1.06
+
+    case .menuPreviewLifted:
+      shadow = NativeListPreviewShadowStyle(
+        opacity: 0.18,
+        radius: 18,
+        offset: CGSize(width: 0, height: 12)
+      )
+      scale = 1.08
+
+    case .dragPreview:
+      shadow = NativeListPreviewShadowStyle(
+        opacity: 0.18,
+        radius: 18,
+        offset: CGSize(width: 0, height: 12)
+      )
+      scale = 1
+    }
+
+    return NativeListPreviewStyle(
+      cornerStyle: cornerStyle,
+      shadow: shadow,
+      scale: scale,
+      translationY: 0
+    )
+  }
+
+  func fullCategoryPreviewCornerStyle(radius: CGFloat) -> CategoryPreviewCornerStyle {
+    CategoryPreviewCornerStyle(
+      radius: radius,
+      maskedCorners: [
+        .layerMinXMinYCorner,
+        .layerMaxXMinYCorner,
+        .layerMinXMaxYCorner,
+        .layerMaxXMaxYCorner,
+      ]
+    )
+  }
+
+  func applyPreviewShadowStyle(
+    _ style: NativeListPreviewShadowStyle,
+    to view: UIView
+  ) {
+    view.layer.shadowColor = UIColor.black.cgColor
+    view.layer.shadowOpacity = style.opacity
+    view.layer.shadowRadius = style.radius
+    view.layer.shadowOffset = style.offset
+  }
+
   func makePreviewShadowPath(
     for bounds: CGRect,
     style: CategoryPreviewCornerStyle

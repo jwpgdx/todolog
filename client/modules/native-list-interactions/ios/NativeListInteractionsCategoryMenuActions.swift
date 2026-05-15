@@ -14,18 +14,22 @@ extension NativeListInteractionsView {
     }
   }
 
-  func makeCustomCategoryMenuDescriptors(for item: NativeItem) -> [CustomCategoryMenuActionDescriptor] {
-    var descriptors = (item.menuActions ?? []).map { action in
-      CustomCategoryMenuActionDescriptor(
+  func makeNativeMenuActionDescriptors(
+    for item: NativeItem,
+    includeDelete: Bool = true
+  ) -> [NativeListMenuActionDescriptor] {
+    let actionIds = item.supportsMenu == true ? (item.menuActions ?? []) : []
+    var descriptors = actionIds.map { action in
+      NativeListMenuActionDescriptor(
         title: label(for: action),
         actionId: action,
         destructive: false
       )
     }
 
-    if item.deletable == true {
+    if includeDelete && item.deletable == true {
       descriptors.append(
-        CustomCategoryMenuActionDescriptor(
+        NativeListMenuActionDescriptor(
           title: "삭제",
           actionId: nil,
           destructive: true
@@ -34,6 +38,42 @@ extension NativeListInteractionsView {
     }
 
     return descriptors
+  }
+
+  func hasNativeMenuActions(
+    for item: NativeItem,
+    includeDelete: Bool = true
+  ) -> Bool {
+    !makeNativeMenuActionDescriptors(
+      for: item,
+      includeDelete: includeDelete
+    ).isEmpty
+  }
+
+  func makeNativeMenuAction(
+    _ descriptor: NativeListMenuActionDescriptor,
+    for itemId: String
+  ) -> UIAction {
+    UIAction(
+      title: descriptor.title,
+      attributes: descriptor.destructive ? .destructive : []
+    ) { [weak self] _ in
+      self?.executeNativeMenuActionDescriptor(descriptor, for: itemId)
+    }
+  }
+
+  func makeNativeItemMenu(
+    for item: NativeItem,
+    includeDelete: Bool = true
+  ) -> UIMenu {
+    let actions = makeNativeMenuActionDescriptors(
+      for: item,
+      includeDelete: includeDelete
+    ).map { descriptor in
+      makeNativeMenuAction(descriptor, for: item.id)
+    }
+
+    return UIMenu(title: item.title, children: actions)
   }
 
   func updateCustomCategoryMenuHighlight(at location: CGPoint) -> Bool {
@@ -81,11 +121,11 @@ extension NativeListInteractionsView {
     }
 
     let descriptor = customCategoryMenuDescriptors[highlightedIndex]
-    executeCustomCategoryMenuDescriptor(descriptor, for: itemId)
+    executeNativeMenuActionDescriptor(descriptor, for: itemId)
   }
 
-  func executeCustomCategoryMenuDescriptor(
-    _ descriptor: CustomCategoryMenuActionDescriptor,
+  func executeNativeMenuActionDescriptor(
+    _ descriptor: NativeListMenuActionDescriptor,
     for itemId: String
   ) {
     if descriptor.destructive {

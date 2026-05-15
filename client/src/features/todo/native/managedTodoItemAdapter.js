@@ -117,6 +117,7 @@ export function buildManagedTodoItem(todo, options = {}) {
     enabled: options.enabled !== false,
     loading: options.loading === true,
     reorderable: options.reorderable !== false,
+    dropTargetable: options.dropTargetable !== false,
     completed: isCompleted,
     favorite: todo?.isFavorite === true,
     accentColor: options.accentColor ?? todo?.accentColor,

@@ -17,15 +17,26 @@ extension NativeListInteractionsView {
     return self
   }
 
-  func dismissCustomCategoryMenuOverlay(animated: Bool) {
+  func dismissCustomCategoryMenuOverlay(
+    animated: Bool,
+    restoreTemporaryCollapse: Bool = true,
+    restoreSourceCellAppearance: Bool = true
+  ) {
     guard let backdrop = customCategoryMenuBackdropView else {
-      restoreCustomCategoryMenuSourceCellAppearance()
+      if restoreSourceCellAppearance {
+        restoreCustomCategoryMenuSourceCellAppearance()
+      }
       customCategoryMenuItemId = nil
+      if restoreTemporaryCollapse {
+        discardTemporarilyCollapsedSectionsIfNeeded()
+      }
       return
     }
 
     let removeViews = {
-      self.restoreCustomCategoryMenuSourceCellAppearance()
+      if restoreSourceCellAppearance {
+        self.restoreCustomCategoryMenuSourceCellAppearance()
+      }
       self.customCategoryMenuPreviewContainerView?.removeFromSuperview()
       self.customCategoryMenuCardView?.removeFromSuperview()
       backdrop.removeFromSuperview()
@@ -41,6 +52,10 @@ extension NativeListInteractionsView {
       self.customCategoryMenuInteractionStyle = .tapButtons
       self.customCategoryMenuHighlightedIndex = nil
       self.focusedCategoryMenuSession = nil
+      self.focusedCategoryMenuPanOrigin = nil
+      if restoreTemporaryCollapse {
+        self.discardTemporarilyCollapsedSectionsIfNeeded()
+      }
     }
 
     if animated {
@@ -81,7 +96,7 @@ extension NativeListInteractionsView {
   func presentCustomCategoryMenuOverlay(
     for item: NativeItem,
     at indexPath: IndexPath,
-    descriptors: [CustomCategoryMenuActionDescriptor],
+    descriptors: [NativeListMenuActionDescriptor],
     interactionStyle: CustomCategoryMenuInteractionStyle
   ) {
     dismissCustomCategoryMenuOverlay(animated: false)
@@ -107,8 +122,9 @@ extension NativeListInteractionsView {
 
     let usesLiftedPreview = currentCustomCategoryMenuUsesLiftedPreview()
     let baseSurfaceColor = resolvedDefaultCategorySurfaceColor()
-    let groupedCornerStyle = categoryPreviewCornerStyle(for: indexPath, expanded: false)
-    let menuCornerStyle = categoryPreviewCornerStyle(for: indexPath, expanded: true)
+    let normalPreviewStyle = nativeListPreviewStyle(for: item, at: indexPath, phase: .normal)
+    let initialPreviewStyle = nativeListPreviewStyle(for: item, at: indexPath, phase: .menuPreviewInitial)
+    let liftedPreviewStyle = nativeListPreviewStyle(for: item, at: indexPath, phase: .menuPreviewLifted)
     let blurView = UIVisualEffectView(effect: UIBlurEffect(style: .systemChromeMaterial))
     blurView.clipsToBounds = true
     blurView.layer.cornerRadius = 16
@@ -120,9 +136,9 @@ extension NativeListInteractionsView {
     let rowHeight: CGFloat = 46
     let menuHeight = CGFloat(descriptors.count) * rowHeight
     let cellFrame = cell.convert(cell.bounds, to: overlayHost)
-    let previewPhaseOneScale: CGFloat = usesLiftedPreview ? 1.06 : 1
-    let liftedPreviewScale: CGFloat = usesLiftedPreview ? 1.08 : 1
-    let liftedPreviewTranslationY: CGFloat = 0
+    let previewPhaseOneScale: CGFloat = usesLiftedPreview ? initialPreviewStyle.scale : 1
+    let liftedPreviewScale: CGFloat = usesLiftedPreview ? liftedPreviewStyle.scale : 1
+    let liftedPreviewTranslationY: CGFloat = usesLiftedPreview ? liftedPreviewStyle.translationY : 0
     let menuVerticalSpacing: CGFloat = usesLiftedPreview ? 18 : 10
     let previewPhaseOneDuration: TimeInterval = 0.35
     let previewPhaseTwoDuration: TimeInterval = 0.18
@@ -165,17 +181,17 @@ extension NativeListInteractionsView {
     if usesLiftedPreview {
       let container = UIView(frame: cellFrame)
       container.isUserInteractionEnabled = true
-      container.layer.shadowColor = UIColor.black.cgColor
-      container.layer.shadowOpacity = 0
-      container.layer.shadowRadius = 0
-      container.layer.shadowOffset = .zero
-      container.layer.shadowPath = makePreviewShadowPath(for: container.bounds, style: groupedCornerStyle).cgPath
+      applyPreviewShadowStyle(normalPreviewStyle.shadow, to: container)
+      container.layer.shadowPath = makePreviewShadowPath(
+        for: container.bounds,
+        style: normalPreviewStyle.cornerStyle
+      ).cgPath
 
       let clippedContent = UIView(frame: container.bounds)
       clippedContent.autoresizingMask = [.flexibleWidth, .flexibleHeight]
       clippedContent.layer.cornerCurve = .continuous
       clippedContent.clipsToBounds = true
-      applyCategoryPreviewCornerStyle(groupedCornerStyle, to: clippedContent)
+      applyCategoryPreviewCornerStyle(normalPreviewStyle.cornerStyle, to: clippedContent)
       let preview = makeLightweightCategoryPreviewView(
         for: item,
         surfaceColor: baseSurfaceColor
@@ -241,7 +257,7 @@ extension NativeListInteractionsView {
               return
             }
             self.dismissCustomCategoryMenuOverlay(animated: true)
-            self.executeCustomCategoryMenuDescriptor(descriptor, for: item.id)
+            self.executeNativeMenuActionDescriptor(descriptor, for: item.id)
           },
           for: .touchUpInside
         )
@@ -292,9 +308,9 @@ extension NativeListInteractionsView {
         options: [.curveEaseOut, .beginFromCurrentState, .allowUserInteraction],
         animations: {
           previewContainer?.transform = CGAffineTransform(scaleX: previewPhaseOneScale, y: previewPhaseOneScale)
-          previewContainer?.layer.shadowOpacity = 0.08
-          previewContainer?.layer.shadowRadius = 12
-          previewContainer?.layer.shadowOffset = CGSize(width: 0, height: 8)
+          if let previewContainer {
+            self.applyPreviewShadowStyle(initialPreviewStyle.shadow, to: previewContainer)
+          }
         },
         completion: { [weak self] _ in
           guard let self, self.customCategoryMenuBackdropView === backdrop else {
@@ -309,14 +325,14 @@ extension NativeListInteractionsView {
               backdrop.alpha = 1
               previewView?.backgroundColor = baseSurfaceColor
               previewContentView.map {
-                self.applyCategoryPreviewCornerStyle(menuCornerStyle, to: $0)
+                self.applyCategoryPreviewCornerStyle(liftedPreviewStyle.cornerStyle, to: $0)
               }
-              previewContainer?.layer.shadowOpacity = 0.18
-              previewContainer?.layer.shadowRadius = 18
-              previewContainer?.layer.shadowOffset = CGSize(width: 0, height: 12)
+              if let previewContainer {
+                self.applyPreviewShadowStyle(liftedPreviewStyle.shadow, to: previewContainer)
+              }
               previewContainer?.layer.shadowPath = self.makePreviewShadowPath(
                 for: previewContainer?.bounds ?? CGRect(origin: .zero, size: cellFrame.size),
-                style: menuCornerStyle
+                style: liftedPreviewStyle.cornerStyle
               ).cgPath
               previewContainer?.transform = CGAffineTransform(translationX: 0, y: liftedPreviewTranslationY)
                 .scaledBy(x: liftedPreviewScale, y: liftedPreviewScale)

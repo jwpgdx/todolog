@@ -28,17 +28,97 @@ extension NativeListInteractionsView {
     }
   }
 
-  func setCustomSectionHeaderDragSourceCellHidden(_ hidden: Bool) {
+  func temporarilyCollapseExpandedTodoCategorySectionsForSectionHeaderDrag(
+    completion: (() -> Void)? = nil
+  ) {
+    let expandedSectionIds = sections.compactMap { section -> String? in
+      guard
+        isTodoCategoryModeSection(section),
+        !isSectionCollapsedByPayload(section)
+      else {
+        return nil
+      }
+
+      return section.id
+    }
+    let previousCollapsedSectionIds = temporarilyCollapsedSectionIds
+    temporarilyCollapsedSectionIds.formUnion(expandedSectionIds)
+
+    guard previousCollapsedSectionIds != temporarilyCollapsedSectionIds else {
+      completion?()
+      return
+    }
+
+    applySnapshot(animatingDifferences: true) { [weak self] in
+      self?.reconfigureVisibleCellsForCurrentMode()
+      completion?()
+    }
+  }
+
+  func customDragAnchorLocationInOverlay(
+    for itemId: String,
+    fallback: CGPoint
+  ) -> CGPoint {
+    if
+      let session = customCategoryGestureSession,
+      session.itemId == itemId
+    {
+      return session.origin
+    }
+
+    if
+      let session = focusedCategoryMenuSession,
+      session.itemId == itemId,
+      let origin = focusedCategoryMenuPanOrigin
+    {
+      return origin
+    }
+
+    return fallback
+  }
+
+  func makeCustomSectionHeaderDragSnapshotView(
+    from sourceView: UIView,
+    frame snapshotFrame: CGRect,
+    previewStyle: NativeListPreviewStyle
+  ) -> UIView {
+    let container = UIView(frame: snapshotFrame)
+    container.backgroundColor = .clear
+
+    let clippedContent = UIView(frame: container.bounds)
+    clippedContent.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+    clippedContent.backgroundColor = resolvedDefaultCategorySurfaceColor()
+    clippedContent.clipsToBounds = true
+    clippedContent.layer.cornerCurve = .continuous
+    applyCategoryPreviewCornerStyle(previewStyle.cornerStyle, to: clippedContent)
+
+    if let cellSnapshot = sourceView.snapshotView(afterScreenUpdates: false) {
+      cellSnapshot.frame = clippedContent.bounds
+      cellSnapshot.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+      clippedContent.addSubview(cellSnapshot)
+    }
+
+    container.addSubview(clippedContent)
+    applyPreviewShadowStyle(previewStyle.shadow, to: container)
+    container.layer.cornerRadius = previewStyle.cornerStyle.radius
+    container.layer.maskedCorners = previewStyle.cornerStyle.maskedCorners
+    container.layer.cornerCurve = .continuous
+
+    return container
+  }
+
+  func setCustomSectionHeaderDragSourceCellDimmed(_ dimmed: Bool) {
+    let alpha = dimmed ? customDragSourceCellDimmedAlpha : 1
     guard
       let itemId = customSectionHeaderDragSession?.itemId,
       let indexPath = dataSource.indexPath(for: itemId),
       let cell = collectionView.cellForItem(at: indexPath)
     else {
-      customSectionHeaderDragSourceCell?.alpha = hidden ? 0 : 1
+      customSectionHeaderDragSourceCell?.alpha = alpha
       return
     }
 
-    cell.alpha = hidden ? 0 : 1
+    cell.alpha = alpha
     customSectionHeaderDragSourceCell = cell
   }
 
@@ -152,11 +232,10 @@ extension NativeListInteractionsView {
       yPosition = layouts[layouts.count - 1].frame.maxY
     }
 
-    let sectionBounds = collectionView.bounds.insetBy(dx: 16, dy: 0)
     indicator.frame = CGRect(
-      x: sectionBounds.minX + 12,
+      x: collectionView.bounds.minX,
       y: yPosition - 1.5,
-      width: max(36, sectionBounds.width - 24),
+      width: max(36, collectionView.bounds.width),
       height: 3
     )
     collectionView.bringSubviewToFront(indicator)
@@ -167,6 +246,9 @@ extension NativeListInteractionsView {
       customSectionHeaderDropTarget = nil
       removeCustomSectionHeaderInsertionIndicator()
       return
+    }
+    defer {
+      setCustomSectionHeaderDragSourceCellDimmed(true)
     }
 
     let target = resolveCustomSectionHeaderDropTarget(at: location)
@@ -193,29 +275,35 @@ extension NativeListInteractionsView {
     }
 
     let overlayHost = currentCustomCategoryMenuOverlayHostView()
-    restoreCustomCategoryMenuSourceCellAppearance()
 
     guard let sourceCell = collectionView.cellForItem(at: sourceIndexPath) else {
       return
     }
 
-    let snapshotFrame = sourceCell.convert(sourceCell.bounds, to: overlayHost)
-    let snapshotView = sourceCell.snapshotView(afterScreenUpdates: false) ?? UIView(frame: snapshotFrame)
-    snapshotView.frame = snapshotFrame
-    snapshotView.layer.shadowColor = UIColor.black.cgColor
-    snapshotView.layer.shadowOpacity = 0.18
-    snapshotView.layer.shadowRadius = 18
-    snapshotView.layer.shadowOffset = CGSize(width: 0, height: 12)
-    snapshotView.layer.cornerRadius = 16
-    snapshotView.layer.cornerCurve = .continuous
+    let snapshotSourceView = customCategoryMenuPreviewContainerView ?? sourceCell
+    if snapshotSourceView === sourceCell {
+      restoreCustomCategoryMenuSourceCellAppearance()
+    }
+
+    let snapshotFrame = snapshotSourceView.convert(snapshotSourceView.bounds, to: overlayHost)
+    let dragPreviewStyle = listHeaderPreviewStyle(for: sourceIndexPath, phase: .dragPreview)
+    let snapshotView = makeCustomSectionHeaderDragSnapshotView(
+      from: snapshotSourceView,
+      frame: snapshotFrame,
+      previewStyle: dragPreviewStyle
+    )
 
     overlayHost.addSubview(snapshotView)
     overlayHost.bringSubviewToFront(snapshotView)
 
     let sourceSection = sections[sourceIndexPath.section]
+    let anchorLocationInOverlay = customDragAnchorLocationInOverlay(
+      for: item.id,
+      fallback: locationInOverlay
+    )
     let touchOffset = CGPoint(
-      x: locationInOverlay.x - snapshotFrame.midX,
-      y: locationInOverlay.y - snapshotFrame.midY
+      x: anchorLocationInOverlay.x - snapshotFrame.midX,
+      y: anchorLocationInOverlay.y - snapshotFrame.midY
     )
 
     let wasInitiallyCollapsed = isSectionCollapsedByPayload(sourceSection)
@@ -232,25 +320,26 @@ extension NativeListInteractionsView {
     lastInteractiveMovementLocation = locationInCollection
     lastInteractiveMovementOverlayLocation = locationInOverlay
 
-    dismissCustomCategoryMenuOverlay(animated: false)
+    dismissCustomCategoryMenuOverlay(
+      animated: false,
+      restoreTemporaryCollapse: false,
+      restoreSourceCellAppearance: false
+    )
 
-    if !wasInitiallyCollapsed && !temporarilyCollapsedSectionIds.contains(sourceSection.id) {
-      temporarilyCollapsedSectionIds.insert(sourceSection.id)
-      applySnapshot(animatingDifferences: true) { [weak self] in
-        guard let self else {
-          return
-        }
-        self.reconfigureVisibleCellsForCurrentMode()
-        self.setCustomSectionHeaderDragSourceCellHidden(true)
-        if let location = self.lastInteractiveMovementLocation {
-          self.updateCustomSectionHeaderDropTarget(at: location)
-        }
+    setCustomSectionHeaderDragSourceCellDimmed(true)
+    updateCustomSectionHeaderSnapshotPosition(to: locationInOverlay)
+    temporarilyCollapseExpandedTodoCategorySectionsForSectionHeaderDrag { [weak self] in
+      guard let self else {
+        return
+      }
+      self.setCustomSectionHeaderDragSourceCellDimmed(true)
+      if let location = self.lastInteractiveMovementLocation {
+        self.updateCustomSectionHeaderDropTarget(at: location)
       }
     }
-
-    setCustomSectionHeaderDragSourceCellHidden(true)
-    updateCustomSectionHeaderSnapshotPosition(to: locationInOverlay)
-    updateCustomSectionHeaderDropTarget(at: locationInCollection)
+    DispatchQueue.main.async { [weak self] in
+      self?.setCustomSectionHeaderDragSourceCellDimmed(true)
+    }
     updateCustomDragAutoScrollIfNeeded(at: locationInCollection)
   }
 
@@ -267,6 +356,7 @@ extension NativeListInteractionsView {
     updateCustomSectionHeaderSnapshotPosition(to: locationInOverlay)
     updateCustomSectionHeaderDropTarget(at: locationInCollection)
     updateCustomDragAutoScrollIfNeeded(at: locationInCollection)
+    setCustomSectionHeaderDragSourceCellDimmed(true)
   }
 
   func completeCustomSectionHeaderDrag(cancelled: Bool) {
@@ -279,11 +369,8 @@ extension NativeListInteractionsView {
 
     if let target {
       commitCustomSectionHeaderDrag(session: session, target: target)
-    } else if !session.wasInitiallyCollapsed {
-      temporarilyCollapsedSectionIds.remove(session.sectionId)
-      applySnapshot(animatingDifferences: false) { [weak self] in
-        self?.reconfigureVisibleCellsForCurrentMode()
-      }
+    } else {
+      discardTemporarilyCollapsedSectionsIfNeeded()
     }
 
     let snapshotView = customSectionHeaderDragSnapshotView
@@ -294,7 +381,7 @@ extension NativeListInteractionsView {
 
     let cleanup = {
       snapshotView?.removeFromSuperview()
-      self.setCustomSectionHeaderDragSourceCellHidden(false)
+      self.setCustomSectionHeaderDragSourceCellDimmed(false)
       self.customSectionHeaderDragSourceCell = nil
       self.lastInteractiveMovementLocation = nil
       self.lastInteractiveMovementOverlayLocation = nil
@@ -337,9 +424,7 @@ extension NativeListInteractionsView {
     updatedSections.insert(movedSection, at: clampedInsertionIndex)
     sections = updatedSections
 
-    if !session.wasInitiallyCollapsed {
-      temporarilyCollapsedSectionIds.remove(session.sectionId)
-    }
+    temporarilyCollapsedSectionIds.removeAll()
 
     applySnapshot(animatingDifferences: false) { [weak self] in
       self?.reconfigureVisibleCellsForCurrentMode()

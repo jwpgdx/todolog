@@ -15,6 +15,60 @@ private final class TodoCompleteAccessoryButton: UIButton {
   var nextValue: Bool = false
 }
 
+private struct SectionDividerContentConfiguration: UIContentConfiguration {
+  let height: CGFloat
+
+  func makeContentView() -> UIView & UIContentView {
+    SectionDividerContentView(configuration: self)
+  }
+
+  func updated(for state: UIConfigurationState) -> SectionDividerContentConfiguration {
+    self
+  }
+}
+
+private final class SectionDividerContentView: UIView, UIContentView {
+  private var heightConstraint: NSLayoutConstraint?
+  var configuration: UIContentConfiguration {
+    didSet {
+      apply(configuration)
+    }
+  }
+
+  init(configuration: SectionDividerContentConfiguration) {
+    self.configuration = configuration
+    super.init(frame: .zero)
+    isUserInteractionEnabled = false
+    heightConstraint = heightAnchor.constraint(equalToConstant: configuration.height)
+    heightConstraint?.isActive = true
+    apply(configuration)
+  }
+
+  required init?(coder: NSCoder) {
+    self.configuration = SectionDividerContentConfiguration(height: 16)
+    super.init(coder: coder)
+    isUserInteractionEnabled = false
+    heightConstraint = heightAnchor.constraint(equalToConstant: 16)
+    heightConstraint?.isActive = true
+    apply(configuration)
+  }
+
+  override var intrinsicContentSize: CGSize {
+    let height = (configuration as? SectionDividerContentConfiguration)?.height ?? 16
+    return CGSize(width: UIView.noIntrinsicMetric, height: height)
+  }
+
+  private func apply(_ configuration: UIContentConfiguration) {
+    guard let configuration = configuration as? SectionDividerContentConfiguration else {
+      return
+    }
+
+    backgroundColor = UIColor.systemGroupedBackground
+    heightConstraint?.constant = configuration.height
+    invalidateIntrinsicContentSize()
+  }
+}
+
 extension NativeListInteractionsView {
   func makeLayout() -> UICollectionViewLayout {
     var config = UICollectionLayoutListConfiguration(appearance: currentListAppearance())
@@ -43,16 +97,18 @@ extension NativeListInteractionsView {
     content.secondaryText = item.kind == "category" ? nil : item.subtitle ?? item.metaText
     content.image = makeLeadingBadge(for: item)
     content.imageProperties.cornerRadius = item.kind == "category" ? 0 : 8
-    let baseBackgroundConfiguration = baseBackgroundConfiguration(for: item)
+    let baseBackgroundConfiguration = nativeListBackgroundConfiguration(for: item)
     listCell.contentConfiguration = content
     listCell.accessories = []
     listCell.backgroundConfiguration = baseBackgroundConfiguration
     listCell.isUserInteractionEnabled = item.disabled != true
-    listCell.contentView.alpha = item.kind == "sectionHeader" ? 1.0 : (item.disabled == true ? 0.45 : 1.0)
+    let keepsFullContentAlpha = item.kind == "sectionHeader" || item.kind == "sectionDivider"
+    listCell.contentView.alpha = keepsFullContentAlpha ? 1.0 : (item.disabled == true ? 0.45 : 1.0)
     let isActiveDragSource =
       customTodoDragSession?.itemId == item.id ||
-      customSectionHeaderDragSession?.itemId == item.id
-    listCell.alpha = isActiveDragSource ? 0 : 1
+      customSectionHeaderDragSession?.itemId == item.id ||
+      (customInteractiveReorderActive && currentInteractiveReorderItemId() == item.id)
+    listCell.alpha = isActiveDragSource ? customDragSourceCellDimmedAlpha : 1
     listCell.accessibilityIdentifier = item.kind == "category" ? "category-row-\(item.id)" : item.id
 
     if item.kind == "category", shouldDisableCustomCategoryHighlightAppearance() {
@@ -72,6 +128,8 @@ extension NativeListInteractionsView {
       configureTodoRow(cell: listCell, item: item)
     case "sectionHeader":
       configureSectionHeaderRow(cell: listCell, item: item)
+    case "sectionDivider":
+      configureSectionDividerRow(cell: listCell, item: item)
     default:
       break
     }
@@ -95,25 +153,7 @@ extension NativeListInteractionsView {
   }
 
   func makeItemContextMenu(for item: NativeItem) -> UIMenu {
-    var actions = (item.menuActions ?? []).map { action in
-      UIAction(title: label(for: action)) { [weak self] _ in
-        self?.onMenuAction([
-          "itemId": item.id,
-          "action": action
-        ])
-      }
-    }
-
-    if item.deletable == true {
-      let deleteAction = UIAction(title: "삭제", attributes: .destructive) { [weak self] _ in
-        self?.onDelete([
-          "itemId": item.id
-        ])
-      }
-      actions.append(deleteAction)
-    }
-
-    return UIMenu(title: item.title, children: actions)
+    makeNativeItemMenu(for: item)
   }
 
   func updateCollectionViewScrollBehavior() {
@@ -236,27 +276,73 @@ extension NativeListInteractionsView {
     let resolvedCollapsed =
       isSectionTemporarilyCollapsed(resolvedSectionId) ||
       (item.collapsed == true && !isSectionTemporarilyExpanded(resolvedSectionId))
-    if item.collapsed != nil {
-      let imageView = UIImageView(
-        image: UIImage(
-          systemName: resolvedCollapsed ? "chevron.down" : "chevron.up",
-          withConfiguration: UIImage.SymbolConfiguration(pointSize: 12, weight: .semibold)
-        )
+    if
+      let accessoryView = makeSectionHeaderAccessoryView(
+        countText: categoryTrailingValue(for: item),
+        collapsed: item.collapsed == nil ? nil : resolvedCollapsed
       )
-      imageView.tintColor = .tertiaryLabel
-      imageView.contentMode = .scaleAspectFit
+    {
       let config = UICellAccessory.CustomViewConfiguration(
-        customView: imageView,
+        customView: accessoryView,
         placement: .trailing()
       )
       cell.accessories = [.customView(configuration: config)]
     } else {
       cell.accessories = []
     }
-    cell.backgroundConfiguration = baseBackgroundConfiguration(for: item)
+    cell.backgroundConfiguration = nativeListBackgroundConfiguration(for: item)
     cell.isUserInteractionEnabled = item.disabled != true
     cell.accessibilityIdentifier = item.id
     cell.accessibilityLabel = item.title
+  }
+
+  private func configureSectionDividerRow(cell: UICollectionViewListCell, item: NativeItem) {
+    cell.contentConfiguration = SectionDividerContentConfiguration(height: 16)
+    cell.accessories = []
+    cell.backgroundConfiguration = UIBackgroundConfiguration.clear()
+    cell.isUserInteractionEnabled = false
+    cell.accessibilityIdentifier = item.id
+    cell.accessibilityLabel = nil
+  }
+
+  private func makeSectionHeaderAccessoryView(
+    countText: String?,
+    collapsed: Bool?
+  ) -> UIView? {
+    guard countText != nil || collapsed != nil else {
+      return nil
+    }
+
+    let stackView = UIStackView()
+    stackView.axis = .horizontal
+    stackView.alignment = .center
+    stackView.spacing = 6
+    stackView.isUserInteractionEnabled = false
+
+    if let countText {
+      let countLabel = UILabel()
+      countLabel.text = countText
+      countLabel.font = UIFont.systemFont(ofSize: 12, weight: .semibold)
+      countLabel.textColor = .tertiaryLabel
+      countLabel.textAlignment = .right
+      stackView.addArrangedSubview(countLabel)
+    }
+
+    if let collapsed {
+      let imageView = UIImageView(
+        image: UIImage(
+          systemName: collapsed ? "chevron.down" : "chevron.up",
+          withConfiguration: UIImage.SymbolConfiguration(pointSize: 12, weight: .semibold)
+        )
+      )
+      imageView.tintColor = .tertiaryLabel
+      imageView.contentMode = .scaleAspectFit
+      imageView.widthAnchor.constraint(equalToConstant: 12).isActive = true
+      imageView.heightAnchor.constraint(equalToConstant: 12).isActive = true
+      stackView.addArrangedSubview(imageView)
+    }
+
+    return stackView
   }
 
   @objc
@@ -339,16 +425,7 @@ extension NativeListInteractionsView {
   }
 
   private func makePrimaryActionMenu(for item: NativeItem) -> UIMenu {
-    let actions = (item.menuActions ?? []).map { action in
-      UIAction(title: label(for: action)) { [weak self] _ in
-        self?.onMenuAction([
-          "itemId": item.id,
-          "action": action
-        ])
-      }
-    }
-
-    return UIMenu(title: item.title, children: actions)
+    makeNativeItemMenu(for: item, includeDelete: false)
   }
 
   private func currentListAppearance() -> UICollectionLayoutListConfiguration.Appearance {
@@ -359,15 +436,23 @@ extension NativeListInteractionsView {
     return hasOnlyCategoryRows ? .insetGrouped : .plain
   }
 
-  private func baseBackgroundConfiguration(for item: NativeItem) -> UIBackgroundConfiguration {
+  private func nativeListBackgroundConfiguration(for item: NativeItem) -> UIBackgroundConfiguration {
     switch item.kind {
     case "category":
-      return UIBackgroundConfiguration.listGroupedCell()
+      return groupCategoryBackgroundConfiguration()
     case "todo":
-      return UIBackgroundConfiguration.listPlainCell()
+      return listTodoBackgroundConfiguration()
     default:
       return UIBackgroundConfiguration.clear()
     }
+  }
+
+  private func groupCategoryBackgroundConfiguration() -> UIBackgroundConfiguration {
+    UIBackgroundConfiguration.listGroupedCell()
+  }
+
+  private func listTodoBackgroundConfiguration() -> UIBackgroundConfiguration {
+    UIBackgroundConfiguration.listPlainCell()
   }
 
   private func makeTodoCompletionAccessory(for item: NativeItem) -> TodoCompleteAccessoryButton? {
