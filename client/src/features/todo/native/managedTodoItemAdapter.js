@@ -103,6 +103,8 @@ function buildBaseSubLabels(todo, options = {}) {
 
 export function buildManagedTodoItem(todo, options = {}) {
   const isCompleted = todo?.completed === true;
+  const isSelectionMode = options.selectionMode === true;
+  const isSelected = options.selected === true;
 
   return {
     id: todo._id,
@@ -116,12 +118,19 @@ export function buildManagedTodoItem(todo, options = {}) {
     }),
     enabled: options.enabled !== false,
     loading: options.loading === true,
-    reorderable: options.reorderable !== false,
-    dropTargetable: options.dropTargetable !== false,
+    reorderable: isSelectionMode ? false : options.reorderable !== false,
+    dropTargetable: isSelectionMode ? false : options.dropTargetable !== false,
+    selected: isSelected,
     completed: isCompleted,
     favorite: todo?.isFavorite === true,
     accentColor: options.accentColor ?? todo?.accentColor,
-    leadingControl: options.includeCompleteToggle
+    leadingControl: isSelectionMode
+      ? {
+          id: 'select',
+          kind: 'toggle',
+          value: isSelected,
+        }
+      : options.includeCompleteToggle
       ? {
           id: 'complete',
           kind: 'toggle',
@@ -129,7 +138,9 @@ export function buildManagedTodoItem(todo, options = {}) {
           disabled: options.completeDisabled === true,
         }
       : undefined,
-    trailingControl: options.includeFavoriteToggle
+    trailingControl: isSelectionMode
+      ? undefined
+      : options.includeFavoriteToggle
       ? {
           id: 'favorite',
           kind: 'toggle',
@@ -137,8 +148,8 @@ export function buildManagedTodoItem(todo, options = {}) {
           disabled: options.favoriteDisabled === true,
         }
       : undefined,
-    menuActions: options.menuActions ?? [],
-    leadingSwipeActions: options.leadingSwipeActions ?? [],
-    trailingSwipeActions: options.trailingSwipeActions ?? [],
+    menuActions: isSelectionMode ? [] : options.menuActions ?? [],
+    leadingSwipeActions: isSelectionMode ? [] : options.leadingSwipeActions ?? [],
+    trailingSwipeActions: isSelectionMode ? [] : options.trailingSwipeActions ?? [],
   };
 }

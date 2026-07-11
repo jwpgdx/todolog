@@ -2,8 +2,6 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   Alert,
-  InteractionManager,
-  Platform,
   SafeAreaView,
   StyleSheet,
   Text,
@@ -23,8 +21,6 @@ import { useReorderTodo } from '../hooks/queries/useReorderTodo';
 import { useReorderCategory } from '../hooks/queries/useReorderCategory';
 import { useTodoFormStore } from '../store/todoFormStore';
 import { WeekFlowTodoHeader } from '../features/week-flow-calendar';
-import NativeTodoFormSessionPrototype from '../features/todo/form-session/native/NativeTodoFormSessionPrototype';
-import DailyTodoList from '../features/todo/list/DailyTodoList';
 import NativeTodoManagedList, {
   TODO_MANAGED_LIST_MODE,
 } from '../features/todo/native/NativeTodoManagedList';
@@ -72,8 +68,6 @@ export default function TodoScreen() {
   const reorderTodoMutation = useReorderTodo(currentDate);
   const reorderCategoryMutation = useReorderCategory();
   const { openDetail } = useTodoFormStore();
-  const [showNativeQuickPrototype, setShowNativeQuickPrototype] = useState(false);
-  const [nativeQuickPrototypeInstanceKey, setNativeQuickPrototypeInstanceKey] = useState(0);
   const [sortMode, setSortMode] = useState(TODO_SCREEN_SORT_MODE.TIME);
   const [collapsedCategoryIds, setCollapsedCategoryIds] = useState([]);
   const [isFavoriteSectionCollapsed, setIsFavoriteSectionCollapsed] = useState(false);
@@ -174,6 +168,17 @@ export default function TodoScreen() {
   const handleOpenTodo = useCallback((todo, target = null) => {
     openDetail(todo, target);
   }, [openDetail]);
+
+  const handleOpenMoveCategory = useCallback((todo) => {
+    if (!todo?._id) {
+      return;
+    }
+
+    router.push({
+      pathname: '/(app)/todo/category-select',
+      params: { todoId: todo._id },
+    });
+  }, [router]);
 
   const handleDelete = useCallback((todo) => {
     Alert.alert(
@@ -281,14 +286,6 @@ export default function TodoScreen() {
     handleExpandCollapsedCategory(sectionId);
   }, [handleExpandCollapsedCategory, handleExpandFavoriteSection]);
 
-  const handleOpenNativeQuickPrototype = useCallback(() => {
-    setNativeQuickPrototypeInstanceKey((current) => current + 1);
-
-    InteractionManager.runAfterInteractions(() => {
-      setShowNativeQuickPrototype(true);
-    });
-  }, []);
-
   const managedListMode = useMemo(() => {
     switch (sortMode) {
       case TODO_SCREEN_SORT_MODE.CATEGORY:
@@ -327,7 +324,7 @@ export default function TodoScreen() {
         handleOpenTodo(todo);
         break;
       case 'move':
-        handleOpenTodo(todo, 'CATEGORY');
+        handleOpenMoveCategory(todo);
         break;
       case 'favorite':
         handleFavoriteChange(todo, true);
@@ -341,7 +338,7 @@ export default function TodoScreen() {
       default:
         break;
     }
-  }, [handleDelete, handleFavoriteChange, handleOpenTodo]);
+  }, [handleDelete, handleFavoriteChange, handleOpenMoveCategory, handleOpenTodo]);
 
   const handleManagedReorderCommit = useCallback(async (event) => {
     const mainTodoById = new Map(visibleTodos.map((todo) => [todo._id, todo]));
@@ -517,107 +514,65 @@ export default function TodoScreen() {
     <SafeAreaView style={styles.container}>
       <WeekFlowTodoHeader />
 
-      <View style={styles.prototypeEntryRow}>
-        <TouchableOpacity
-          accessibilityRole="button"
-          style={styles.prototypeButton}
-          onPress={handleOpenNativeQuickPrototype}
-          activeOpacity={0.85}
-        >
-          <Text style={styles.prototypeButtonText}>네이티브 퀵 테스트</Text>
-        </TouchableOpacity>
-        {Platform.OS === 'ios' ? (
-          <TouchableOpacity
-            accessibilityRole="button"
-            style={[styles.prototypeButton, styles.secondaryPrototypeButton]}
-            onPress={() => router.push('/native-category-menu')}
-            activeOpacity={0.85}
-          >
-            <Text style={[styles.prototypeButtonText, styles.secondaryPrototypeButtonText]}>
-              Native Managed List
-            </Text>
-          </TouchableOpacity>
-        ) : null}
-      </View>
-
-      {Platform.OS === 'ios' ? (
-        <View style={styles.managedListContainer}>
-          <View style={styles.sortContainer}>
-            {TODO_SCREEN_SORT_MODE_OPTIONS.map((option) => (
-              <TouchableOpacity
-                key={option.id}
-                onPress={() => handleChangeSortMode(option.id)}
-                style={[styles.sortButton, sortMode === option.id && styles.sortButtonActive]}
-                activeOpacity={0.82}
-              >
-                <Text style={[styles.sortButtonText, sortMode === option.id && styles.sortButtonTextActive]}>
-                  {option.label}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-
-          <NativeTodoManagedList
-            listId={`todo-screen:${currentDate}`}
-            mode={managedListMode}
-            todos={visibleTodos}
-            categories={categories}
-            collapsedCategoryIds={collapsedCategoryIds}
-            favoriteTodos={favoriteTodos}
-            includeFavoriteSection
-            favoriteSectionReorderMode="withinSection"
-            favoriteReorderable
-            favoriteSectionCollapsed={isFavoriteSectionCollapsed}
-            favoriteItemOptions={{
-              includeFavoriteAction: true,
-              includeFavoriteToggle: false,
-              showFavoriteBadge: false,
-              leadingSwipeActions: [],
-            }}
-            includeEmptyCategorySections={managedListMode === TODO_MANAGED_LIST_MODE.CATEGORY}
-            contentInsetBottom={bottomInset}
-            itemOptions={{
-              includeFavoriteAction: true,
-              includeFavoriteToggle: false,
-              showFavoriteBadge: false,
-              leadingSwipeActions: [],
-            }}
-            style={{ paddingHorizontal: 16 }}
-            onPressTodo={handleOpenTodo}
-            onPressSectionHeader={handlePressManagedSectionHeader}
-            onRequestExpandSection={({ sectionId }) => {
-              handleRequestExpandSection(sectionId);
-            }}
-            onToggleComplete={handleManagedToggleComplete}
-            onToggleFavorite={(todo) => {
-              handleFavoriteChange(todo, !todo?.isFavorite);
-            }}
-            onTodoAction={handleManagedAction}
-            onSectionHeaderAction={handleCategoryHeaderAction}
-            onReorderCommit={handleManagedReorderCommit}
-            onError={(event) => {
-              console.warn('[TodoScreen:NativeTodoManagedList]', event?.message || event);
-            }}
-          />
+      <View style={styles.managedListContainer}>
+        <View style={styles.sortContainer}>
+          {TODO_SCREEN_SORT_MODE_OPTIONS.map((option) => (
+            <TouchableOpacity
+              key={option.id}
+              onPress={() => handleChangeSortMode(option.id)}
+              style={[styles.sortButton, sortMode === option.id && styles.sortButtonActive]}
+              activeOpacity={0.82}
+            >
+              <Text style={[styles.sortButtonText, sortMode === option.id && styles.sortButtonTextActive]}>
+                {option.label}
+              </Text>
+            </TouchableOpacity>
+          ))}
         </View>
-      ) : (
-        <DailyTodoList
-          todos={dateTodos}
-          categories={categories}
-          isLoading={isLoading}
-          sortMode={sortMode}
-          onChangeSortMode={handleChangeSortMode}
-          onToggleComplete={handleToggleComplete}
-          onEdit={handleOpenTodo}
-          onDelete={handleDelete}
-        />
-      )}
 
-      <NativeTodoFormSessionPrototype
-        visible={showNativeQuickPrototype}
-        instanceKey={nativeQuickPrototypeInstanceKey}
-        onDismiss={() => setShowNativeQuickPrototype(false)}
-      />
+        <NativeTodoManagedList
+          listId={`todo-screen:${currentDate}`}
+          mode={managedListMode}
+          todos={visibleTodos}
+          categories={categories}
+          collapsedCategoryIds={collapsedCategoryIds}
+          favoriteTodos={favoriteTodos}
+          includeFavoriteSection
+          favoriteSectionReorderMode="withinSection"
+          favoriteReorderable
+          favoriteSectionCollapsed={isFavoriteSectionCollapsed}
+          favoriteItemOptions={{
+            includeFavoriteAction: true,
+            includeFavoriteToggle: false,
+            showFavoriteBadge: false,
+            leadingSwipeActions: [],
+          }}
+          includeEmptyCategorySections={managedListMode === TODO_MANAGED_LIST_MODE.CATEGORY}
+          contentInsetBottom={bottomInset}
+          itemOptions={{
+            includeFavoriteAction: true,
+            includeFavoriteToggle: false,
+            showFavoriteBadge: false,
+            leadingSwipeActions: [],
+          }}
+          style={{ paddingHorizontal: 16 }}
+          onPressTodo={handleOpenTodo}
+          onPressSectionHeader={handlePressManagedSectionHeader}
+          onRequestExpandSection={({ sectionId }) => {
+            handleRequestExpandSection(sectionId);
+          }}
+          onToggleComplete={handleManagedToggleComplete}
+          onToggleFavorite={(todo) => {
+            handleFavoriteChange(todo, !todo?.isFavorite);
+          }}
+          onTodoAction={handleManagedAction}
+          onSectionHeaderAction={handleCategoryHeaderAction}
+          onReorderCommit={handleManagedReorderCommit}
+          onError={(event) => {
+            console.warn('[TodoScreen:NativeTodoManagedList]', event?.message || event);
+          }}
+        />
+      </View>
     </SafeAreaView>
   );
 }
@@ -626,35 +581,6 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#F9FAFB',
-  },
-  prototypeEntryRow: {
-    paddingHorizontal: 16,
-    paddingTop: 8,
-    paddingBottom: 4,
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-  },
-  prototypeButton: {
-    alignSelf: 'flex-start',
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderRadius: 999,
-    backgroundColor: '#111827',
-    marginRight: 8,
-    marginBottom: 8,
-  },
-  prototypeButtonText: {
-    color: '#FFFFFF',
-    fontSize: 13,
-    fontWeight: '700',
-  },
-  secondaryPrototypeButton: {
-    backgroundColor: '#FFFFFF',
-    borderWidth: 1,
-    borderColor: '#D1D5DB',
-  },
-  secondaryPrototypeButtonText: {
-    color: '#111827',
   },
   managedListContainer: {
     flex: 1,

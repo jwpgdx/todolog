@@ -16,7 +16,7 @@ import type {
 
 type LegacyNativeListItem = {
   id: string;
-  kind: 'category' | 'todo' | 'sectionHeader' | 'sectionDivider';
+  kind: 'pageTitle' | 'category' | 'todo' | 'sectionHeader' | 'sectionDivider';
   title: string;
   subtitle?: string;
   metaText?: string;
@@ -32,6 +32,7 @@ type LegacyNativeListItem = {
   toggleControlId?: string;
   toggleControlSource?: 'leadingControl' | 'trailingControl';
   completed?: boolean;
+  selected?: boolean;
 };
 
 type LegacyNativeListSection = {
@@ -126,7 +127,7 @@ export function validateManagedListSections(
       }
 
       if (variant === 'todo' && item.kind !== 'todo') {
-        if (item.kind === 'sectionHeader' || item.kind === 'sectionDivider') {
+        if (item.kind === 'pageTitle' || item.kind === 'sectionHeader' || item.kind === 'sectionDivider') {
           return;
         }
 
@@ -275,6 +276,7 @@ export function mapManagedSectionsToLegacyNativeSections(
         toggleControlId: toggleControl?.controlId,
         toggleControlSource: toggleControl?.source,
         completed: item.completed === true,
+        selected: item.selected === true,
       };
     }),
   }));

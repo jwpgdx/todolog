@@ -36,12 +36,6 @@ const TARGETS = {
     defaultHost: 'tunnel',
     startArgs: ['start', '--dev-client'],
   },
-  web: {
-    label: 'Web',
-    command: 'expo-start',
-    defaultHost: 'localhost',
-    startArgs: ['start', '--web'],
-  },
   server: {
     label: 'Dev Client Server Only',
     command: 'expo-start',
@@ -65,10 +59,9 @@ const MENU_OPTIONS = [
   { key: '1', target: 'ios-sim' },
   { key: '2', target: 'android-emu' },
   { key: '3', target: 'device' },
-  { key: '4', target: 'web' },
-  { key: '5', target: 'server' },
-  { key: '6', target: 'ios-install' },
-  { key: '7', target: 'android-install' },
+  { key: '4', target: 'server' },
+  { key: '5', target: 'ios-install' },
+  { key: '6', target: 'android-install' },
 ];
 
 async function main() {
@@ -213,7 +206,6 @@ Targets:
   ios-sim         Start Expo dev client on iOS simulator
   android-emu     Start Expo dev client on Android emulator
   device          Start Expo dev client in tunnel mode for physical devices
-  web             Start Expo web dev server
   server          Start Expo dev client server only
   ios-install     Install / rebuild the iOS app without starting Metro
   android-install Install / rebuild the Android app without starting Metro
@@ -406,7 +398,6 @@ function resolveApiUrlForTarget(targetName) {
   if (
     targetName === 'ios-sim' ||
     targetName === 'ios-install' ||
-    targetName === 'web' ||
     targetName === 'server'
   ) {
     return `http://localhost:${serverPort}/api`;

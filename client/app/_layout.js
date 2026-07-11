@@ -6,7 +6,7 @@ import '../src/utils/i18n';
 import i18n from '../src/utils/i18n';
 import * as Localization from 'expo-localization';
 import { useEffect, useRef } from 'react';
-import { InteractionManager, Platform, View } from 'react-native';
+import { Appearance, InteractionManager, Platform, View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -255,8 +255,12 @@ export default function RootLayout() {
 
   useEffect(() => {
     const theme = user?.settings?.theme || 'system';
+    const nativeWindTheme =
+      Platform.OS === 'android' && theme === 'system'
+        ? Appearance.getColorScheme() || 'light'
+        : theme;
     console.log('🎨 Applied Theme:', theme);
-    setColorScheme(theme);
+    setColorScheme(nativeWindTheme);
   }, [user?.settings?.theme, setColorScheme]);
 
   useEffect(() => {
@@ -281,7 +285,7 @@ export default function RootLayout() {
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
-      <KeyboardProvider statusBarTranslucent={Platform.OS !== 'web'}>
+      <KeyboardProvider statusBarTranslucent>
         <QueryClientProvider client={queryClient}>
           <SyncProvider>
             <SafeAreaProvider>

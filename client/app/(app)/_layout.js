@@ -72,6 +72,15 @@ export default function AppLayout() {
           title: '색상 선택',
         }}
       />
+      <Stack.Screen
+        name="todo/category-select"
+        options={{
+          headerBackTitle: '취소',
+          headerShown: true,
+          presentation: 'modal',
+          title: '카테고리 선택',
+        }}
+      />
 
       <Stack.Screen
         name="todo-form/v2"
@@ -82,14 +91,6 @@ export default function AppLayout() {
           sheetInitialDetentIndex: 'last',
           sheetGrabberVisible: Platform.OS === 'ios',
           sheetCornerRadius: 28,
-          webModalStyle: {
-            width: 'min(960px, 94vw)',
-            minWidth: 360,
-            minHeight: 'min(760px, 88vh)',
-            border: '1px solid #E5E7EB',
-            overlayBackground: 'rgba(15, 23, 42, 0.24)',
-            shadow: 'drop-shadow(0 24px 80px rgba(15, 23, 42, 0.18))',
-          },
         }}
       />
 

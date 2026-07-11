@@ -55,10 +55,13 @@ export function estimateSettingsListHeight(sections: SettingsSection[]): number 
 
 export function estimateSelectionListHeight(model: SelectionListModel): number {
   const searchHeight = model.searchEnabled ? 54 : 0;
-  const headerHeight = model.subtitle ? 52 : 32;
+  const hasTitle = Boolean(model.title?.trim());
+  const hasSubtitle = Boolean(model.subtitle?.trim());
+  const headerHeight = hasTitle ? (hasSubtitle ? 52 : 32) : hasSubtitle ? 34 : 0;
+  const headerChromeHeight = hasTitle || hasSubtitle || model.searchEnabled ? 40 : 0;
   const rowHeight = 56;
-  const cappedRowCount = Math.min(model.options.length, 8);
-  return 40 + headerHeight + searchHeight + cappedRowCount * rowHeight;
+  const rowCount = model.searchEnabled ? Math.min(model.options.length, 8) : model.options.length;
+  return headerChromeHeight + headerHeight + searchHeight + rowCount * rowHeight;
 }
 
 export function estimatePickerHostHeight(model: PickerHostModel): number {

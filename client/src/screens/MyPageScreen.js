@@ -1,19 +1,25 @@
 import React from 'react';
-import { View, Text, TouchableOpacity, ScrollView, Platform } from 'react-native';
+import { Modal, View, Text, TouchableOpacity, ScrollView } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useAuthStore } from '../store/authStore';
 import { Ionicons } from '@expo/vector-icons';
 import CategoryGroupList from '../components/domain/category/CategoryGroupList';
 import { useFloatingTabBarScrollPadding } from '../navigation/useFloatingTabBarInset';
+import { useAllTodos } from '../hooks/queries/useAllTodos';
+import { useTodos } from '../hooks/queries/useTodos';
+import { useTodayDate } from '../hooks/useTodayDate';
 
 export default function MyPageScreen() {
   const router = useRouter();
+  const [isRNModalVisible, setIsRNModalVisible] = React.useState(false);
   const { user, openLoginScreen } = useAuthStore();
   const bottomInset = useFloatingTabBarScrollPadding(16);
+  const { todayDate } = useTodayDate();
+  const { data: allTodos = [] } = useAllTodos(todayDate);
+  const { data: currentDateTodos = [] } = useTodos(todayDate);
 
-  // Mock data for activity summary
-  const totalTodos = 0;
-  const todayTodos = 0;
+  const totalTodos = allTodos.length;
+  const todayTodos = currentDateTodos.length;
 
   const handleEditProfilePress = () => {
     // 소셜 로그인 유저는 비밀번호 검증 없이 바로 이동 (비밀번호가 없으므로)
@@ -26,11 +32,12 @@ export default function MyPageScreen() {
   };
 
   return (
-    <ScrollView
-      className="flex-1 bg-white"
-      contentInsetAdjustmentBehavior="automatic"
-      contentContainerStyle={{ paddingBottom: bottomInset }}
-    >
+    <>
+      <ScrollView
+        className="flex-1 bg-white"
+        contentInsetAdjustmentBehavior="automatic"
+        contentContainerStyle={{ paddingBottom: bottomInset }}
+      >
         {/* Guest Banner */}
         {user?.accountType === 'anonymous' && (
           <View className="mx-4 mt-4 mb-2 bg-gray-50 border border-gray-200 rounded-xl p-4">
@@ -117,6 +124,44 @@ export default function MyPageScreen() {
 
         <CategoryGroupList />
 
+        {/* Fake Presentation Sandbox */}
+        <View className="px-4 mt-8">
+          <Text className="text-lg font-bold mb-3">가짜 Presentation 비교</Text>
+
+          <MenuLink
+            title="Fake - push(card)"
+            onPress={() => router.push('/(app)/(tabs)/my-page/presentation/push')}
+          />
+          <MenuLink
+            title="Fake - modal"
+            onPress={() => router.push('/(app)/(tabs)/my-page/presentation/modal')}
+          />
+          <MenuLink
+            title="Fake - formSheet"
+            onPress={() => router.push('/(app)/(tabs)/my-page/presentation/formsheet')}
+          />
+          <MenuLink
+            title="Fake - RN Modal"
+            onPress={() => setIsRNModalVisible(true)}
+            isLast
+          />
+        </View>
+
+        {/* Presentation Test */}
+        <View className="px-4 mt-8">
+          <Text className="text-lg font-bold mb-3">Presentation 테스트</Text>
+
+          <MenuLink
+            title="카테고리 form - modal"
+            onPress={() => router.push('/(app)/(tabs)/my-page/category/form-modal')}
+          />
+          <MenuLink
+            title="카테고리 form - formSheet"
+            onPress={() => router.push('/(app)/(tabs)/my-page/category/form-formsheet')}
+            isLast
+          />
+        </View>
+
         {/* Settings & Others */}
         <View className="px-4 mt-8">
           <Text className="text-lg font-bold mb-3">설정 및 기타</Text>
@@ -170,7 +215,31 @@ export default function MyPageScreen() {
           <Text className="text-gray-400 text-xs">Ver 1.0.0</Text>
         </View>
 
-    </ScrollView>
+      </ScrollView>
+
+      <Modal
+        visible={isRNModalVisible}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setIsRNModalVisible(false)}
+      >
+        <View className="flex-1 justify-end bg-black/40">
+          <View className="rounded-t-3xl bg-white px-6 pb-10 pt-5">
+            <View className="self-center mb-4 h-1 w-12 rounded-full bg-gray-300" />
+            <Text className="text-2xl font-bold text-gray-950">RN Modal 테스트</Text>
+            <Text className="mt-3 text-base leading-6 text-gray-600">
+              route가 아닌 임시 overlay입니다. 삭제 확인, 짧은 경고, 커스텀 액션시트 후보로 비교하세요.
+            </Text>
+            <TouchableOpacity
+              className="mt-6 rounded-2xl bg-gray-900 px-4 py-4"
+              onPress={() => setIsRNModalVisible(false)}
+            >
+              <Text className="text-center text-base font-semibold text-white">닫기</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+    </>
   );
 }
 
@@ -178,11 +247,6 @@ function MenuLink({ title, onPress, isLast }) {
   return (
     <TouchableOpacity
       onPress={() => {
-        // Web: avoid "Blocked aria-hidden... descendant retained focus" warnings
-        // when navigating to a stack screen that hides the current tab subtree.
-        if (Platform.OS === 'web' && typeof document !== 'undefined') {
-          document.activeElement?.blur?.();
-        }
         onPress?.();
       }}
       className={`flex-row justify-between items-center py-4 ${!isLast ? 'border-b border-gray-100' : ''}`}

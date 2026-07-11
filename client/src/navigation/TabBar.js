@@ -15,6 +15,7 @@ import MyPageTabIcon from './icons/MyPageTabIcon';
 import QuickAddIcon from './icons/QuickAddIcon';
 import TodoTabIcon from './icons/TodoTabIcon';
 import { useTodoFormStore } from '../store/todoFormStore';
+import { useAppChromeStore } from '../store/appChromeStore';
 import {
   FLOATING_TAB_BAR_ACTION_GAP,
   FLOATING_TAB_BAR_BLUR_INTENSITY,
@@ -141,6 +142,7 @@ export default function TabBar({ state }) {
   const segments = useSegments();
   const insets = useSafeAreaInsets();
   const { mode, openQuick } = useTodoFormStore();
+  const isBottomTabBarHidden = useAppChromeStore((state) => state.isBottomTabBarHidden);
   const [tabLayouts, setTabLayouts] = useState({});
   const hasInitializedSelection = useRef(false);
   const selectedPillX = useSharedValue(0);
@@ -231,6 +233,10 @@ export default function TabBar({ state }) {
       };
     });
   };
+
+  if (isBottomTabBarHidden) {
+    return null;
+  }
 
   return (
     <View pointerEvents="box-none" style={styles.wrapper}>

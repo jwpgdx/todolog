@@ -21,6 +21,7 @@ export type SelectionOption = {
   label: string;
   subtitle?: string;
   keywords?: string[];
+  leadingColor?: string;
 };
 
 export type SwipeActionSpec = {

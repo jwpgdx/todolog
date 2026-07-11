@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, Platform, StyleSheet } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
 /**
@@ -155,7 +155,6 @@ const styles = StyleSheet.create({
         height: '100%',
         fontSize: 16,
         color: '#111827',
-        ...(Platform.OS === 'web' ? { outlineStyle: 'none' } : {}),
     },
     inputMultiline: {
         height: 128,

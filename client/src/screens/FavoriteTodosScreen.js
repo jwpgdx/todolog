@@ -5,9 +5,10 @@ import {
   SafeAreaView,
   StyleSheet,
   Text,
+  TouchableOpacity,
   View,
 } from 'react-native';
-import { Stack } from 'expo-router';
+import { Stack, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 
 import NativeManagedList from '../components/ui/native-managed-list/NativeManagedList';
@@ -22,6 +23,8 @@ import { useTodayDate } from '../hooks/useTodayDate';
 import { useFloatingTabBarScrollPadding } from '../navigation/useFloatingTabBarInset';
 import { ORDER_STEP } from '../services/db/todoService';
 import { useTodoFormStore } from '../store/todoFormStore';
+import TodoSelectionActionBar from '../features/todo/selection/TodoSelectionActionBar';
+import useTodoSelectionMode from '../features/todo/selection/useTodoSelectionMode';
 
 function compareByCreatedAt(a, b) {
   return String(a?.createdAt || '').localeCompare(String(b?.createdAt || ''));
@@ -43,6 +46,7 @@ function compareByFavoriteOrder(a, b) {
 }
 
 export default function FavoriteTodosScreen() {
+  const router = useRouter();
   const { todayDate } = useTodayDate();
   const { data: todos = [], isLoading } = useAllTodos(todayDate);
   const { data: categories = [], isLoading: isCategoriesLoading } = useCategories();
@@ -51,6 +55,15 @@ export default function FavoriteTodosScreen() {
   const updateTodoMutation = useUpdateTodo();
   const reorderTodoMutation = useReorderTodo(todayDate);
   const { openDetail } = useTodoFormStore();
+  const {
+    isSelectionMode,
+    selectedTodoIds,
+    selectedTodoIdSet,
+    selectedCount,
+    enterSelectionMode,
+    exitSelectionMode,
+    toggleSelectedTodo,
+  } = useTodoSelectionMode();
   const bottomInset = useFloatingTabBarScrollPadding(32);
 
   const categoryById = useMemo(
@@ -74,6 +87,28 @@ export default function FavoriteTodosScreen() {
   const handleOpenTodo = useCallback((todo, target = null) => {
     openDetail(todo, target);
   }, [openDetail]);
+
+  const handleOpenMoveCategory = useCallback((todo) => {
+    if (!todo?._id) {
+      return;
+    }
+
+    router.push({
+      pathname: '/(app)/todo/category-select',
+      params: { todoId: todo._id },
+    });
+  }, [router]);
+
+  const handleOpenBulkMoveCategory = useCallback(() => {
+    if (selectedTodoIds.length === 0) {
+      return;
+    }
+
+    router.push({
+      pathname: '/(app)/todo/category-select',
+      params: { todoIds: selectedTodoIds.join(',') },
+    });
+  }, [router, selectedTodoIds]);
 
   const handleToggleComplete = useCallback((todo) => {
     toggleCompletion({
@@ -114,8 +149,11 @@ export default function FavoriteTodosScreen() {
       case 'edit':
         handleOpenTodo(todo);
         break;
+      case 'select':
+        enterSelectionMode(todo._id);
+        break;
       case 'move':
-        handleOpenTodo(todo, 'CATEGORY');
+        handleOpenMoveCategory(todo);
         break;
       case 'unfavorite':
         handleUnfavorite(todo);
@@ -126,7 +164,7 @@ export default function FavoriteTodosScreen() {
       default:
         break;
     }
-  }, [handleDelete, handleOpenTodo, handleUnfavorite]);
+  }, [enterSelectionMode, handleDelete, handleOpenMoveCategory, handleOpenTodo, handleUnfavorite]);
 
   const handleManagedReorderCommit = useCallback(async (event) => {
     const section = event?.sections?.find((candidate) => candidate.sectionId === 'favorites');
@@ -192,6 +230,8 @@ export default function FavoriteTodosScreen() {
           return buildManagedTodoItem(todo, {
             accentColor: category?.color || '#F59E0B',
             reorderable: true,
+            selectionMode: isSelectionMode,
+            selected: selectedTodoIdSet.has(todo._id),
             includeCompleteToggle: true,
             includeFavoriteAction: false,
             includeFavoriteToggle: false,
@@ -199,6 +239,7 @@ export default function FavoriteTodosScreen() {
             menuActions: [
               { id: 'view', title: '보기' },
               { id: 'edit', title: '수정' },
+              { id: 'select', title: '선택' },
               { id: 'move', title: '이동' },
               { id: 'unfavorite', title: '즐겨찾기 해제' },
               { id: 'delete', title: '일정 삭제', role: 'destructive' },
@@ -211,13 +252,40 @@ export default function FavoriteTodosScreen() {
         }),
       },
     ];
-  }, [categoryById, favoriteTodos]);
+  }, [categoryById, favoriteTodos, isSelectionMode, selectedTodoIdSet]);
 
   const isInitialLoading = isLoading || isCategoriesLoading;
 
   return (
     <SafeAreaView style={styles.screen}>
-      <Stack.Screen options={{ title: '즐겨찾기' }} />
+      <Stack.Screen
+        options={{
+          title: isSelectionMode
+            ? selectedCount > 0
+              ? `${selectedCount}개 선택됨`
+              : '일정 선택'
+            : '즐겨찾기',
+          headerRight: () => {
+            if (isSelectionMode) {
+              return (
+                <TouchableOpacity onPress={exitSelectionMode} style={styles.headerAction}>
+                  <Text style={styles.headerActionText}>완료</Text>
+                </TouchableOpacity>
+              );
+            }
+
+            if (favoriteTodos.length === 0) {
+              return null;
+            }
+
+            return (
+              <TouchableOpacity onPress={() => enterSelectionMode()} style={styles.headerAction}>
+                <Text style={styles.headerActionText}>선택</Text>
+              </TouchableOpacity>
+            );
+          },
+        }}
+      />
       {isInitialLoading ? (
         <View style={styles.centered}>
           <ActivityIndicator size="large" color="#F59E0B" />
@@ -239,14 +307,28 @@ export default function FavoriteTodosScreen() {
             listId="favorite-todos"
             variant="todo"
             sections={managedSections}
-            contentInsetBottom={bottomInset}
+            contentInsetBottom={isSelectionMode ? 96 : bottomInset}
             onPressItem={({ itemId }) => {
               const todo = todoById.get(itemId);
+              if (!todo) {
+                return;
+              }
+
+              if (isSelectionMode) {
+                toggleSelectedTodo(todo._id);
+                return;
+              }
+
               if (todo) {
                 handleOpenTodo(todo);
               }
             }}
             onControlAction={({ itemId, controlId }) => {
+              if (controlId === 'select') {
+                toggleSelectedTodo(itemId);
+                return;
+              }
+
               if (controlId !== 'complete') {
                 return;
               }
@@ -269,6 +351,12 @@ export default function FavoriteTodosScreen() {
           />
         </View>
       )}
+      {isSelectionMode ? (
+        <TodoSelectionActionBar
+          selectedCount={selectedCount}
+          onMove={handleOpenBulkMoveCategory}
+        />
+      ) : null}
     </SafeAreaView>
   );
 }
@@ -277,6 +365,15 @@ const styles = StyleSheet.create({
   screen: {
     flex: 1,
     backgroundColor: '#FFFFFF',
+  },
+  headerAction: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  headerActionText: {
+    color: '#2563EB',
+    fontSize: 16,
+    fontWeight: '600',
   },
   centered: {
     flex: 1,

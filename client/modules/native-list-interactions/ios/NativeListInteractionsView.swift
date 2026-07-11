@@ -89,10 +89,11 @@ final class NativeListInteractionsView: ExpoView, UICollectionViewDelegate, UIGe
     let view = UICollectionView(frame: .zero, collectionViewLayout: layout)
     view.translatesAutoresizingMaskIntoConstraints = false
     view.backgroundColor = .clear
+    view.contentInsetAdjustmentBehavior = .automatic
     view.delegate = self
     view.dragInteractionEnabled = false
-    view.isScrollEnabled = false
-    view.alwaysBounceVertical = false
+    view.isScrollEnabled = true
+    view.alwaysBounceVertical = true
     return view
   }()
 
@@ -426,6 +427,8 @@ final class NativeListInteractionsView: ExpoView, UICollectionViewDelegate, UIGe
       return "이름 변경"
     case "edit":
       return "편집"
+    case "select":
+      return "선택"
     case "move":
       return "이동"
     case "duplicate":

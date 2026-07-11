@@ -1,7 +1,7 @@
 # Todolog Project Context
 
-Last Updated: 2026-05-09
-Status: Sync hardening complete (Pending Push -> Delta Pull), Phase 3 Step 1 recurrence engine complete/validated, Phase 3 Step 2 common query/aggregation complete/validated, Phase 3 Step 3 screen-adapter layer complete/validated, category write unification complete/validated, completion write unification implemented/validated, completion coalescing implemented/validated, completion local tombstone implemented/validated, guest local-only bootstrap + all-to-Inbox migration implemented/validated, cache-policy unification complete/validated, Expo Router migration implemented (parity validation ongoing), Expo SDK 55 upgrade complete/validated, Todo Calendar V2 line-monthly baseline complete, readiness complete, primary monthly tab cutover implemented (post-cutover promoted native smoke pending), floating tab bar implementation landed (iOS simulator validated; Android/manual parity pending), and NativeManagedList iOS Todo category-grouped pilot implemented/stabilization pending
+Last Updated: 2026-07-12
+Status: Core offline-first/sync/calendar foundations are stable; NativeManagedList iOS category/todo/favorite interactions are implemented; Android category first slice is validated; calendar-free screen selection mode and bulk category move are partially implemented and awaiting final manual/SQLite verification; new-Mac handoff checkpoint is prepared.
 
 ## 1. Purpose
 
@@ -16,10 +16,10 @@ If this document conflicts with a feature spec, the feature spec under `.kiro/sp
 
 Client:
 
-- React Native `0.83.2`
-- Expo `55.0.6`
-- Expo Dev Client `~55.0.18`
-- Expo Router `55.0.5`
+- React Native `0.83.6`
+- Expo `55.0.24`
+- Expo Dev Client `~55.0.34`
+- Expo Router `55.0.14`
 - React `19.2.0`
 - Zustand `5.x`
 - React Query `5.x`
@@ -47,8 +47,8 @@ Server:
 - Guest local-only bootstrap + all-to-Inbox migration: implemented and validated (default startup -> Todo route, serverless `guest_local`, seeded Inbox-only empty rule, My Page auth entry, canonical migration DTO, `migrateGuestData` Inbox import, iOS simulator + Maestro login/signup `취소/버리기/가져오기` branches, forced signup partial-failure keeps guest session/local SQLite intact until migration succeeds)
 - Cache-policy unification (Option A -> Option B): complete and validated (shared range cache + sync invalidation unification)
 - Cache retention (memory control): enabled (shared range cache + calendar L1 caches pruned to anchor ±6 months)
-- Expo SDK 55 upgrade: complete and validated (`expo` `55.0.6`, `react-native` `0.83.2`, React Compiler enabled, unused `zeego`/native-menu deps removed)
-- Native validation after SDK 55 upgrade: Android `assembleDebug` + emulator launch succeeded; iOS simulator build/launch succeeded; `expo-doctor` now leaves only the `react-native-wheel-pick` New Architecture metadata warning
+- Expo SDK 55 upgrade: complete and validated (`expo` `55.0.24`, `react-native` `0.83.6`, React Compiler enabled, unused `zeego`/native-menu deps removed)
+- Native validation after SDK 55 patch alignment: Android `assembleDebug` + emulator launch succeeded; iOS simulator build/launch succeeded; `expo-doctor` dependency check is clean after `npx expo install --fix`
 - Todo Calendar V2 (`client/src/features/todo-calendar-v2/`): line-monthly baseline complete; `calendar` tab now renders TC2 as the primary monthly calendar path, adjacent-month cells stay in the 42-day grid but their labels/lines/overflow are hidden, completion glyphs remain out of scope in the frozen baseline, the old `todo-calendar` runtime has been retired, and the duplicate standalone `TC2` tab route has been removed
 - Strip-calendar legacy path: kept only as historical/spec reference; no active app route or Todo runtime mount depends on it
 - Week Flow Calendar: `client/src/features/week-flow-calendar/` now backs the Todo header surface via `WeekFlowTodoHeader`; default iOS interaction uses weekly single-row + monthly drag-snap shell, monthly->weekly selected-week recenter, and the dedicated `week-flow` evaluation tab has been removed
@@ -58,20 +58,26 @@ Server:
 - Floating tab bar visuals: menu shell and `+` surface share the same blurred detached background via `expo-blur` (`intensity=8`), current geometry is defined in `client/src/navigation/tabBarMetrics.js`, tab icons are SVG-based components under `client/src/navigation/icons/`, and the `Todo` icon renders the current day number via `useTodayDate`
 - My Page subtree routing: My Page에서 여는 Settings/Profile/Category/Debug 화면은 `client/app/(app)/(tabs)/my-page/*` 아래로 push되어 iOS Large Title/back label UX를 유지
 - Floating tab bar validation: iOS simulator dev-client rebuild succeeded after adding `expo-blur`/`react-native-svg`, and native smoke confirmed the detached bar, moving selected pill, and SVG tab icons on `Todo / Calendar / My Page`; Android/manual parity verification remains pending
-- NativeManagedList iOS pilot: `NativeManagedList` is the shared JS facade, `NativeTodoManagedList` wraps todo domain data, and `NativeListInteractionsView.swift` currently backs iOS `category` plus `todo` variants. `TODO SCREEN > 카테고리별 순서` and `ALL TODOS SCREEN` reuse the same category-grouped interaction model with todo reorder, cross-category move, collapsed category hover auto-expand, section header category reorder/menu actions, Inbox pinned ordering, and native bottom inset support.
-- NativeManagedList stabilization: the iOS implementation is still concentrated in `client/modules/native-list-interactions/ios/NativeListInteractionsView.swift`; before adding more managed-list features, split the Swift implementation into model/data source/layout/menu/todo-drag/section-header-drag/auto-scroll files per `.kiro/specs/native-managed-list/design.md`.
-- Real-server recovery web E2E: category/todo/completion recovery specs validated; completion extended matrix (`rapid toggle`, `recurring`, `mixed queue`, `dead_letter`, `restart`) validated
+- NativeManagedList iOS pilot: `NativeManagedList` is the shared JS facade, `NativeTodoManagedList` wraps todo domain data, and `native-list-interactions` backs iOS `category` plus `todo` variants. `TODO SCREEN > 카테고리별 순서` and `ALL TODOS SCREEN` reuse the same category-grouped interaction model with todo reorder, cross-category move, collapsed category hover auto-expand, section header category reorder/menu actions, Inbox pinned ordering, native bottom inset support, and split Swift interaction files.
+- NativeManagedList Android baseline: non-iOS fallback rendering no longer shows the unsupported warning card and now emits core contract events for press, menu/action, and toggle controls.
+- NativeManagedList Android category first slice: `variant="category"` now uses the `native-list-interactions` RecyclerView path on Android for `My Page > 카테고리`, including category row rendering, `Inbox` pinned/non-reorderable behavior from the shared contract, overflow `⋮` menu actions, delete action emission, and within-section long-press reorder scaffolding. Verified with Android `:app:assembleDebug`, `:app:installDebug`, emulator launch, `My Page > 카테고리` render, and overflow menu smoke. Todo/favorite Android native drag parity remains a follow-up.
+- Todo selection mode WIP: `FAVORITE SCREEN`, `ALL TODOS SCREEN`, and `CATEGORY SCREEN` have in-place selection state, selected-row/native selection control payloads, bottom tab bar hiding, shared `TodoSelectionActionBar`, and selection-mode interaction disabling. The shared action bar currently wires only `이동`; bulk delete/complete/favorite hooks are not implemented.
+- Todo category picker WIP: `todo/category-select` accepts a single `todoId` or comma-separated `todoIds`, renders `NativeSelectionList` in an Expo Router modal with `취소 / 카테고리 선택 / 이동`, and appends moved todos to target category order while preserving custom/favorite/schedule fields. Single move was previously verified with Maestro + SQLite; the latest multi-select UI commit still needs manual/SQLite verification because Maestro timed out.
+- TodoScreen V2 decisions are frozen in `.kiro/specs/todo-screen-v2/triage.md`: native Stack header + RN title/calendar + NativeManagedList list scroll. Formal requirements/design/tasks promotion and TodoScreen selection-mode chrome remain pending.
+- Web runtime and Playwright validation paths were retired on 2026-05-16; native dev-client smoke is now the active UI/runtime validation path. Active app code no longer carries web targets, `.web.*` implementations, or direct web-only dependencies such as `react-dom`, `react-native-web`, `@expo/metro-runtime`, `@react-oauth/google`, `@dnd-kit/*`, Playwright, Vaul, or `react-native-draggable-flatlist`.
 - Guest migration server validation: completion import preserves exported active `_id`, and forced signup partial-failure rolls back imported todos/completions so the server account remains Inbox-only
 
 ### 2.3 Tooling and upgrade notes
 
 - Tracked native upgrade config lives in `client/app.json` with env-aware native overrides in `client/app.config.js`; `ios.buildReactNativeFromSource: true` is required because `client/ios` and `client/android` are gitignored local outputs and the iOS simulator build hit React Native prebuilt header/symbol mismatch under SDK 55. Local iOS device signing is now expected to come from `EXPO_IOS_APPLE_TEAM_ID` and `EXPO_IOS_BUNDLE_IDENTIFIER`, while simulator builds intentionally avoid a committed placeholder team ID.
 - Physical-device development builds now include `expo-dev-client` and use launcher mode so reopening after network changes prefers the dev-client launcher over silently reconnecting to a stale LAN Metro URL.
-- `client/scripts/dev-launcher.js` now defaults `ios-sim` to `host=lan` because the iOS dev-client path was unreliable when the simulator tried to reopen `localhost` directly.
+- `client/scripts/dev-launcher.js` now defaults `ios-sim` to `host=lan` because the iOS dev-client path was unreliable when the simulator tried to reopen `localhost` directly. The launcher no longer exposes a web target.
 - `expo-blur` and `react-native-svg` are now active client dependencies for the floating tab bar shell and SVG tab icons; adding or upgrading either requires a native dev-client rebuild before simulator/device verification.
 - `react-native-wheel-pick` is still present and is the only known non-blocking `expo-doctor` warning after the SDK 55 upgrade; replacement is planned with a native implementation later.
 - Codex local skill `upgrading-expo` is installed and listed in `AGENTS.md` for future Expo SDK upgrade work.
 - Current validated local iOS baseline is recorded in `client/docs/IOS_SIMULATOR_RUNBOOK.md`: macOS `15.7.3`, Xcode `26.2`, build SDK `iPhoneSimulator26.2.sdk`, simulator runtime `iOS 26.3.1`, simulator device `iPhone 17`. When Codex runs `xcodebuild`, `xcrun simctl`, or Maestro, run them outside the sandbox to avoid misleading CoreSimulator failures.
+- Dependency alignment note (2026-07-12): `npx expo-doctor` passes 16/19 checks. The preserved baseline is behind the newest SDK 55 patch set, `expo-constants` is missing as a direct peer dependency, and `react-native-wheel-pick` remains untested on the New Architecture. Do not auto-fix during machine migration; reproduce the lockfile baseline first, then handle dependency alignment as a separate approved task.
+- New-Mac restore and continuation instructions live in `NEW_MAC_HANDOFF_2026-07-12.md`.
 
 ## 3. Non-Negotiable Architecture Commitments
 
@@ -625,7 +631,7 @@ If requests fail locally, check `EXPO_PUBLIC_API_URL` first.
 3. Breaking sync order (`Pending Push -> Delta Pull -> Cursor Commit -> Cache Refresh`).
 4. Missing calendar month-cache invalidation on todo/completion updates.
 5. Leaving verbose debug logs in production flows.
-6. Monthly strip web settle path currently mixes list snap physics and JS idle-settle correction logic; this area is still under tuning.
+6. Re-introducing retired web-only runtime/test paths instead of validating via native dev-client smoke.
 
 ## 13. Document Source of Truth
 

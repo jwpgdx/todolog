@@ -24,6 +24,7 @@ export default function WeekFlowWeekly({
   onVisibleWeekStartChange,
   embedded = false,
   enableDaySummaries = true,
+  showHeader = true,
 }) {
   const { currentDate, setCurrentDate } = useDateStore();
   const { todayDate } = useTodayDate();
@@ -128,16 +129,18 @@ export default function WeekFlowWeekly({
 
   return (
     <View style={[styles.container, embedded ? styles.embeddedContainer : null]}>
-      <WeekFlowHeader
-        title={headerTitle}
-        mode="weekly"
-        showTodayJumpButton={showTodayJumpButton}
-        onTodayJump={onTodayJump}
-        onPrev={onPrev}
-        onNext={onNext}
-        onToggleMode={onToggleMode}
-        showToggle={showToggle}
-      />
+      {showHeader ? (
+        <WeekFlowHeader
+          title={headerTitle}
+          mode="weekly"
+          showTodayJumpButton={showTodayJumpButton}
+          onTodayJump={onTodayJump}
+          onPrev={onPrev}
+          onNext={onNext}
+          onToggleMode={onToggleMode}
+          showToggle={showToggle}
+        />
+      ) : null}
 
       <View style={styles.weekdayRow}>
         {weekdayLabels.map((label) => (

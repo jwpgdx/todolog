@@ -66,7 +66,27 @@ export default function MyPageLayout() {
           headerShown: true,
           headerBackTitle: '취소',
           title: '',
-          presentation: isIOS ? 'pageSheet' : 'modal',
+          presentation: 'modal',
+        }}
+      />
+      <Stack.Screen
+        name="category/form-modal"
+        options={{
+          headerShown: true,
+          headerBackTitle: '취소',
+          title: '',
+          presentation: 'modal',
+        }}
+      />
+      <Stack.Screen
+        name="category/form-formsheet"
+        options={{
+          headerShown: true,
+          headerBackTitle: '취소',
+          title: '',
+          presentation: 'formSheet',
+          sheetAllowedDetents: 'fitToContents',
+          sheetGrabberVisible: true,
         }}
       />
       <Stack.Screen
@@ -74,6 +94,31 @@ export default function MyPageLayout() {
         options={{
           headerShown: true,
           title: '색상 선택',
+        }}
+      />
+      <Stack.Screen
+        name="presentation/push"
+        options={{
+          title: 'Push 테스트',
+          presentation: 'card',
+        }}
+      />
+      <Stack.Screen
+        name="presentation/modal"
+        options={{
+          title: 'Modal 테스트',
+          presentation: 'modal',
+        }}
+      />
+      <Stack.Screen
+        name="presentation/formsheet"
+        options={{
+          title: 'FormSheet 테스트',
+          presentation: 'formSheet',
+          sheetAllowedDetents: [0.35, 0.7, 1],
+          sheetInitialDetentIndex: 0,
+          sheetGrabberVisible: true,
+          sheetCornerRadius: 24,
         }}
       />
       <Stack.Screen

@@ -12,16 +12,22 @@ import Animated, {
 } from "react-native-reanimated";
 
 import { useDateStore } from "../../../store/dateStore";
+import { useTodayDate } from "../../../hooks/useTodayDate";
 import { useSettings } from "../../../hooks/queries/useSettings";
 import {
   DEFAULT_WEEK_FLOW_DRAG_SNAP_ENABLED,
   DEFAULT_WEEK_FLOW_WEEKLY_RECENTER_ANIMATION_ENABLED,
   WEEK_ROW_HEIGHT,
 } from "../utils/weekFlowConstants";
-import { addWeeks, toWeekStart } from "../utils/weekFlowDateUtils";
+import { addWeeks, toMonthStart, toWeekStart } from "../utils/weekFlowDateUtils";
+import {
+  formatHeaderYearMonth,
+  resolveCalendarLanguage,
+} from "../utils/weekFlowLocaleUtils";
 
 import WeekFlowMonthly from "./WeekFlowMonthly";
 import WeekFlowWeekly from "./WeekFlowWeekly";
+import WeekFlowHeader from "./WeekFlowHeader";
 
 const AnimatedView = Animated.createAnimatedComponent(View);
 
@@ -61,6 +67,18 @@ function diffWeekStarts(targetWeekStart, baseWeekStart) {
   return Math.round(diffMs / (7 * 24 * 60 * 60 * 1000));
 }
 
+function modeForProgress(targetProgress) {
+  return targetProgress >= 0.5 ? "monthly" : "weekly";
+}
+
+function formatMonthTitle(monthStartYmd, language) {
+  if (!monthStartYmd || monthStartYmd.length < 7) return "";
+  const year = Number(monthStartYmd.slice(0, 4));
+  const month1Based = Number(monthStartYmd.slice(5, 7));
+  if (!Number.isFinite(year) || !Number.isFinite(month1Based)) return "";
+  return formatHeaderYearMonth(year, month1Based, language);
+}
+
 export default function WeekFlowDragSnapCard({
   initialMode = "weekly",
   weeklyWeekStart,
@@ -69,14 +87,17 @@ export default function WeekFlowDragSnapCard({
   enabled = DEFAULT_WEEK_FLOW_DRAG_SNAP_ENABLED,
   enableWeeklyRecenterAnimation = DEFAULT_WEEK_FLOW_WEEKLY_RECENTER_ANIMATION_ENABLED,
 }) {
-  const { currentDate } = useDateStore();
+  const { currentDate, setCurrentDate } = useDateStore();
+  const { todayDate } = useTodayDate();
   const { data: settings = {} } = useSettings();
 
   const startDayOfWeek = settings.startDayOfWeek || "sunday";
+  const language = resolveCalendarLanguage(settings.language || "system");
   const initialProgress = initialMode === "monthly" ? 1 : 0;
   const [committedMode, setCommittedMode] = useState(
     initialMode === "monthly" ? "monthly" : "weekly",
   );
+  const committedModeRef = useRef(initialMode === "monthly" ? "monthly" : "weekly");
   const [measuredHeights, setMeasuredHeights] = useState({
     weekly: 0,
     monthly: 0,
@@ -91,12 +112,29 @@ export default function WeekFlowDragSnapCard({
     () => currentDate || null,
   );
   const [weeklyRecenterTransition, setWeeklyRecenterTransition] = useState(null);
+  const [monthlySyncTopWeekStart, setMonthlySyncTopWeekStart] = useState(null);
 
   const monthlyViewportWeekStartRef = useRef(weeklyWeekStart || null);
   const latestSelectedDateRef = useRef(currentDate || null);
   const dragStartProgressRef = useSharedValue(initialProgress);
   const progress = useSharedValue(initialProgress);
   const weeklyRecenterProgress = useSharedValue(0);
+
+  useEffect(() => {
+    committedModeRef.current = committedMode;
+  }, [committedMode]);
+
+  const applyVisualMode = useCallback(
+    (targetProgress) => {
+      const nextMode = modeForProgress(targetProgress);
+      if (committedModeRef.current === nextMode) return;
+
+      committedModeRef.current = nextMode;
+      setCommittedMode(nextMode);
+      onModeChange?.(nextMode);
+    },
+    [onModeChange],
+  );
 
   const weeklyHeight = measuredHeights.weekly || DEFAULT_WEEKLY_HEIGHT;
   const monthlyHeight = measuredHeights.monthly || DEFAULT_MONTHLY_HEIGHT;
@@ -144,6 +182,7 @@ export default function WeekFlowDragSnapCard({
   const handleMonthlyTopWeekStartChange = useCallback(
     (weekStart) => {
       if (!weekStart) return;
+      setMonthlySyncTopWeekStart((prev) => (prev === weekStart ? null : prev));
       commitMonthlyViewportWeekStart(weekStart);
       if (committedMode !== "monthly") return;
       setPreviewWeeklyWeekStart((prev) => (prev === weekStart ? prev : weekStart));
@@ -199,6 +238,92 @@ export default function WeekFlowDragSnapCard({
     ],
   );
 
+  const activeWeeklyWeekStart = useMemo(
+    () =>
+      previewWeeklyWeekStart ||
+      weeklyWeekStart ||
+      toWeekStart(currentDate, startDayOfWeek),
+    [currentDate, previewWeeklyWeekStart, startDayOfWeek, weeklyWeekStart],
+  );
+
+  const activeMonthlyTopWeekStart = useMemo(
+    () =>
+      monthlyViewportWeekStart ||
+      activeWeeklyWeekStart ||
+      toWeekStart(currentDate, startDayOfWeek),
+    [activeWeeklyWeekStart, currentDate, monthlyViewportWeekStart, startDayOfWeek],
+  );
+
+  const headerMonthStart = useMemo(() => {
+    if (committedMode === "monthly") {
+      return toMonthStart(activeMonthlyTopWeekStart || currentDate);
+    }
+
+    return toMonthStart(activeWeeklyWeekStart || currentDate);
+  }, [activeMonthlyTopWeekStart, activeWeeklyWeekStart, committedMode, currentDate]);
+
+  const headerTitle = useMemo(
+    () => formatMonthTitle(headerMonthStart, language),
+    [headerMonthStart, language],
+  );
+
+  const showTodayJumpButton = useMemo(() => {
+    if (!todayDate) return false;
+
+    if (committedMode === "monthly") {
+      return toMonthStart(todayDate) !== headerMonthStart;
+    }
+
+    const todayWeekStart = toWeekStart(todayDate, startDayOfWeek);
+    return todayWeekStart != null && todayWeekStart !== activeWeeklyWeekStart;
+  }, [
+    activeWeeklyWeekStart,
+    committedMode,
+    headerMonthStart,
+    startDayOfWeek,
+    todayDate,
+  ]);
+
+  const commitWeeklyViewport = useCallback(
+    (nextWeekStart) => {
+      if (!nextWeekStart) return;
+      setMonthlySyncTopWeekStart(null);
+      setPreviewWeeklyWeekStart((prev) =>
+        prev === nextWeekStart ? prev : nextWeekStart,
+      );
+      commitMonthlyViewportWeekStart(nextWeekStart);
+      onWeeklyWeekStartChange?.(nextWeekStart);
+    },
+    [commitMonthlyViewportWeekStart, onWeeklyWeekStartChange],
+  );
+
+  const handleHeaderTodayJump = useCallback(() => {
+    if (!todayDate) return;
+    const todayWeekStart = toWeekStart(todayDate, startDayOfWeek);
+    if (!todayWeekStart) return;
+
+    commitPreviewWeeklySelectedDate(todayDate);
+    setCurrentDate(todayDate);
+    commitWeeklyViewport(todayWeekStart);
+    setMonthlySyncTopWeekStart(todayWeekStart);
+  }, [
+    commitPreviewWeeklySelectedDate,
+    commitWeeklyViewport,
+    setCurrentDate,
+    startDayOfWeek,
+    todayDate,
+  ]);
+
+  const handleHeaderPrev = useCallback(() => {
+    const nextWeekStart = addWeeks(activeWeeklyWeekStart, -1);
+    commitWeeklyViewport(nextWeekStart);
+  }, [activeWeeklyWeekStart, commitWeeklyViewport]);
+
+  const handleHeaderNext = useCallback(() => {
+    const nextWeekStart = addWeeks(activeWeeklyWeekStart, 1);
+    commitWeeklyViewport(nextWeekStart);
+  }, [activeWeeklyWeekStart, commitWeeklyViewport]);
+
   const finishWeeklyRecenterTransition = useCallback(
     (targetWeekStart) => {
       if (!targetWeekStart) {
@@ -238,7 +363,7 @@ export default function WeekFlowDragSnapCard({
 
   const commitMode = useCallback(
     (targetProgress) => {
-      const nextMode = targetProgress >= 0.5 ? "monthly" : "weekly";
+      const nextMode = modeForProgress(targetProgress);
 
       if (nextMode === "weekly") {
         const latestStoreSelectedDate = useDateStore.getState?.().currentDate || null;
@@ -304,10 +429,10 @@ export default function WeekFlowDragSnapCard({
         }
       }
 
-      setCommittedMode(nextMode);
-      onModeChange?.(nextMode);
+      applyVisualMode(targetProgress);
     },
     [
+      applyVisualMode,
       currentDate,
       enableWeeklyRecenterAnimation,
       commitMonthlyViewportWeekStart,
@@ -321,12 +446,13 @@ export default function WeekFlowDragSnapCard({
 
   const animateToMode = useCallback(
     (targetProgress) => {
+      applyVisualMode(targetProgress);
       progress.value = withSpring(targetProgress, SPRING_CONFIG, (finished) => {
         if (!finished) return;
         runOnJS(commitMode)(targetProgress);
       });
     },
-    [commitMode, progress],
+    [applyVisualMode, commitMode, progress],
   );
 
   const handleTogglePress = useCallback(() => {
@@ -352,12 +478,20 @@ export default function WeekFlowDragSnapCard({
           const velocityProgress = event.velocityY / Math.max(travelDistance, 1);
           const projected = clampProgress(progress.value + velocityProgress * 0.12);
           const targetProgress = projected >= SNAP_THRESHOLD ? 1 : 0;
+          runOnJS(applyVisualMode)(targetProgress);
           progress.value = withSpring(targetProgress, SPRING_CONFIG, (finished) => {
             if (!finished) return;
             runOnJS(commitMode)(targetProgress);
           });
         }),
-    [commitMode, dragStartProgressRef, progress, travelDistance, weeklyRecenterTransition],
+    [
+      applyVisualMode,
+      commitMode,
+      dragStartProgressRef,
+      progress,
+      travelDistance,
+      weeklyRecenterTransition,
+    ],
   );
 
   const surfaceStyle = useAnimatedStyle(() => ({
@@ -494,15 +628,26 @@ export default function WeekFlowDragSnapCard({
     };
   }, [weeklyRecenterDirection, weeklyRecenterKind]);
 
-  const handleChevron = committedMode === "weekly" ? "˅" : "˄";
   const monthlyScrollEnabled = enabled && committedMode === "monthly";
   const monthlySyncTarget =
-    enabled && committedMode === "weekly"
+    monthlySyncTopWeekStart ||
+    (enabled && committedMode === "weekly"
       ? previewWeeklyWeekStart || weeklyWeekStart || null
-      : null;
+      : null);
 
   return (
     <View style={styles.wrapper}>
+      <WeekFlowHeader
+        title={headerTitle}
+        mode={committedMode}
+        showTodayJumpButton={showTodayJumpButton}
+        onTodayJump={handleHeaderTodayJump}
+        onPrev={handleHeaderPrev}
+        onNext={handleHeaderNext}
+        onToggleMode={handleTogglePress}
+        showToggle
+      />
+
       <AnimatedView style={[styles.surface, surfaceStyle]}>
         <AnimatedView
           pointerEvents={committedMode === "monthly" ? "auto" : "none"}
@@ -516,6 +661,7 @@ export default function WeekFlowDragSnapCard({
               onSelectedDateChange={handleMonthlySelectedDateChange}
               onTopWeekStartChange={handleMonthlyTopWeekStartChange}
               scrollEnabled={monthlyScrollEnabled}
+              showHeader={false}
               showToggle={false}
               syncTopWeekStart={monthlySyncTarget}
             />
@@ -534,6 +680,7 @@ export default function WeekFlowDragSnapCard({
                 embedded
                 enableDaySummaries={committedMode === "weekly"}
                 onVisibleWeekStartChange={handleWeeklyVisibleWeekStartChange}
+                showHeader={false}
                 showToggle={false}
                 selectedDate={previewWeeklySelectedDate}
                 visibleWeekStart={previewWeeklyWeekStart || weeklyWeekStart}
@@ -548,6 +695,7 @@ export default function WeekFlowDragSnapCard({
               <WeekFlowWeekly
                 embedded
                 enableDaySummaries={false}
+                showHeader={false}
                 showToggle={false}
                 selectedDate={previewWeeklySelectedDate}
                 visibleWeekStart={weeklyRecenterTransition.sourceWeekStart}
@@ -558,6 +706,7 @@ export default function WeekFlowDragSnapCard({
               <WeekFlowWeekly
                 embedded
                 enableDaySummaries={false}
+                showHeader={false}
                 showToggle={false}
                 selectedDate={previewWeeklySelectedDate}
                 visibleWeekStart={weeklyRecenterTransition.targetWeekStart}
@@ -575,7 +724,6 @@ export default function WeekFlowDragSnapCard({
         >
           <View style={styles.touchArea}>
             <View style={styles.bar} />
-            <Text style={styles.chevron}>{handleChevron}</Text>
           </View>
         </Pressable>
       </GestureDetector>
@@ -585,16 +733,9 @@ export default function WeekFlowDragSnapCard({
 
 const styles = StyleSheet.create({
   wrapper: {
-    marginHorizontal: 12,
-    marginTop: 12,
     marginBottom: 12,
   },
   surface: {
-    borderWidth: 1,
-    borderBottomWidth: 0,
-    borderColor: "#E5E7EB",
-    borderTopLeftRadius: 12,
-    borderTopRightRadius: 12,
     overflow: "hidden",
     backgroundColor: "#FFFFFF",
     position: "relative",
@@ -616,11 +757,6 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     paddingVertical: 6,
     backgroundColor: "#FFFFFF",
-    borderWidth: 1,
-    borderTopWidth: 0,
-    borderColor: "#E5E7EB",
-    borderBottomLeftRadius: 12,
-    borderBottomRightRadius: 12,
   },
   touchArea: {
     alignItems: "center",
@@ -631,10 +767,5 @@ const styles = StyleSheet.create({
     height: 4,
     borderRadius: 2,
     backgroundColor: "#D1D5DB",
-  },
-  chevron: {
-    marginTop: 2,
-    fontSize: 12,
-    color: "#6B7280",
   },
 });

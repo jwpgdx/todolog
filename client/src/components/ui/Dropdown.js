@@ -45,34 +45,18 @@ export default function Dropdown({
         }
 
         return new Promise((resolve) => {
-            if (Platform.OS === 'web') {
-                // 웹: getBoundingClientRect 사용
-                if (triggerRef.current) {
-                    const rect = triggerRef.current.getBoundingClientRect();
-                    const screenHeight = window.innerHeight;
-                    const spaceBelow = screenHeight - rect.bottom;
-                    const spaceAbove = rect.top;
+            if (triggerRef.current) {
+                triggerRef.current.measure((x, y, w, h, pageX, pageY) => {
+                    const screenHeight = Dimensions.get('window').height;
+                    const spaceBelow = screenHeight - (pageY + h);
+                    const spaceAbove = pageY;
 
-                    // 아래 공간이 드롭다운 높이보다 작고, 위가 더 넓으면 up
                     const newDirection = spaceBelow < maxHeight && spaceAbove > spaceBelow ? 'up' : 'down';
                     setComputedDirection(newDirection);
-                }
-                resolve();
-            } else {
-                // 모바일: measure() 사용
-                if (triggerRef.current) {
-                    triggerRef.current.measure((x, y, w, h, pageX, pageY) => {
-                        const screenHeight = Dimensions.get('window').height;
-                        const spaceBelow = screenHeight - (pageY + h);
-                        const spaceAbove = pageY;
-
-                        const newDirection = spaceBelow < maxHeight && spaceAbove > spaceBelow ? 'up' : 'down';
-                        setComputedDirection(newDirection);
-                        resolve();
-                    });
-                } else {
                     resolve();
-                }
+                });
+            } else {
+                resolve();
             }
         });
     }, [direction, maxHeight]);
@@ -88,28 +72,8 @@ export default function Dropdown({
     // 실제 적용할 방향
     const actualDirection = direction === 'auto' ? computedDirection : direction;
 
-    // 웹용 스타일 (인라인 - Portal 없이)
-    const getWebContentStyle = () => ({
-        position: 'absolute',
-        [actualDirection === 'up' ? 'bottom' : 'top']: '100%',
-        [align === 'right' ? 'right' : 'left']: 0,
-        marginTop: actualDirection === 'down' ? 8 : 0,
-        marginBottom: actualDirection === 'up' ? 8 : 0,
-        width: width,
-        maxHeight: maxHeight,
-        backgroundColor: 'white',
-        borderRadius: 16,
-        paddingTop: 6,
-        paddingBottom: 6,
-        boxShadow: '0px 8px 32px rgba(0, 0, 0, 0.15)',
-        zIndex: 9999,
-        overflowY: 'auto',
-        overscrollBehavior: 'contain',
-    });
-
     return (
         <View
-            ref={Platform.OS !== 'web' ? triggerRef : undefined}
             style={{ position: 'relative', zIndex: isOpen ? 9999 : 1 }}
         >
             {/* Trigger Button */}
@@ -117,87 +81,53 @@ export default function Dropdown({
                 activeOpacity={0.8}
                 onPress={handleOpen}
             >
-                {Platform.OS === 'web' ? (
-                    <div ref={triggerRef}>
-                        {trigger instanceof Function ? trigger(isOpen) : trigger}
-                    </div>
-                ) : (
-                    <View ref={triggerRef}>
-                        {trigger instanceof Function ? trigger(isOpen) : trigger}
-                    </View>
-                )}
+                <View ref={triggerRef}>
+                    {trigger instanceof Function ? trigger(isOpen) : trigger}
+                </View>
             </TouchableOpacity>
 
             {/* Dropdown Content */}
             {isOpen && (
                 <>
                     {/* Backdrop */}
-                    {Platform.OS === 'web' ? (
-                        <div
-                            onClick={close}
-                            style={{
-                                position: 'fixed',
-                                top: 0,
-                                left: 0,
-                                right: 0,
-                                bottom: 0,
-                                zIndex: 9998,
-                                backgroundColor: 'transparent',
-                            }}
-                        />
-                    ) : (
-                        <TouchableOpacity
-                            activeOpacity={1}
-                            onPress={close}
-                            style={{
-                                position: 'absolute',
-                                top: -1000,
-                                backgroundColor: 'transparent',
-                                width: 10000,
-                                height: 10000,
-                                left: -500,
-                                zIndex: 40,
-                            }}
-                        />
-                    )}
+                    <TouchableOpacity
+                        activeOpacity={1}
+                        onPress={close}
+                        style={{
+                            position: 'absolute',
+                            top: -1000,
+                            backgroundColor: 'transparent',
+                            width: 10000,
+                            height: 10000,
+                            left: -500,
+                            zIndex: 40,
+                        }}
+                    />
 
                     {/* Content */}
-                    {Platform.OS === 'web' ? (
-                        <div
-                            style={getWebContentStyle()}
-                            onTouchMove={(e) => e.stopPropagation()}
-                            onWheel={(e) => e.stopPropagation()}
-                            onTouchStart={(e) => e.stopPropagation()}
+                    <View
+                        className={`absolute bg-surface rounded-[16px] py-[6px] overflow-hidden z-50
+                            ${align === 'right' ? 'right-0' : 'left-0'}
+                            ${actualDirection === 'up' ? 'bottom-full mb-2' : 'top-full mt-2'}
+                        `}
+                        style={{
+                            width: width,
+                            maxHeight,
+                            ...Platform.select({
+                                ios: { boxShadow: '0px 8px 32px rgba(0, 0, 0, 0.1)' },
+                                android: { elevation: 8 },
+                                default: { boxShadow: '0px 8px 32px rgba(0, 0, 0, 0.1)' }
+                            }),
+                        }}
+                    >
+                        <ScrollView
+                            className="px-1"
+                            showsVerticalScrollIndicator={true}
+                            nestedScrollEnabled={true}
                         >
-                            <div style={{ paddingLeft: 4, paddingRight: 4 }}>
-                                {children(close)}
-                            </div>
-                        </div>
-                    ) : (
-                        <View
-                            className={`absolute bg-surface rounded-[16px] py-[6px] overflow-hidden z-50 
-                                ${align === 'right' ? 'right-0' : 'left-0'}
-                                ${actualDirection === 'up' ? 'bottom-full mb-2' : 'top-full mt-2'} 
-                            `}
-                            style={{
-                                width: width,
-                                maxHeight,
-                                ...Platform.select({
-                                    ios: { boxShadow: '0px 8px 32px rgba(0, 0, 0, 0.1)' },
-                                    android: { elevation: 8 },
-                                    default: { boxShadow: '0px 8px 32px rgba(0, 0, 0, 0.1)' }
-                                }),
-                            }}
-                        >
-                            <ScrollView
-                                className="px-1"
-                                showsVerticalScrollIndicator={true}
-                                nestedScrollEnabled={true}
-                            >
-                                {children(close)}
-                            </ScrollView>
-                        </View>
-                    )}
+                            {children(close)}
+                        </ScrollView>
+                    </View>
                 </>
             )}
         </View>

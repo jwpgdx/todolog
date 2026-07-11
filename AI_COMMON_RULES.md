@@ -1,6 +1,6 @@
 # Todolog AI Common Rules
 
-Last Updated: 2026-02-22
+Last Updated: 2026-05-19
 Scope: Shared rules for all AI tools used in this repository.
 
 ## 1. Purpose
@@ -105,7 +105,15 @@ Rule of thumb:
 - If tests are not run, state this explicitly.
 - For contract changes, include payload-level verification in report.
 
-## 9. External AI Spec Review Protocol
+## 9. Dependency and Native Lockfile Rules
+
+- Do not run broad dependency upgrades (`npm update`, unscoped `npm install <package>@latest`, or equivalent) without explicit user approval.
+- When `client/package.json` or `client/package-lock.json` changes native dependencies, validate with `npx expo install --check`.
+- For iOS native dependency changes, keep `client/ios/Podfile.lock` synchronized with the current `node_modules` state before claiming the iOS build is healthy.
+- If CocoaPods reports a podspec/lock mismatch, treat it as dependency drift first; do not reset Xcode or Simulator runtimes unless CoreSimulator itself is failing.
+- Report dependency version changes explicitly, including Expo, React Native, and any native pod lockfile regeneration.
+
+## 10. External AI Spec Review Protocol
 
 When validating spec/architecture documents with external AI tools (e.g. Opus, Gemini):
 

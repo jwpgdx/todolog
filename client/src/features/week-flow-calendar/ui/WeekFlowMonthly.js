@@ -5,7 +5,7 @@ import React, {
   useRef,
   useState,
 } from "react";
-import { Platform, StyleSheet, Text, View } from "react-native";
+import { StyleSheet, Text, View } from "react-native";
 import dayjs from "dayjs";
 import { FlashList } from "@shopify/flash-list";
 
@@ -125,6 +125,7 @@ export default function WeekFlowMonthly({
   enableDaySummaries = true,
   scrollEnabled = true,
   syncTopWeekStart = null,
+  showHeader = true,
 }) {
   const { currentDate, setCurrentDate } = useDateStore();
   const { todayDate } = useTodayDate();
@@ -165,7 +166,6 @@ export default function WeekFlowMonthly({
   const lastExtendDirectionRef = useRef("down"); // 'down' | 'up'
   const pendingTrimDirectionRef = useRef(null); // 'down' | 'up'
   const scrollPhaseRef = useRef({ dragging: false, momentum: false });
-  const webIdleSettleTimerRef = useRef(null);
   const debugScrollReportRef = useRef({ offset: 0, atMs: 0 });
   const prependAnchorLockRef = useRef(false);
   const prependAnchorUnlockTimerRef = useRef(null);
@@ -626,20 +626,6 @@ export default function WeekFlowMonthly({
       }
     }
 
-    // Web/no-momentum fallback: debounce an "idle settled" token after scroll inactivity.
-    // This does NOT call ensure directly; it only advances the settled token.
-    if (Platform.OS === "web") {
-      if (webIdleSettleTimerRef.current) {
-        clearTimeout(webIdleSettleTimerRef.current);
-      }
-      webIdleSettleTimerRef.current = setTimeout(() => {
-        const top = lastReportedTopWeekStartRef.current;
-        if (top) {
-          setSettledTopWeekStart(top);
-          setViewportSettledToken((value) => value + 1);
-        }
-      }, 120);
-    }
   }, [recordScrollCommand, showDebugPanel, updateDebugState]);
 
   const onScrollBeginDrag = useCallback(() => {
@@ -684,9 +670,6 @@ export default function WeekFlowMonthly({
     return () => {
       if (prependAnchorUnlockTimerRef.current) {
         clearTimeout(prependAnchorUnlockTimerRef.current);
-      }
-      if (webIdleSettleTimerRef.current) {
-        clearTimeout(webIdleSettleTimerRef.current);
       }
     };
   }, []);
@@ -763,16 +746,18 @@ export default function WeekFlowMonthly({
 
   return (
     <View style={[styles.container, embedded ? styles.embeddedContainer : null]}>
-      <WeekFlowHeader
-        title={headerTitle}
-        mode="monthly"
-        showTodayJumpButton={showTodayJumpButton}
-        onTodayJump={onTodayJump}
-        onPrev={onPrevMonth}
-        onNext={onNextMonth}
-        onToggleMode={onToggleMode}
-        showToggle={showToggle}
-      />
+      {showHeader ? (
+        <WeekFlowHeader
+          title={headerTitle}
+          mode="monthly"
+          showTodayJumpButton={showTodayJumpButton}
+          onTodayJump={onTodayJump}
+          onPrev={onPrevMonth}
+          onNext={onNextMonth}
+          onToggleMode={onToggleMode}
+          showToggle={showToggle}
+        />
+      ) : null}
 
       <View style={styles.weekdayRow}>
         {weekdayLabels.map((label) => (

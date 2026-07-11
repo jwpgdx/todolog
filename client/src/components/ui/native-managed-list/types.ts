@@ -15,6 +15,7 @@ export type ManagedListReorderMode =
 export type ManagedListDropOutsideReorderRangeBehavior = 'returnOriginal';
 
 export type ManagedListItemKind =
+  | 'pageTitle'
   | 'category'
   | 'todo'
   | 'sectionHeader'

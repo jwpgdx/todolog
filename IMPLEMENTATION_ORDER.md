@@ -1,6 +1,6 @@
 # Implementation Order
 
-Last Updated: 2026-05-16
+Last Updated: 2026-07-12
 Status: In Progress
 
 ## Phase 1. Order Schema 실제 반영
@@ -52,6 +52,22 @@ Status: In Progress
 - `FAVORITE SCREEN`
   - 단일 flat list 이므로 iOS UIKit built-in reorder 우선 적용
   - 상태: 구현 및 수동 검증 완료
+- 공통 일정 메뉴 `이동`
+  - `todo/category-select` modal route 추가
+  - Expo Router `modal` + native Stack header + `NativeSelectionList` 조합 사용
+  - `TODO SCREEN`, `ALL TODOS SCREEN`, `FAVORITE SCREEN`, `CATEGORY SCREEN`의 일정 메뉴 `이동`에서 공통 진입
+  - 선택한 카테고리로 `categoryId`를 변경하고 대상 카테고리 맨 아래 `category_order`로 append
+  - 상태: 구현 및 Maestro + SQLite 검증 완료
+- 공통 일정 선택모드
+  - 적용 화면: `FAVORITE SCREEN`, `ALL TODOS SCREEN`, `CATEGORY SCREEN`
+  - 선택모드 진입: 헤더 `선택`, 일정 메뉴 `선택`
+  - 선택모드 중 row tap / select control로 선택 toggle
+  - 선택모드 중 swipe / context menu / reorder / collapse 비활성화
+  - bottom tab bar 숨김, 선택 action bar 표시
+  - bulk `이동`은 `todo/category-select?todoIds=...` modal로 진입
+  - bulk 이동 시 target category 맨 아래 `category_order` 뒤로 순차 append
+  - `TODO SCREEN` 선택모드는 calendar / 정렬모드 UX 검증 후 별도 적용
+  - 상태: 구현 완료, iOS 빌드 통과, 수동 end-to-end 검증 대기
 
 ## Phase 4. 즐겨찾기 기능 추가
 
@@ -209,3 +225,22 @@ Status: In Progress
 - 상단 즐겨찾기 그룹 내부 reorder 시 `favorite_order`만 변경되는지 확인
 - 상단 즐겨찾기에서 일반 카테고리 목록으로 drag out 하면 `favorite_order`가 `null`이 되고 `categoryId` / `category_order`가 반영되는지 확인
 - 상태: 수동 검증 완료
+
+13. 공통 일정 메뉴 `이동` 확인
+- 일정 메뉴에서 `이동`을 누르면 `카테고리 선택` modal이 열린다.
+- 현재 카테고리가 checkmark / selected 상태로 표시된다.
+- 다른 카테고리를 선택하고 `이동`을 누르면 `category_id`가 변경된다.
+- 대상 카테고리의 맨 아래 `category_order`로 append 된다.
+- 적용 후 modal이 닫히고 원래 화면으로 복귀한다.
+- 결과: Maestro로 `김국진` 선택 / `이동` 실행 후 SQLite에서 `category_id`, 카테고리명, `category_order` 반영 확인 완료
+
+14. 공통 일정 선택모드 / bulk 이동 확인
+- `FAVORITE SCREEN`, `ALL TODOS SCREEN`, `CATEGORY SCREEN`에서 헤더 `선택`으로 선택모드 진입
+- 선택모드에서 bottom tab bar가 숨겨지고 선택 action bar가 표시되는지 확인
+- row tap / selection control로 선택 상태가 토글되는지 확인
+- 선택모드에서 swipe / context menu / reorder / category collapse가 동작하지 않는지 확인
+- `이동`을 누르면 `카테고리 선택` modal이 `todoIds` bulk 파라미터로 열린다.
+- modal header는 왼쪽 `취소`, 가운데 `카테고리 선택`, 오른쪽 `이동`으로 표시된다.
+- 대상 카테고리를 선택하고 `이동`하면 선택된 일정들이 target category 맨 아래에 순차 append 된다.
+- 기존 `custom_order`, `favorite_order`, 날짜 / 시간 필드는 보존된다.
+- 상태: iOS native rebuild 성공, bulk modal route 시각 확인 완료, 자동 터치 도구 불안정으로 실제 선택 / 이동 commit은 수동 검증 필요

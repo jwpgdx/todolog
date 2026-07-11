@@ -120,6 +120,8 @@ extension NativeListInteractionsView {
     }
 
     switch item.kind {
+    case "pageTitle":
+      configurePageTitleRow(cell: listCell, item: item)
     case "menu":
       configureMenuRow(cell: listCell, item: item)
     case "category":
@@ -258,6 +260,27 @@ extension NativeListInteractionsView {
     }
 
     cell.accessories = accessories
+  }
+
+  private func configurePageTitleRow(cell: UICollectionViewListCell, item: NativeItem) {
+    var content = UIListContentConfiguration.subtitleCell()
+    content.text = item.title
+    content.secondaryText = item.subtitle ?? item.metaText
+    content.textProperties.font = UIFont.systemFont(ofSize: 34, weight: .bold)
+    content.textProperties.color = .label
+    content.textProperties.adjustsFontForContentSizeCategory = true
+    content.secondaryTextProperties.font = UIFont.systemFont(ofSize: 16, weight: .semibold)
+    content.secondaryTextProperties.color = .secondaryLabel
+    content.secondaryTextProperties.adjustsFontForContentSizeCategory = true
+    content.image = nil
+    cell.contentConfiguration = content
+    cell.accessories = []
+    cell.backgroundConfiguration = UIBackgroundConfiguration.clear()
+    cell.isUserInteractionEnabled = false
+    cell.accessibilityIdentifier = item.id
+    cell.accessibilityLabel = [item.title, item.subtitle ?? item.metaText]
+      .compactMap { $0 }
+      .joined(separator: ", ")
   }
 
   private func configureSectionHeaderRow(cell: UICollectionViewListCell, item: NativeItem) {
@@ -441,7 +464,7 @@ extension NativeListInteractionsView {
     case "category":
       return groupCategoryBackgroundConfiguration()
     case "todo":
-      return listTodoBackgroundConfiguration()
+      return listTodoBackgroundConfiguration(for: item)
     default:
       return UIBackgroundConfiguration.clear()
     }
@@ -451,8 +474,12 @@ extension NativeListInteractionsView {
     UIBackgroundConfiguration.listGroupedCell()
   }
 
-  private func listTodoBackgroundConfiguration() -> UIBackgroundConfiguration {
-    UIBackgroundConfiguration.listPlainCell()
+  private func listTodoBackgroundConfiguration(for item: NativeItem) -> UIBackgroundConfiguration {
+    var configuration = UIBackgroundConfiguration.listPlainCell()
+    if item.selected == true {
+      configuration.backgroundColor = UIColor.systemBlue.withAlphaComponent(0.08)
+    }
+    return configuration
   }
 
   private func makeTodoCompletionAccessory(for item: NativeItem) -> TodoCompleteAccessoryButton? {
@@ -471,16 +498,21 @@ extension NativeListInteractionsView {
     button.widthAnchor.constraint(equalToConstant: buttonSize).isActive = true
     button.heightAnchor.constraint(equalToConstant: buttonSize).isActive = true
 
+    let isSelectionControl = item.toggleControlId == "select"
     let symbolName = item.switchValue == true ? "checkmark.circle.fill" : "circle"
     let pointSize: CGFloat = 22
     let symbolConfig = UIImage.SymbolConfiguration(pointSize: pointSize, weight: .semibold)
     let image = UIImage(systemName: symbolName, withConfiguration: symbolConfig)
-    let tintColor = UIColor(hexString: item.accentColor) ?? UIColor.systemBlue
+    let tintColor = isSelectionControl
+      ? (item.switchValue == true ? UIColor.systemBlue : UIColor.systemGray3)
+      : (UIColor(hexString: item.accentColor) ?? UIColor.systemBlue)
     button.setImage(image?.withRenderingMode(.alwaysTemplate), for: .normal)
     button.imageView?.contentMode = .scaleAspectFit
     button.tintColor = tintColor
     button.accessibilityIdentifier = "todo-complete-\(item.id)"
-    button.accessibilityLabel = item.switchValue == true ? "완료 해제" : "완료"
+    button.accessibilityLabel = isSelectionControl
+      ? (item.switchValue == true ? "선택 해제" : "선택")
+      : (item.switchValue == true ? "완료 해제" : "완료")
     button.addTarget(self, action: #selector(handleTodoCompletionAccessoryTap(_:)), for: .touchUpInside)
     return button
   }

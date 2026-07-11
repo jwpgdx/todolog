@@ -20,6 +20,8 @@ export default function NativeTodoManagedList({
   includeEmptyCategorySections = false,
   nextOccurrenceLabelByTodoId = {},
   itemOptions = {},
+  selectionMode = false,
+  selectedTodoIds = [],
   contentInsetBottom = 0,
   style,
   onPressTodo,
@@ -27,6 +29,7 @@ export default function NativeTodoManagedList({
   onRequestExpandSection,
   onToggleComplete,
   onToggleFavorite,
+  onToggleSelection,
   onTodoAction,
   onSectionHeaderAction,
   onReorderCommit,
@@ -48,7 +51,11 @@ export default function NativeTodoManagedList({
         favoriteItemOptions,
         includeEmptyCategorySections,
         nextOccurrenceLabelByTodoId,
-        itemOptions,
+        itemOptions: {
+          ...itemOptions,
+          selectionMode,
+          selectedTodoIdSet: new Set(selectedTodoIds),
+        },
       }),
     [
       mode,
@@ -64,6 +71,8 @@ export default function NativeTodoManagedList({
       includeEmptyCategorySections,
       nextOccurrenceLabelByTodoId,
       itemOptions,
+      selectionMode,
+      selectedTodoIds,
     ]
   );
 
@@ -111,6 +120,11 @@ export default function NativeTodoManagedList({
 
         if (event.controlId === 'favorite') {
           onToggleFavorite?.(todo, event);
+          return;
+        }
+
+        if (event.controlId === 'select') {
+          onToggleSelection?.(todo, event);
         }
       }}
       onAction={(event) => {

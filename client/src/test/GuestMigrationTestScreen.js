@@ -5,7 +5,7 @@
  */
 
 import React, { useState } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, Alert, Platform } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Toast from 'react-native-toast-message';
 
@@ -24,14 +24,9 @@ export default function GuestMigrationTestScreen({ navigation }) {
   const [stats, setStats] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const { user, checkGuestData, logout } = useAuthStore();
-  const [isWeb, setIsWeb] = useState(false);
   const [testAccount, setTestAccount] = useState(null);
 
   React.useEffect(() => {
-    // 웹 환경 감지
-    if (typeof window !== 'undefined' && window.document) {
-      setIsWeb(true);
-    }
     refreshStats();
   }, []);
 
@@ -188,59 +183,33 @@ export default function GuestMigrationTestScreen({ navigation }) {
 
   // 로그아웃하여 로그인 화면으로
   const handleNavigateToLogin = async () => {
-    if (Platform.OS === 'web') {
-      // 웹에서는 confirm 사용
-      const confirmed = window.confirm(
-        '로그아웃하여 로그인 화면으로 이동하시겠습니까?\n\n게스트 데이터는 유지됩니다.'
-      );
-      
-      if (confirmed) {
-        try {
-          await logout({ skipDataClear: true, showLogin: true });
-          Toast.show({
-            type: 'info',
-            text1: '로그아웃 완료',
-            text2: '로그인 화면으로 이동합니다',
-          });
-        } catch (error) {
-          console.error('Logout failed:', error);
-          Toast.show({
-            type: 'error',
-            text1: '로그아웃 실패',
-            text2: error.message,
-          });
-        }
-      }
-    } else {
-      // 네이티브에서는 Alert 사용
-      Alert.alert(
-        '로그아웃',
-        '로그아웃하여 로그인 화면으로 이동하시겠습니까?\n\n게스트 데이터는 유지됩니다.',
-        [
-          { text: '취소', style: 'cancel' },
-          {
-            text: '로그아웃',
-            onPress: async () => {
-              try {
-                await logout({ skipDataClear: true, showLogin: true });
-                Toast.show({
-                  type: 'info',
-                  text1: '로그아웃 완료',
-                  text2: '로그인 화면으로 이동합니다',
-                });
-              } catch (error) {
-                console.error('Logout failed:', error);
-                Toast.show({
-                  type: 'error',
-                  text1: '로그아웃 실패',
-                  text2: error.message,
-                });
-              }
-            },
+    Alert.alert(
+      '로그아웃',
+      '로그아웃하여 로그인 화면으로 이동하시겠습니까?\n\n게스트 데이터는 유지됩니다.',
+      [
+        { text: '취소', style: 'cancel' },
+        {
+          text: '로그아웃',
+          onPress: async () => {
+            try {
+              await logout({ skipDataClear: true, showLogin: true });
+              Toast.show({
+                type: 'info',
+                text1: '로그아웃 완료',
+                text2: '로그인 화면으로 이동합니다',
+              });
+            } catch (error) {
+              console.error('Logout failed:', error);
+              Toast.show({
+                type: 'error',
+                text1: '로그아웃 실패',
+                text2: error.message,
+              });
+            }
           },
-        ]
-      );
-    }
+        },
+      ]
+    );
   };
 
   // 테스트 계정 생성
@@ -321,19 +290,6 @@ export default function GuestMigrationTestScreen({ navigation }) {
             통합 테스트 시나리오 실행
           </Text>
         </View>
-
-        {/* Web Warning */}
-        {isWeb && (
-          <View className="bg-yellow-50 p-4 rounded-lg mb-6 border border-yellow-200">
-            <Text className="text-sm font-semibold text-yellow-900 mb-1">
-              ⚠️ 웹 환경 제한
-            </Text>
-            <Text className="text-yellow-700 text-xs">
-              SQLite는 웹 브라우저에서 제한적으로 작동합니다.{'\n'}
-              실제 테스트는 iOS 시뮬레이터나 Android 에뮬레이터에서 진행해주세요.
-            </Text>
-          </View>
-        )}
 
         {/* Current User */}
         <View className="bg-blue-50 p-4 rounded-lg mb-6">

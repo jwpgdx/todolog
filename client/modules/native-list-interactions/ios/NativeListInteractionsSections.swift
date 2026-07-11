@@ -140,7 +140,8 @@ extension NativeListInteractionsView {
         supportsMenu: item.supportsMenu,
         toggleControlId: item.toggleControlId,
         toggleControlSource: item.toggleControlSource,
-        completed: item.completed
+        completed: item.completed,
+        selected: item.selected
       )
     }
 

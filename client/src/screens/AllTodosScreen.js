@@ -3,12 +3,13 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
-  Platform,
   SafeAreaView,
   StyleSheet,
   Text,
+  TouchableOpacity,
   View,
 } from 'react-native';
+import { Stack, useRouter } from 'expo-router';
 
 import { useAllTodos } from '../hooks/queries/useAllTodos';
 import { useCategories } from '../hooks/queries/useCategories';
@@ -31,6 +32,8 @@ import {
   mergeTodoReorderUpdates,
 } from '../features/todo/native/todoFavoriteOrder';
 import { ORDER_STEP } from '../services/db/todoService';
+import TodoSelectionActionBar from '../features/todo/selection/TodoSelectionActionBar';
+import useTodoSelectionMode from '../features/todo/selection/useTodoSelectionMode';
 
 const CATEGORY_ORDER_STEP = 100;
 const ALL_TODOS_SCREEN_COLLAPSED_CATEGORY_IDS_STORAGE_KEY =
@@ -40,6 +43,7 @@ const ALL_TODOS_SCREEN_FAVORITES_COLLAPSED_STORAGE_KEY =
 const DRAG_BOTTOM_BUFFER = 32;
 
 export default function AllTodosScreen() {
+  const router = useRouter();
   const { todayDate } = useTodayDate();
   const { data: todos = [], isLoading } = useAllTodos(todayDate);
   const { data: categories = [] } = useCategories();
@@ -51,6 +55,15 @@ export default function AllTodosScreen() {
   const { openDetail } = useTodoFormStore();
   const [collapsedCategoryIds, setCollapsedCategoryIds] = useState([]);
   const [isFavoriteSectionCollapsed, setIsFavoriteSectionCollapsed] = useState(false);
+  const {
+    isSelectionMode,
+    selectedTodoIds,
+    selectedTodoIdSet,
+    selectedCount,
+    enterSelectionMode,
+    exitSelectionMode,
+    toggleSelectedTodo,
+  } = useTodoSelectionMode();
   const bottomInset = useFloatingTabBarScrollPadding(DRAG_BOTTOM_BUFFER);
   const { handleCategoryHeaderAction } = useManagedCategoryHeaderActions({ categories });
 
@@ -192,6 +205,28 @@ export default function AllTodosScreen() {
     openDetail(todo, target);
   }, [openDetail]);
 
+  const handleOpenMoveCategory = useCallback((todo) => {
+    if (!todo?._id) {
+      return;
+    }
+
+    router.push({
+      pathname: '/(app)/todo/category-select',
+      params: { todoId: todo._id },
+    });
+  }, [router]);
+
+  const handleOpenBulkMoveCategory = useCallback(() => {
+    if (selectedTodoIds.length === 0) {
+      return;
+    }
+
+    router.push({
+      pathname: '/(app)/todo/category-select',
+      params: { todoIds: selectedTodoIds.join(',') },
+    });
+  }, [router, selectedTodoIds]);
+
   const handleDelete = useCallback((todo) => {
     Alert.alert(
       '일정 삭제',
@@ -240,8 +275,11 @@ export default function AllTodosScreen() {
       case 'edit':
         handleOpenTodo(todo);
         break;
+      case 'select':
+        enterSelectionMode(todo._id);
+        break;
       case 'move':
-        handleOpenTodo(todo, 'CATEGORY');
+        handleOpenMoveCategory(todo);
         break;
       case 'favorite':
         handleFavoriteChange(todo, true);
@@ -255,7 +293,7 @@ export default function AllTodosScreen() {
       default:
         break;
     }
-  }, [handleDelete, handleFavoriteChange, handleOpenTodo]);
+  }, [enterSelectionMode, handleDelete, handleFavoriteChange, handleOpenMoveCategory, handleOpenTodo]);
 
   const handleManagedReorderCommit = useCallback(async (event) => {
     const visibleTodoById = new Map(visibleTodos.map((todo) => [todo._id, todo]));
@@ -361,56 +399,107 @@ export default function AllTodosScreen() {
     );
   }
 
+  if (visibleTodos.length === 0 && favoriteTodos.length === 0) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.centerContainer}>
+          <Text style={styles.emptyText}>등록된 일정이 없습니다.</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
   return (
-    <SafeAreaView style={styles.container}>
-      <View style={styles.content}>
-        {visibleTodos.length === 0 && favoriteTodos.length === 0 ? (
-          <View style={styles.centerContainer}>
-            <Text style={styles.emptyText}>등록된 일정이 없습니다.</Text>
-          </View>
-        ) : (
-          <NativeTodoManagedList
-            listId="all-todos-screen"
-            mode={TODO_MANAGED_LIST_MODE.CATEGORY}
-            todos={visibleTodos}
-            categories={categories}
-            collapsedCategoryIds={collapsedCategoryIds}
-            favoriteTodos={favoriteTodos}
-            includeFavoriteSection
-            favoriteSectionReorderMode="withinSection"
-            favoriteReorderable
-            favoriteSectionCollapsed={isFavoriteSectionCollapsed}
-            favoriteItemOptions={{
-              includeFavoriteAction: true,
-              includeFavoriteToggle: false,
-              showFavoriteBadge: false,
-              leadingSwipeActions: [],
-            }}
-            includeEmptyCategorySections
-            contentInsetBottom={bottomInset}
-            itemOptions={{
-              includeFavoriteAction: true,
-              includeFavoriteToggle: false,
-              showFavoriteBadge: false,
-              leadingSwipeActions: [],
-            }}
-            style={{ paddingHorizontal: 16 }}
-            onPressTodo={handleOpenTodo}
-            onPressSectionHeader={handlePressManagedSectionHeader}
-            onRequestExpandSection={({ sectionId }) => {
-              handleRequestExpandSection(sectionId);
-            }}
-            onToggleComplete={handleToggleComplete}
-            onTodoAction={handleManagedAction}
-            onSectionHeaderAction={handleCategoryHeaderAction}
-            onReorderCommit={handleManagedReorderCommit}
-            onError={(event) => {
-              console.warn('[AllTodosScreen:NativeTodoManagedList]', event?.message || event);
-            }}
-          />
-        )}
-      </View>
-    </SafeAreaView>
+    <View style={styles.screen}>
+      <Stack.Screen
+        options={{
+          title: isSelectionMode
+            ? selectedCount > 0
+              ? `${selectedCount}개 선택됨`
+              : '일정 선택'
+            : '전체 일정',
+          headerRight: () => {
+            if (isSelectionMode) {
+              return (
+                <TouchableOpacity onPress={exitSelectionMode} style={styles.headerAction}>
+                  <Text style={styles.headerActionText}>완료</Text>
+                </TouchableOpacity>
+              );
+            }
+
+            if (visibleTodos.length === 0 && favoriteTodos.length === 0) {
+              return null;
+            }
+
+            return (
+              <TouchableOpacity onPress={() => enterSelectionMode()} style={styles.headerAction}>
+                <Text style={styles.headerActionText}>선택</Text>
+              </TouchableOpacity>
+            );
+          },
+        }}
+      />
+      <NativeTodoManagedList
+        listId="all-todos-screen"
+        mode={TODO_MANAGED_LIST_MODE.CATEGORY}
+        todos={visibleTodos}
+        categories={categories}
+        collapsedCategoryIds={collapsedCategoryIds}
+        favoriteTodos={favoriteTodos}
+        includeFavoriteSection
+        favoriteSectionReorderMode="withinSection"
+        favoriteReorderable={!isSelectionMode}
+        favoriteSectionCollapsed={isFavoriteSectionCollapsed}
+        favoriteItemOptions={{
+          includeFavoriteAction: true,
+          includeSelectAction: true,
+          includeFavoriteToggle: false,
+          showFavoriteBadge: false,
+          leadingSwipeActions: [],
+        }}
+        includeEmptyCategorySections
+        selectionMode={isSelectionMode}
+        selectedTodoIds={selectedTodoIds}
+        contentInsetBottom={isSelectionMode ? 96 : bottomInset}
+        itemOptions={{
+          includeFavoriteAction: true,
+          includeSelectAction: true,
+          includeFavoriteToggle: false,
+          showFavoriteBadge: false,
+          leadingSwipeActions: [],
+        }}
+        style={styles.nativeList}
+        onPressTodo={(todo) => {
+          if (isSelectionMode) {
+            toggleSelectedTodo(todo?._id);
+            return;
+          }
+          handleOpenTodo(todo);
+        }}
+        onPressSectionHeader={isSelectionMode ? undefined : handlePressManagedSectionHeader}
+        onRequestExpandSection={({ sectionId }) => {
+          if (!isSelectionMode) {
+            handleRequestExpandSection(sectionId);
+          }
+        }}
+        onToggleComplete={handleToggleComplete}
+        onToggleSelection={(todo) => {
+          toggleSelectedTodo(todo?._id);
+        }}
+        onTodoAction={handleManagedAction}
+        onSectionHeaderAction={isSelectionMode ? undefined : handleCategoryHeaderAction}
+        onReorderCommit={isSelectionMode ? undefined : handleManagedReorderCommit}
+        onError={(event) => {
+          console.warn('[AllTodosScreen:NativeTodoManagedList]', event?.message || event);
+        }}
+      />
+      {isSelectionMode ? (
+        <TodoSelectionActionBar
+          selectedCount={selectedCount}
+          onMove={handleOpenBulkMoveCategory}
+        />
+      ) : null}
+    </View>
   );
 }
 
@@ -419,9 +508,19 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#F9FAFB',
   },
-  content: {
+  nativeList: {
     flex: 1,
-    paddingTop: Platform.OS === 'ios' ? 8 : 12,
+    backgroundColor: '#F9FAFB',
+    paddingHorizontal: 16,
+  },
+  headerAction: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  headerActionText: {
+    color: '#2563EB',
+    fontSize: 16,
+    fontWeight: '600',
   },
   centerContainer: {
     flex: 1,

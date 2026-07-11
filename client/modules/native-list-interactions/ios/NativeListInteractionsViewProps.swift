@@ -78,8 +78,8 @@ extension NativeListInteractionsView {
     if collectionView.contentInset.bottom != bottomInset {
       collectionView.contentInset.bottom = bottomInset
     }
-    if collectionView.scrollIndicatorInsets.bottom != bottomInset {
-      collectionView.scrollIndicatorInsets.bottom = bottomInset
+    if collectionView.verticalScrollIndicatorInsets.bottom != bottomInset {
+      collectionView.verticalScrollIndicatorInsets.bottom = bottomInset
     }
   }
 }

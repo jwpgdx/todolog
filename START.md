@@ -24,10 +24,10 @@
 **Instruction:** Scan the current file structure and dependency files (e.g., `client/package.json`, `server/package.json`, or `README.md`). Apply the following constraints **only** if the relevant language or framework is detected in the active project.
 
 ## Client / Mobile (React Native + Expo)
-- **Framework:** React Native (Expo SDK 52)
+- **Framework:** React Native + Expo SDK 55
 - **Styling:** NativeWind (Tailwind CSS v3) - *Configured & Allowed*
 - **State Management:** Zustand + React Query
-- **Navigation:** React Navigation (Stack + Bottom Tabs)
+- **Navigation:** Expo Router + native dev-client
 - **Testing:**
   - **Automated:** None (No Jest/Vitest detected)
   - **Manual:** Custom manual test screens in `src/test` (e.g., `TestDashboard`, `KeyboardStickyTest`)
@@ -74,29 +74,28 @@ npm run ios:device
 npm run android
 npm run android:device
 
-## 웹 자동 E2E (Playwright)
+## 네이티브 dev-client 스모크 테스트
 
-1. 의존성 설치
+1. Android 에뮬레이터 실행
 ```bash
 cd client
 npm install
-npm run e2e:web:install
+npm run dev:android:emu
 ```
 
-2. 웹 스모크 테스트 실행
+2. iOS 시뮬레이터 실행
 ```bash
 cd client
-npm run e2e:web
+npm run dev:ios:sim
 ```
 
-3. 디버깅 모드 실행(선택)
+3. Metro 서버만 실행
 ```bash
 cd client
-npm run e2e:web:headed
+npm run dev:server
 ```
 
 ## 접속 주소
-- 웹 앱: http://localhost:8081
 - API 서버: http://localhost:5000
 
 DEVELOPMENT METHODOLOGY 🔴 CRITICAL

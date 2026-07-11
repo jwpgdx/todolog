@@ -194,21 +194,6 @@ export default function ConvertGuestScreen() {
       return;
     }
 
-    if (Platform.OS === 'web') {
-      const input = window.prompt(
-        `게스트 데이터 발견\n\n${message}\n\n1: 가져오기\n2: 버리기\n3: 취소`,
-        '1'
-      );
-      const normalized = input?.trim();
-
-      if (normalized === '1') {
-        handleMigrate();
-      } else if (normalized === '2') {
-        handleDiscard();
-      }
-      return;
-    }
-
     Alert.alert(
       '게스트 데이터 발견',
       message,

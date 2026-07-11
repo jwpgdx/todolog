@@ -9,7 +9,7 @@ import {
     TouchableOpacity,
     View,
 } from 'react-native';
-import { Stack, useLocalSearchParams } from 'expo-router';
+import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { FlashList } from '@shopify/flash-list';
 import { useActionSheet } from '@expo/react-native-action-sheet';
 import { Ionicons } from '@expo/vector-icons';
@@ -27,6 +27,8 @@ import { hasRecurrenceRule } from '../utils/recurrenceEngine';
 import NativeManagedList from '../components/ui/native-managed-list/NativeManagedList';
 import { buildManagedTodoItem } from '../features/todo/native/managedTodoItemAdapter';
 import { ORDER_STEP } from '../services/db/todoService';
+import TodoSelectionActionBar from '../features/todo/selection/TodoSelectionActionBar';
+import useTodoSelectionMode from '../features/todo/selection/useTodoSelectionMode';
 
 const DEFAULT_CONTROL_TINT = '#007AFF';
 
@@ -182,6 +184,7 @@ function CategoryTodoRow({
 }
 
 export default function CategoryTodosScreen() {
+    const router = useRouter();
     const { categoryId: rawCategoryId } = useLocalSearchParams();
     const categoryId = Array.isArray(rawCategoryId) ? rawCategoryId[0] : rawCategoryId;
     const { data: categories, isLoading: isCategoriesLoading } = useCategories();
@@ -199,6 +202,15 @@ export default function CategoryTodosScreen() {
     const { mutate: toggleCompletion } = useToggleCompletion();
     const { mutate: deleteTodo } = useDeleteTodo();
     const reorderTodoMutation = useReorderTodo(todayDate);
+    const {
+        isSelectionMode,
+        selectedTodoIds,
+        selectedTodoIdSet,
+        selectedCount,
+        enterSelectionMode,
+        exitSelectionMode,
+        toggleSelectedTodo,
+    } = useTodoSelectionMode();
 
     const sortedTodos = useMemo(() => {
         return [...todos].sort((a, b) => {
@@ -221,6 +233,28 @@ export default function CategoryTodosScreen() {
     const handleOpenTodo = useCallback((todo, target = null) => {
         openDetail(todo, target);
     }, [openDetail]);
+
+    const handleOpenMoveCategory = useCallback((todo) => {
+        if (!todo?._id) {
+            return;
+        }
+
+        router.push({
+            pathname: '/(app)/todo/category-select',
+            params: { todoId: todo._id },
+        });
+    }, [router]);
+
+    const handleOpenBulkMoveCategory = useCallback(() => {
+        if (selectedTodoIds.length === 0) {
+            return;
+        }
+
+        router.push({
+            pathname: '/(app)/todo/category-select',
+            params: { todoIds: selectedTodoIds.join(',') },
+        });
+    }, [router, selectedTodoIds]);
 
     const handleToggleComplete = useCallback((todo) => {
         toggleCompletion({
@@ -247,9 +281,9 @@ export default function CategoryTodosScreen() {
     }, [deleteTodo]);
 
     const handleOpenActions = useCallback((todo) => {
-        const options = ['일정 보기', '수정', '이동', '일정 삭제', '취소'];
-        const cancelButtonIndex = 4;
-        const destructiveButtonIndex = 3;
+        const options = ['일정 보기', '수정', '선택', '이동', '일정 삭제', '취소'];
+        const cancelButtonIndex = 5;
+        const destructiveButtonIndex = 4;
 
         showActionSheetWithOptions(
             {
@@ -266,9 +300,12 @@ export default function CategoryTodosScreen() {
                         handleOpenTodo(todo);
                         break;
                     case 2:
-                        handleOpenTodo(todo, 'CATEGORY');
+                        enterSelectionMode(todo._id);
                         break;
                     case 3:
+                        handleOpenMoveCategory(todo);
+                        break;
+                    case 4:
                         handleDelete(todo);
                         break;
                     default:
@@ -276,7 +313,7 @@ export default function CategoryTodosScreen() {
                 }
             }
         );
-    }, [handleDelete, handleOpenTodo, showActionSheetWithOptions]);
+    }, [enterSelectionMode, handleDelete, handleOpenMoveCategory, handleOpenTodo, showActionSheetWithOptions]);
 
     const renderItem = useCallback(({ item }) => (
         <CategoryTodoRow
@@ -357,6 +394,8 @@ export default function CategoryTodosScreen() {
                 items: sortedTodos.map((todo) =>
                     buildManagedTodoItem(todo, {
                         reorderable: true,
+                        selectionMode: isSelectionMode,
+                        selected: selectedTodoIdSet.has(todo._id),
                         showFavoriteBadge: true,
                         includeCompleteToggle: true,
                         includeFavoriteAction: false,
@@ -364,6 +403,7 @@ export default function CategoryTodosScreen() {
                         menuActions: [
                             { id: 'view', title: '보기' },
                             { id: 'edit', title: '수정' },
+                            { id: 'select', title: '선택' },
                             { id: 'move', title: '이동' },
                             { id: 'delete', title: '일정 삭제', role: 'destructive' },
                         ],
@@ -375,7 +415,7 @@ export default function CategoryTodosScreen() {
                 ),
             },
         ];
-    }, [categoryId, sortedTodos]);
+    }, [categoryId, isSelectionMode, selectedTodoIdSet, sortedTodos]);
 
     if (!categoryId) {
         return (
@@ -397,7 +437,30 @@ export default function CategoryTodosScreen() {
         <SafeAreaView style={styles.screen}>
             <Stack.Screen
                 options={{
-                    title: headerTitle,
+                    title: isSelectionMode
+                        ? selectedCount > 0
+                            ? `${selectedCount}개 선택됨`
+                            : '일정 선택'
+                        : headerTitle,
+                    headerRight: () => {
+                        if (isSelectionMode) {
+                            return (
+                                <TouchableOpacity onPress={exitSelectionMode} style={styles.headerAction}>
+                                    <Text style={styles.headerActionText}>완료</Text>
+                                </TouchableOpacity>
+                            );
+                        }
+
+                        if (sortedTodos.length === 0) {
+                            return null;
+                        }
+
+                        return (
+                            <TouchableOpacity onPress={() => enterSelectionMode()} style={styles.headerAction}>
+                                <Text style={styles.headerActionText}>선택</Text>
+                            </TouchableOpacity>
+                        );
+                    },
                 }}
             />
             {Platform.OS === 'ios' ? (
@@ -424,14 +487,26 @@ export default function CategoryTodosScreen() {
                             listId={`category-todos:${categoryId || 'unknown'}`}
                             variant="todo"
                             sections={managedSections}
-                            contentInsetBottom={bottomInset}
+                            contentInsetBottom={isSelectionMode ? 96 : bottomInset}
                             onPressItem={({ itemId }) => {
                                 const todo = todoById.get(itemId);
-                                if (todo) {
-                                    handleOpenTodo(todo);
+                                if (!todo) {
+                                    return;
                                 }
+
+                                if (isSelectionMode) {
+                                    toggleSelectedTodo(todo._id);
+                                    return;
+                                }
+
+                                handleOpenTodo(todo);
                             }}
                             onControlAction={({ itemId, controlId }) => {
+                                if (controlId === 'select') {
+                                    toggleSelectedTodo(itemId);
+                                    return;
+                                }
+
                                 if (controlId !== 'complete') {
                                     return;
                                 }
@@ -452,8 +527,11 @@ export default function CategoryTodosScreen() {
                                     case 'edit':
                                         handleOpenTodo(todo);
                                         break;
+                                    case 'select':
+                                        enterSelectionMode(todo._id);
+                                        break;
                                     case 'move':
-                                        handleOpenTodo(todo, 'CATEGORY');
+                                        handleOpenMoveCategory(todo);
                                         break;
                                     case 'delete':
                                         handleDelete(todo);
@@ -462,7 +540,7 @@ export default function CategoryTodosScreen() {
                                         break;
                                 }
                             }}
-                            onReorderCommit={handleManagedReorderCommit}
+                            onReorderCommit={isSelectionMode ? undefined : handleManagedReorderCommit}
                             onError={(event) => {
                                 console.warn('[CategoryTodosScreen:NativeManagedList]', event?.message || event);
                             }}
@@ -495,6 +573,12 @@ export default function CategoryTodosScreen() {
                     }
                 />
             )}
+            {isSelectionMode ? (
+                <TodoSelectionActionBar
+                    selectedCount={selectedCount}
+                    onMove={handleOpenBulkMoveCategory}
+                />
+            ) : null}
         </SafeAreaView>
     );
 }
@@ -503,6 +587,15 @@ const styles = StyleSheet.create({
     screen: {
         flex: 1,
         backgroundColor: '#FFFFFF',
+    },
+    headerAction: {
+        paddingHorizontal: 8,
+        paddingVertical: 4,
+    },
+    headerActionText: {
+        color: '#2563EB',
+        fontSize: 16,
+        fontWeight: '600',
     },
     centeredScreen: {
         flex: 1,

@@ -600,6 +600,10 @@ class NativeTodoFormSessionView(
     }
   }
 
+  private fun dp(value: Int): Int {
+    return dp(value.toFloat())
+  }
+
   private fun dp(value: Float): Int {
     return TypedValue.applyDimension(
       TypedValue.COMPLEX_UNIT_DIP,

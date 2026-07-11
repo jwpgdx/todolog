@@ -1,6 +1,6 @@
 # iOS Simulator Runbook
 
-Last updated: 2026-05-08
+Last updated: 2026-07-12
 
 ## Purpose
 
@@ -19,7 +19,7 @@ Validated local combination:
 
 - macOS `15.7.3`
 - Expo SDK `55`
-- React Native `0.83.2`
+- React Native `0.83.6`
 - Xcode `26.2`
 - build SDK: `iPhoneSimulator26.2.sdk`
 - simulator runtime: `iOS 26.3.1`
@@ -54,7 +54,7 @@ If Xcode GUI works but CLI fails, check this first.
 
 ```bash
 cd client
-npm start
+npm run dev:server
 ```
 
 Expected result:
@@ -73,6 +73,17 @@ xcrun simctl list devices
 ```
 
 ### 3. Build from CLI
+
+Preferred Expo command when the generated iOS folder is absent or native modules changed:
+
+```bash
+cd client
+npm run ios -- --device "iPhone 17" --no-bundler
+```
+
+Use `--no-bundler` only when Metro is already running. The current Expo CLI accepts `--device`; it does not accept the old `--simulator` option.
+
+Direct workspace fallback:
 
 Use the workspace directly.
 
@@ -140,13 +151,13 @@ If Metro is already running and the app is on the dev client launcher, tap the s
 ### Optional deep link
 
 ```bash
-xcrun simctl openurl booted exp://127.0.0.1:8081
+xcrun simctl openurl booted 'com.anonymous.client://expo-development-client/?url=http%3A%2F%2F<MAC_LAN_IP>%3A8081'
 ```
 
 Note:
 
-- this can fail with `LSApplicationWorkspaceErrorDomain error 115`
-- if it fails, use the launcher UI instead of retrying blindly
+- if the rebuilt app opens to a blank dev-client surface, inject the dev-client URL again and then open the target app route
+- if URL handoff fails, use the launcher UI instead of retrying blindly
 
 ## Xcode GUI Fallback
 
@@ -253,3 +264,5 @@ If any of these change, update this file in the same session:
 - primary simulator device
 - validated CLI build command
 - dev client reconnect method
+
+For full new-Mac restore order and dependency warnings, read `../../NEW_MAC_HANDOFF_2026-07-12.md`.

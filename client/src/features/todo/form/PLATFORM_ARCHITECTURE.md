@@ -1,6 +1,10 @@
 # TodoForm 플랫폼별 아키텍처 및 구현 가이드 (v2.0)
 
-마지막 업데이트: 2026-03-10
+마지막 업데이트: 2026-05-16
+
+> 2026-05-16 note: active runtime support is native iOS/Android. Web wrapper
+> sections below are historical design notes only and are not part of the active
+> implementation surface.
 
 Todo 생성/수정 폼의 플랫폼별 UI 전략, 상태 관리, 그리고 전환 애니메이션 로직을 정리한 문서입니다.
 
@@ -157,10 +161,8 @@ src/
 │       │   ├── containers/
 │       │   │   ├── QuickContainer.js         # Native(기본): 키보드 높이 추적 + translateY
 │       │   │   ├── QuickContainer.ios.js     # iOS: dim backdrop만
-│       │   │   ├── QuickContainer.web.js     # Web: fixed overlay + dim backdrop
 │       │   │   ├── DetailContainer.ios.js    # iOS: Modal(pageSheet)
-│       │   │   ├── DetailContainer.android.js# Android: BottomSheetModal
-│       │   │   └── DetailContainer.web.js    # Web: vaul sheet / desktop modal
+│       │   │   └── DetailContainer.android.js# Android: BottomSheetModal
 │       │   ├── components/
 │       │   │   ├── QuickModeContent.js       # 공통 Quick UI (TextInput)
 │       │   │   ├── QuickModeContent.ios.js   # iOS accessory + host input

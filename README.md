@@ -19,7 +19,7 @@ Todolog is designed to work fully offline, then sync safely to server and Google
 
 ## Current Status
 
-As of 2026-03-21:
+As of 2026-07-12:
 
 - Phase 1-2 calendar integration: complete
 - Phase 2.5 data normalization (floating date/time string contract): complete
@@ -37,7 +37,7 @@ As of 2026-03-21:
   - migration now uses canonical todo/completion DTOs instead of raw local guest objects
   - iOS simulator + Maestro validated `login/signup -> 취소 / 버리기 / 가져오기` branches
   - forced signup partial-failure validation confirmed guest session/local data retention and Inbox-only server rollback
-- Web real-server recovery specs: added for `category`, `todo`, `completion`
+- Web runtime and Playwright validation paths have been retired; native dev-client smoke is the active UI validation path
 - completion matrix validated for `rapid toggle`, `recurring`, `mixed queue`, `dead_letter`, `restart`
 - Week Flow Calendar is mounted at the top of `TodoScreen`; dedicated `week-flow` evaluation tab has been removed and iOS weekly/monthly smoke passed
 - Todo Calendar V2 line-monthly baseline: implemented
@@ -45,11 +45,12 @@ As of 2026-03-21:
 - Strip-calendar: legacy reference only (not mounted in active runtime)
 - Expo Router migration: implemented (file-based routing under `client/app/`)
 - Expo SDK 55 upgrade: complete and validated
-  - client stack now resolves to Expo `55.0.6`, React Native `0.83.2`, React `19.2.0`
+  - client stack now resolves to Expo `55.0.24`, React Native `0.83.6`, React `19.2.0`
   - React Compiler is enabled through `client/app.json` with env-aware overrides in `client/app.config.js`
   - iOS prebuild now opts into React Native source build through `expo-build-properties`
-  - Android emulator and iOS simulator smoke runs both passed on 2026-03-17
-  - the only remaining non-blocking Expo doctor warning is `react-native-wheel-pick` New Architecture metadata
+  - Android emulator and iOS simulator smoke runs passed; Android was revalidated after SDK 55 patch alignment on 2026-05-16
+  - the preserved WIP baseline still builds on iOS, but current Expo SDK 55 patch alignment is pending; see `NEW_MAC_HANDOFF_2026-07-12.md` before changing dependencies
+- Native todo selection mode is partially implemented on Favorites, All Todos, and Category detail; bulk category move exists, while bulk delete/complete/favorite and TodoScreen selection mode remain follow-up work
 
 See `ROADMAP.md` for dated milestones and next steps.
 
@@ -74,9 +75,9 @@ Core principles:
 
 Client:
 
-- React Native `0.83.2`
-- Expo `55.0.6`
-- Expo Router `55.0.5`
+- React Native `0.83.6`
+- Expo `55.0.24`
+- Expo Router `55.0.14`
 - React `19.2.0`
 - Zustand `5.x`
 - React Query `5.x`
@@ -147,10 +148,10 @@ Timezone source of truth:
 
 ### 1) Prerequisites
 
-- Node.js 18+
+- Node.js 20.19+ (the validated local baseline uses Node 24.14.0)
 - npm
 - MongoDB running locally or reachable remotely
-- Expo toolchain for mobile/web testing
+- Expo toolchain for native iOS/Android testing
 
 ### 2) Install dependencies
 
@@ -225,14 +226,12 @@ Client launcher notes:
   - `iOS Simulator` -> dev client + `lan`
   - `Android Emulator` -> dev client + `localhost`
   - `Physical Device (Tunnel)` -> dev client + `tunnel`
-  - `Web`
   - `Dev Client Server Only`
 - Raw Expo commands are still available:
   - `npm run dev:expo`
   - `npm run ios`
   - `npm run ios:device` (requires `EXPO_IOS_APPLE_TEAM_ID` and `EXPO_IOS_BUNDLE_IDENTIFIER`)
   - `npm run android`
-  - `npm run web`
 
 Non-interactive examples:
 
@@ -249,7 +248,6 @@ cd client
 npm run dev:ios:sim
 npm run dev:android:emu
 npm run dev:device
-npm run dev:web
 ```
 
 Device-build note:
@@ -266,38 +264,15 @@ Notes for parallel Codex sessions:
 - Tunnel/device mode still depends on Expo tunnel behavior and current network state.
 - Multiple sessions can run separate Metro servers, but they should not try to control the same simulator or device UI at the same time.
 
-### 5) Web E2E (Playwright)
+### 5) Native Smoke Testing
 
-Use web-only smoke checks first for fast validation.
+Web/Playwright validation has been retired. Use native dev-client smoke checks
+for UI/runtime validation.
 
-```bash
-cd client
-npm install
-npm run e2e:web:install
-npm run e2e:web
-```
+See `CODEX_TESTING.md` for Android/iOS launcher commands, emulator attach
+commands, and Codex session rules.
 
-Optional (headed):
-
-```bash
-cd client
-npm run e2e:web:headed
-```
-
-Codex wrapper scripts:
-
-```bash
-cd client
-npm run codex:test:smoke
-npm run codex:test:real:category
-npm run codex:test:real:todo
-npm run codex:test:real:completion
-```
-
-Notes:
-
-- `codex:test:real:*` wrappers assume the API server is reachable and use the environment/bootstrap rules documented in `CODEX_TESTING.md`.
-- Use `CODEX_TESTING.md` when running parallel Codex sessions or when you need the standardized local web + Playwright launch flow.
+For restoring the current WIP state on a new Mac, read `NEW_MAC_HANDOFF_2026-07-12.md` before installing or upgrading dependencies.
 
 ## Key Runtime Paths
 

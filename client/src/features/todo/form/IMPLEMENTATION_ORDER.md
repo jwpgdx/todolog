@@ -96,15 +96,9 @@ TECH_SPEC의 "번줄" 순서대로 구현합니다.
 - **역할**: iOS/Android용 Bottom Sheet 전략
 - **의존성**: @gorhom/bottom-sheet, QuickInput, DetailedForm
 
-### 4.2 WebMobileLayout.js
-- **경로**: `src/features/todo/form/layouts/WebMobileLayout.js`
-- **역할**: 모바일 웹용 Sticky Footer + Drawer
-- **의존성**: QuickInput, DetailedForm
-
-### 4.3 WebDesktopLayout.js
-- **경로**: `src/features/todo/form/layouts/WebDesktopLayout.js`
-- **역할**: 데스크탑 웹용 Modal
-- **의존성**: DetailedForm
+### 4.2 Web layouts
+- **상태**: 2026-05-16 retired
+- **사유**: active runtime support is native iOS/Android only.
 
 ---
 
@@ -138,8 +132,7 @@ TECH_SPEC의 "번줄" 순서대로 구현합니다.
 
 [x] Phase 4: 레이아웃 ✅
     [x] 4.1 NativeLayout 구현 ✅ (Bottom Sheet, Quick/Detail 전환)
-    [x] 4.2 WebMobileLayout 구현 ✅ (Sticky Footer + Drawer)
-    [x] 4.3 WebDesktopLayout 구현 ✅ (중앙 Modal)
+    [x] 4.2 Web layouts retired ✅
 
 [x] Phase 5: 통합 ✅
     [x] 5.1 index.js 컨테이너 구현 ✅ (플랫폼별 분기)
@@ -151,8 +144,7 @@ TECH_SPEC의 "번줄" 순서대로 구현합니다.
 ## 🧪 검증 계획
 
 ### 수동 테스트 (각 Phase 완료 후)
-1. **웹에서 확인**: `npm run web` → 브라우저에서 Todo 추가 화면 열기
-2. **iOS/Android 확인**: Expo Go 앱에서 테스트
+1. **iOS/Android 확인**: Expo dev-client에서 테스트
 
 ### 체크포인트
 - [ ] Quick Mode에서 제목 입력 후 저장 → DB에 정상 저장 확인

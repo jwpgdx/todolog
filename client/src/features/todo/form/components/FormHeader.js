@@ -1,10 +1,7 @@
 import React from 'react';
-import { View, Text, Platform, TouchableOpacity as RNTouchableOpacity } from 'react-native';
-import { TouchableOpacity as GHTouchableOpacity } from 'react-native-gesture-handler';
+import { View, Text } from 'react-native';
+import { TouchableOpacity } from 'react-native-gesture-handler';
 import { Ionicons } from '@expo/vector-icons';
-
-// 웹에서는 react-native의 TouchableOpacity, 네이티브에서는 gesture-handler 사용
-const TouchableOpacity = Platform.OS === 'web' ? RNTouchableOpacity : GHTouchableOpacity;
 
 /**
  * FormHeader Component

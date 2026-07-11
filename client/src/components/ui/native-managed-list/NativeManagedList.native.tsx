@@ -1,11 +1,8 @@
 import React, { useEffect, useMemo } from 'react';
-import { Platform, Text, View } from 'react-native';
+import { Platform, StyleSheet } from 'react-native';
 import { requireNativeViewManager } from 'expo-modules-core';
 
-import type {
-  NativeManagedListErrorEvent,
-  NativeManagedListProps,
-} from './contracts';
+import type { NativeManagedListProps } from './contracts';
 import {
   buildManagedActionEvent,
   buildManagedControlActionEvent,
@@ -35,69 +32,6 @@ type NativeListInteractionsViewProps = {
 
 const NativeListInteractionsView =
   requireNativeViewManager<NativeListInteractionsViewProps>('NativeListInteractions');
-
-function UnsupportedNativeManagedList({
-  variant,
-  style,
-  onError,
-  sections,
-  onPressItem,
-}: Pick<
-  NativeManagedListProps,
-  'style' | 'onError' | 'variant' | 'sections' | 'onPressItem'
->) {
-  const message = `NativeManagedList v0 currently supports native variant="category" and iOS-only "todo". Received "${variant}", so JS fallback rendering is used.`;
-
-  useEffect(() => {
-    onError?.({
-      code: 'UNSUPPORTED_VARIANT',
-      message,
-    } satisfies NativeManagedListErrorEvent);
-  }, [message, onError]);
-
-  return (
-    <View style={{ width: '100%', gap: 12 }}>
-      <View
-        style={{
-          width: '100%',
-          minHeight: 108,
-          borderRadius: 18,
-          borderWidth: 1,
-          borderColor: '#D1D5DB',
-          backgroundColor: '#FFFFFF',
-          padding: 16,
-          justifyContent: 'center',
-        }}
-      >
-        <Text
-          style={{
-            fontSize: 16,
-            fontWeight: '800',
-            color: '#111827',
-          }}
-        >
-          NativeManagedList
-        </Text>
-        <Text
-          style={{
-            marginTop: 8,
-            color: '#6B7280',
-            lineHeight: 20,
-          }}
-        >
-          {message}
-        </Text>
-      </View>
-
-      <NativeManagedListFallback
-        variant={variant}
-        sections={sections}
-        style={style}
-        onPressItem={onPressItem}
-      />
-    </View>
-  );
-}
 
 export default function NativeManagedList({
   listId,
@@ -136,14 +70,15 @@ export default function NativeManagedList({
 
     return 'system';
   }, [inferredHasReorderableTodoItems, iosCategoryGestureMode, variant]);
-  const isUnsupportedVariant =
-    Platform.OS !== 'ios' || (variant !== 'category' && variant !== 'todo');
+  const usesNativeView =
+    (Platform.OS === 'ios' && (variant === 'category' || variant === 'todo')) ||
+    (Platform.OS === 'android' && variant === 'category');
   const legacySections = useMemo(
     () =>
-      isUnsupportedVariant
+      !usesNativeView
         ? []
         : mapManagedSectionsToLegacyNativeSections(variant, sections),
-    [isUnsupportedVariant, sections, variant]
+    [sections, usesNativeView, variant]
   );
   const sectionsJson = useMemo(() => serializeJson(legacySections), [legacySections]);
   const height = useMemo(
@@ -152,10 +87,10 @@ export default function NativeManagedList({
   );
   const resolvedContainerStyle = useMemo(() => {
     if (variant === 'todo') {
-      return [{ width: '100%', minHeight: 220, flex: 1 }, style];
+      return [styles.todoContainer, style];
     }
 
-    return [{ width: '100%', height }, style];
+    return [styles.measuredContainer, { height }, style];
   }, [height, style, variant]);
 
   useEffect(() => {
@@ -164,14 +99,20 @@ export default function NativeManagedList({
     });
   }, [warnings]);
 
-  if (isUnsupportedVariant) {
+  if (!usesNativeView) {
     return (
-      <UnsupportedNativeManagedList
+      <NativeManagedListFallback
+        listId={listId}
         variant={variant}
         style={style}
-        onError={onError}
         sections={sections}
+        contentInsetBottom={contentInsetBottom}
         onPressItem={onPressItem}
+        onAction={onAction}
+        onControlAction={onControlAction}
+        onReorderCommit={onReorderCommit}
+        onSectionExpandRequest={onSectionExpandRequest}
+        onError={onError}
       />
     );
   }
@@ -299,3 +240,14 @@ export default function NativeManagedList({
     />
   );
 }
+
+const styles = StyleSheet.create({
+  measuredContainer: {
+    width: '100%',
+  },
+  todoContainer: {
+    width: '100%',
+    minHeight: 220,
+    flex: 1,
+  },
+});

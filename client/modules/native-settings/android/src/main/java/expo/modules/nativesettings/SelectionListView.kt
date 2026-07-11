@@ -27,7 +27,8 @@ private data class NativeSelectionOption(
   val id: String,
   val label: String,
   val subtitle: String?,
-  val keywords: List<String>
+  val keywords: List<String>,
+  val leadingColor: String?
 )
 
 private data class NativeSelectionPayload(
@@ -152,6 +153,7 @@ class NativeSelectionListView(
   }
 
   private fun renderHeader() {
+    titleView.visibility = if (payload.title.isBlank()) View.GONE else View.VISIBLE
     titleView.text = payload.title
     subtitleView.text = payload.subtitle
     subtitleView.visibility = if (payload.subtitle.isNullOrBlank()) View.GONE else View.VISIBLE
@@ -188,7 +190,8 @@ class NativeSelectionListView(
                       add(keyword)
                     }
                   }
-                }
+                },
+                leadingColor = option.optString("leadingColor").takeIf { it.isNotBlank() }
               )
             )
           }
@@ -300,6 +303,7 @@ class NativeSelectionListView(
   private inner class OptionViewHolder(
     val root: LinearLayout,
     val contentRow: LinearLayout,
+    val colorDotView: View,
     val textColumn: LinearLayout,
     val titleView: TextView,
     val subtitleView: TextView,
@@ -390,9 +394,19 @@ class NativeSelectionListView(
       setTextColor(Color.parseColor("#16A34A"))
     }
 
+    val colorDotView = View(context).apply {
+      visibility = View.GONE
+    }
+
     textColumn.addView(titleView)
     textColumn.addView(subtitleView)
 
+    contentRow.addView(
+      colorDotView,
+      LinearLayout.LayoutParams(dp(22), dp(22)).apply {
+        marginEnd = dp(12)
+      }
+    )
     contentRow.addView(
       textColumn,
       LinearLayout.LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f)
@@ -417,6 +431,7 @@ class NativeSelectionListView(
     return OptionViewHolder(
       root,
       contentRow,
+      colorDotView,
       textColumn,
       titleView,
       subtitleView,
@@ -444,6 +459,7 @@ class NativeSelectionListView(
     holder.subtitleView.text = option.subtitle
     holder.subtitleView.visibility =
       if (option.subtitle.isNullOrBlank()) View.GONE else View.VISIBLE
+    bindLeadingColor(holder.colorDotView, option.leadingColor)
     holder.checkView.text = if (selected) "✓" else "○"
     holder.checkView.setTextColor(
       if (selected) Color.parseColor("#16A34A") else Color.parseColor("#D1D5DB")
@@ -457,5 +473,30 @@ class NativeSelectionListView(
 
   private fun dp(value: Int): Int {
     return (value * resources.displayMetrics.density).toInt()
+  }
+
+  private fun bindLeadingColor(view: View, leadingColor: String?) {
+    if (leadingColor.isNullOrBlank()) {
+      view.visibility = View.GONE
+      return
+    }
+
+    val parsedColor = try {
+      Color.parseColor(leadingColor)
+    } catch (_: IllegalArgumentException) {
+      null
+    }
+
+    if (parsedColor == null) {
+      view.visibility = View.GONE
+      return
+    }
+
+    view.visibility = View.VISIBLE
+    view.background = GradientDrawable().apply {
+      shape = GradientDrawable.OVAL
+      setColor(parsedColor)
+      setStroke(dp(1), Color.parseColor("#E5E7EB"))
+    }
   }
 }

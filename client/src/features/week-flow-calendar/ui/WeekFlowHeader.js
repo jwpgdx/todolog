@@ -1,6 +1,12 @@
 import React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useTranslation } from 'react-i18next';
+import Animated, {
+  useAnimatedStyle,
+  withTiming,
+} from 'react-native-reanimated';
+
+const AnimatedText = Animated.createAnimatedComponent(Text);
 
 export default function WeekFlowHeader({
   title,
@@ -13,6 +19,15 @@ export default function WeekFlowHeader({
   showToggle = true,
 }) {
   const { t } = useTranslation();
+  const modeIconStyle = useAnimatedStyle(() => ({
+    transform: [
+      {
+        rotate: withTiming(mode === 'weekly' ? '0deg' : '90deg', {
+          duration: 140,
+        }),
+      },
+    ],
+  }), [mode]);
 
   return (
     <View style={styles.container}>
@@ -21,7 +36,7 @@ export default function WeekFlowHeader({
 
         {showToggle ? (
           <Pressable onPress={onToggleMode} style={styles.toggleButton}>
-            <Text style={styles.modeText}>{mode === 'weekly' ? '▾' : '▴'}</Text>
+            <AnimatedText style={[styles.modeText, modeIconStyle]}>{'›'}</AnimatedText>
           </Pressable>
         ) : (
           <View style={styles.togglePlaceholder} />
@@ -59,9 +74,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    height: 40,
     paddingHorizontal: 12,
-    paddingTop: 10,
-    paddingBottom: 8,
     backgroundColor: '#FFFFFF',
   },
   leftGroup: {
@@ -82,7 +96,7 @@ const styles = StyleSheet.create({
   },
   iconButton: {
     width: 40,
-    height: 36,
+    height: 40,
     borderRadius: 8,
     alignItems: 'center',
     justifyContent: 'center',
@@ -118,6 +132,7 @@ const styles = StyleSheet.create({
   },
   rightGroup: {
     width: 88,
+    height: 40,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'flex-end',

@@ -12,12 +12,21 @@ class NativeListInteractionsModule : Module() {
         view.updateSectionsJson(sectionsJson ?: "[]")
       }
 
+      Prop("iosCategoryGestureMode") { _: NativeListInteractionsView, _: String? ->
+        // iOS-only compatibility prop.
+      }
+
+      Prop("contentInsetBottom") { view: NativeListInteractionsView, contentInsetBottom: Double? ->
+        view.updateContentInsetBottom(contentInsetBottom ?: 0.0)
+      }
+
       Events(
         "onItemPress",
         "onMenuAction",
         "onDelete",
         "onReorder",
-        "onToggleSwitch"
+        "onToggleSwitch",
+        "onSectionExpandRequest"
       )
     }
   }

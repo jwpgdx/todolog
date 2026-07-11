@@ -1,6 +1,6 @@
 # Todolog Roadmap
 
-Last Updated: 2026-03-24
+Last Updated: 2026-07-12
 Owner: Product + Engineering
 
 ## 1. Purpose
@@ -29,7 +29,7 @@ Current state:
 - Completion local tombstone is implemented and validated
 - Guest local-only bootstrap + all-to-Inbox migration is implemented and validated (iOS simulator + Maestro login/signup branch verification complete, forced signup partial-failure boundary verified)
 - Cache-policy unification (Option A -> Option B) is complete/validated
-- Todo Calendar V2 readiness is complete/validated on web and native baseline checks
+- Todo Calendar V2 readiness is complete/validated on native baseline checks; historical web validation has been retired
 - Todo Calendar V2 cutover + legacy retirement landed: `calendar` tab now points to TC2, the duplicate standalone `TC2` tab route has been removed, and the old monthly calendar runtime has been removed from active app code
 - Post-cutover promoted native smoke is still pending before any legacy-retirement decision
 - Strip-calendar remains legacy/spec reference only and is no longer mounted in the active Todo runtime
@@ -38,7 +38,13 @@ Current state:
 - Expo SDK 55 upgrade is complete/validated; Android emulator + iOS simulator smoke both passed
 - Floating tab bar implementation has landed: the product shell now uses a detached custom tab bar with a three-tab menu shell, a separate circular `+` quick action, shared reserved inset hooks, blurred shared surface, and animated moving selected pill
 - Floating tab bar iOS simulator validation passed after rebuilding the dev client for `expo-blur`/`react-native-svg`; Android/manual parity validation is still pending
+- Web runtime and Playwright validation paths have been retired; native dev-client smoke is the active UI/runtime validation path
 - `react-native-wheel-pick` remains as the only non-blocking Expo doctor warning and is slated for later native replacement
+- Calendar-free screen selection mode is partially implemented on Favorites, All Todos, and Category detail
+- Shared category picker supports single and bulk todo IDs; the latest bulk selection -> move -> SQLite commit path still needs manual verification
+- The selection action bar currently wires Move only; offline-first bulk delete/complete/favorite hooks remain pending
+- TodoScreen V2 architecture decisions are frozen in triage, but formal requirements/design/tasks and TodoScreen selection chrome remain pending
+- A new-Mac handoff checkpoint is documented in `NEW_MAC_HANDOFF_2026-07-12.md`
 
 Immediate objective:
 
@@ -51,8 +57,28 @@ Immediate objective:
 - post Expo Router migration: ensure deep-link/push route parity and keep legacy navigation deps at 0
 - finish floating tab bar Android/manual parity smoke after the iOS-validated detached-shell rollout
 - replace `react-native-wheel-pick` with native UI after the SDK 55 stabilization window
+- reproduce the preserved lockfile/native build on the new Apple Silicon Mac before any Expo patch upgrade
+- complete selection-mode manual/SQLite validation, then implement first-class offline-first bulk actions
+- promote TodoScreen V2 triage decisions into approved requirements/design/tasks before implementation
 
 ## 3. Dated Milestones (Completed)
+
+### 2026-05-16
+
+- Retired web runtime/development validation paths from active project workflow
+  - removed Playwright web E2E scripts/config/specs/results
+  - removed Vaul docs/example archive from the client tree
+  - removed web target from the Expo dev launcher
+  - changed root `dev:client` from web start to the native Expo launcher
+  - removed active `.web.*` implementations and direct web-only dependencies from the client
+  - kept native dev-client smoke as the active validation path
+
+Evidence:
+
+- `CODEX_TESTING.md`
+- `client/scripts/dev-launcher.js`
+- `client/package.json`
+- `package.json`
 
 ### 2026-01-28
 

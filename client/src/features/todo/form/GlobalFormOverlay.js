@@ -1,5 +1,5 @@
-import React, { useCallback, useEffect, useRef } from 'react';
-import { Platform, useWindowDimensions, Keyboard } from 'react-native';
+import React, { useCallback } from 'react';
+import { Platform, Keyboard } from 'react-native';
 import { router } from 'expo-router';
 import { useTodoFormStore } from '../../../store/todoFormStore';
 import { useTodoFormV2Store } from '../../../store/todoFormV2Store';
@@ -20,17 +20,15 @@ import DetailContent from './content/DetailContent';
  * Zustand Store에서 상태를 직접 구독하여 props 전달 없이 동작.
  * 
  * 플랫폼별 렌더링:
- * - Quick Mode: QuickContainer (Native: KeyboardStickyView, Web: position:fixed)
- * - Detail Mode: DetailContainer (iOS: pageSheet, Android: BottomSheet, Web: vaul/modal)
+ * - Quick Mode: QuickContainer (iOS InputAccessoryView, Android BottomSheet)
+ * - Detail Mode: DetailContainer (iOS pageSheet, Android BottomSheet)
  * 
  * @see PLATFORM_ARCHITECTURE.md
  */
 export default function GlobalFormOverlay() {
     const { mode, activeTodo, close, initialFocusTarget } = useTodoFormStore();
     const setDetailV2Draft = useTodoFormV2Store((state) => state.setDraft);
-    const { width } = useWindowDimensions();
     const isIOS = Platform.OS === 'ios';
-    const hasRedirectedDesktopQuickRef = useRef(false);
 
     // ⚠️ Hooks는 항상 조건부 return 전에 호출해야 함 (Rules of Hooks)
     const visible = mode !== 'CLOSED';
@@ -69,25 +67,8 @@ export default function GlobalFormOverlay() {
         close();
     }, [close]);
 
-    // 데스크탑 웹은 Quick Mode 없음 (바로 Detail)
-    const isDesktopWeb = Platform.OS === 'web' && width > 768;
-    const showQuickMode = mode === 'QUICK' && !isDesktopWeb;
+    const showQuickMode = mode === 'QUICK';
     const showDetailMode = mode === 'DETAIL';
-
-    useEffect(() => {
-        if (!(mode === 'QUICK' && isDesktopWeb)) {
-            hasRedirectedDesktopQuickRef.current = false;
-            return;
-        }
-
-        if (hasRedirectedDesktopQuickRef.current) {
-            return;
-        }
-
-        hasRedirectedDesktopQuickRef.current = true;
-        close();
-        router.push('/todo-form/v2');
-    }, [close, isDesktopWeb, mode]);
 
     return (
         <>

@@ -32,24 +32,18 @@ export default function SettingsScreen() {
             }
         };
 
-        if (Platform.OS === 'web') {
-            if (window.confirm(confirmMessage)) {
-                executeDelete();
-            }
-        } else {
-            Alert.alert(
-                '회원 탈퇴',
-                confirmMessage,
-                [
-                    { text: '취소', style: 'cancel' },
-                    {
-                        text: '탈퇴',
-                        style: 'destructive',
-                        onPress: executeDelete
-                    }
-                ]
-            );
-        }
+        Alert.alert(
+            '회원 탈퇴',
+            confirmMessage,
+            [
+                { text: '취소', style: 'cancel' },
+                {
+                    text: '탈퇴',
+                    style: 'destructive',
+                    onPress: executeDelete
+                }
+            ]
+        );
     };
 
     // Helper component for list rows

@@ -81,12 +81,14 @@ function compareCategories(a, b) {
 
 function buildDefaultMenuActions(todo, options = {}) {
   const includeFavoriteAction = options.includeFavoriteAction !== false;
+  const includeSelectAction = options.includeSelectAction === true;
   const favoriteActionId = todo?.isFavorite ? 'unfavorite' : 'favorite';
   const favoriteActionTitle = todo?.isFavorite ? '즐겨찾기 해제' : '즐겨찾기 추가';
 
   return [
     { id: 'view', title: '보기' },
     { id: 'edit', title: '수정' },
+    ...(includeSelectAction ? [{ id: 'select', title: '선택' }] : []),
     { id: 'move', title: '이동' },
     ...(includeFavoriteAction
       ? [{ id: favoriteActionId, title: favoriteActionTitle }]
@@ -121,6 +123,7 @@ function buildDefaultTrailingSwipeActions() {
 
 function buildCategoryHeaderItem(category, options = {}) {
   const isSystemCategory = category?.systemKey === 'inbox';
+  const isSelectionMode = options.selectionMode === true;
   const todoCount = Number(options.todoCount ?? 0);
 
   return {
@@ -133,8 +136,8 @@ function buildCategoryHeaderItem(category, options = {}) {
     enabled: true,
     loading: false,
     pinned: isSystemCategory,
-    reorderable: options.reorderable === true && !isSystemCategory,
-    menuActions: [
+    reorderable: !isSelectionMode && options.reorderable === true && !isSystemCategory,
+    menuActions: isSelectionMode ? [] : [
       {
         id: 'openCategory',
         title: '카테고리로 이동',
@@ -211,6 +214,8 @@ function buildTodoItem(todo, options = {}) {
     favoriteDisabled: options.favoriteDisabled,
     showFavoriteBadge: options.showFavoriteBadge,
     nextOccurrenceLabel: options.nextOccurrenceLabel,
+    selectionMode: options.selectionMode,
+    selected: options.selectedTodoIdSet?.has(todo?._id) === true,
     menuActions:
       options.menuActions ?? buildDefaultMenuActions(todo, options),
     leadingSwipeActions:
@@ -223,12 +228,16 @@ function buildTodoItem(todo, options = {}) {
 
 function buildFavoriteSection(favoriteTodos, options = {}) {
   const isCollapsed = options.collapsed === true;
+  const favoriteItemOptions = {
+    ...options.itemOptions,
+    ...options.favoriteItemOptions,
+  };
   const items = [...(favoriteTodos ?? [])]
     .sort(compareByFavoriteOrder)
     .map((todo) =>
       ({
         ...buildTodoItem(todo, {
-          ...options.favoriteItemOptions,
+          ...favoriteItemOptions,
           reorderable: options.favoriteReorderable !== false,
           showFavoriteBadge: false,
           nextOccurrenceLabel: options.nextOccurrenceLabelByTodoId?.[todo._id],
@@ -276,6 +285,7 @@ export function buildManagedTodoSections({
         favoriteReorderable:
           favoriteReorderable ?? mode !== TODO_MANAGED_LIST_MODE.TIME,
         collapsed: favoriteSectionCollapsed,
+        itemOptions,
         favoriteItemOptions,
         nextOccurrenceLabelByTodoId,
       })
@@ -354,6 +364,7 @@ export function buildManagedTodoSections({
       items: [
         buildCategoryHeaderItem(category, {
           collapsed: isCollapsed,
+          selectionMode: itemOptions.selectionMode,
           reorderable: category?.systemKey !== 'inbox',
           todoCount: categoryTodos.length,
         }),

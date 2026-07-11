@@ -1,13 +1,14 @@
 # Native Managed List — Tasks
 
-## Current Status: 2026-05-09
+## Current Status: 2026-05-16
 
 - Contract/facade path는 `client/src/components/ui/native-managed-list/` 아래에 있다.
 - iOS native 구현은 아직 `client/modules/native-list-interactions/ios/NativeListInteractionsView.swift` 한 파일에 집중되어 있다.
 - `NativeTodoManagedList` wrapper는 iOS Todo category-grouped pilot path에서 활성화되어 있다.
 - `TODO SCREEN > 카테고리별 순서`와 `ALL TODOS SCREEN`은 같은 category-grouped interaction model을 재사용한다.
 - Category header reorder, todo cross-category move, collapsed category hover auto-expand, drag auto-scroll, Inbox pinned ordering, native bottom inset이 iOS path에 구현되어 있다.
-- 다음 우선순위는 managed-list 새 기능 추가가 아니라 안정화와 Swift file split이다.
+- Android `variant="category"` first slice는 RecyclerView 기반 native path로 `My Page > 카테고리`에 연결되어 있고, render/overflow menu/build/install smoke가 통과했다.
+- 다음 우선순위는 Android todo/favorite drag parity가 아니라 Android category path 안정화와 계약 누락분 정리다.
 
 ## Phase 0: Spec Freeze
 
@@ -114,10 +115,22 @@
 
 ## Phase 8: Android Follow-up
 
-- Android managed-list view scaffold는 contract freeze 이후 진행
-- RecyclerView 기반 section/item 렌더링 설계
-- long press reorder / swipe / trailing `⋮` action surface 연결
-- 같은 JS contract로 event가 올라오도록 맞춤
+- [x] non-iOS fallback에서 warning card 제거 및 core contract event wiring 추가
+- [x] Android debug build blocker였던 `native-todo-form-session` Kotlin `dp(Int)` overload 보정
+- [x] Android `:app:assembleDebug` 빌드 통과 확인
+- [x] Android managed-list native view scaffold 1차 구현 (`native-list-interactions` Android view manager)
+- [x] RecyclerView 기반 section/item 렌더링 1차 구현
+- [x] `variant="category"`를 Android native RecyclerView path에 연결
+- [x] trailing `⋮` action surface 연결
+- [x] delete action event 연결
+- [x] within-section long press reorder scaffold 연결
+- [x] 같은 JS contract로 category press/action/delete/reorder event가 올라오도록 맞춤
+- [x] Android SDK 55 patch alignment 후 `:app:assembleDebug` / `:app:installDebug` / emulator launch smoke 확인
+- [x] Android `My Page > 카테고리` render smoke 확인 (`Inbox`, user categories, `카테고리 추가`)
+- [x] Android category overflow menu smoke 확인
+- [x] Android category long press reorder manual smoke 재확인
+- [x] Android category swipe delete manual smoke 재확인
+- [ ] Android todo/favorite native drag parity 범위 결정
 
 ## Phase 9: Favorite Follow-up
 

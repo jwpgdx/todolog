@@ -2,7 +2,7 @@
 
 ## 1. 프로젝트 개요 (Overview)
 
-본 프로젝트는 **React Native (Expo)** 기반의 크로스 플랫폼(iOS, Android, Web) 투두 리스트 앱입니다.
+본 프로젝트는 **React Native (Expo)** 기반의 iOS/Android 투두 리스트 앱입니다.
 핵심 목표는 **Todoist 스타일의 "Quick-Add" UX**를 구현하는 것입니다. 사용자가 할 일을 입력할 때, 단순한 채팅창 형태(Quick Mode)에서 시작하여 필요시 상세 설정 폼(Detail Mode)으로 자연스럽게 확장되는 경험을 제공해야 합니다.
 
 ---
@@ -21,7 +21,7 @@
 
 2. **Container Layer (Router)**
 * **역할:** 진입점 및 플랫폼 분기 처리.
-* **책임:** 현재 실행 환경(Native vs Web Mobile vs Web Desktop)을 감지하여 적절한 **Layout**을 호출하고, **Logic**을 주입(DI)함.
+* **책임:** 현재 네이티브 실행 환경(iOS/Android)에 맞는 **Layout**을 호출하고, **Logic**을 주입(DI)함.
 * **산출물:** `index.js` (TodoFormContainer).
 
 
@@ -29,7 +29,6 @@
 * **역할:** 플랫폼별 UX 전략을 구현하는 껍데기.
 * **책임:**
 * **Native:** Bottom Sheet 제스처 및 애니메이션 처리.
-* **Web:** Sticky Footer 및 Drawer/Modal 처리.
 
 
 * **특징:** Logic으로부터 데이터와 핸들러를 주입받아 하위 Component에 전달함.
@@ -404,8 +403,7 @@ src/
 │   └── ui/
 │       ├── bottom-sheet/
 │       │   ├── core/
-│       │   │   ├── bottom-sheet-native.js  # [공통] 네이티브용 래퍼 (Render Props & 레이아웃 제어 지원)
-│       │   │   └── bottom-sheet-web.js     # [공통] 웹 브라우저용 래퍼 (Drawer/Modal 지원)
+│       │   │   └── bottom-sheet-native.js  # [공통] 네이티브용 래퍼 (Render Props & 레이아웃 제어 지원)
 │       │   └── index.js                    # [공통] 플랫폼별 레이아웃 전략
 │       ├── DatePicker.js                   # [공통] 날짜 선택 컴포넌트
 │       ├── Dropdown.js                     # [공통] 드롭다운 컴포넌트
@@ -429,9 +427,7 @@ src/
             │        ├── WeeklySelector.js     # for frequency === 'weekly'
             │        └── MonthlySelector.js    # for frequency === 'monthly'
             │
-            └── layouts/                  # [껍데기] 플랫폼별 레이아웃 전략
-                ├── NativeLayout.js       # iOS/Android: 단일 바텀 시트 전략 (Single Bottom Sheet)
-                ├── WebMobileLayout.js    # 모바일 웹: 스티키 푸터 + 드로어 전략 (Sticky Footer + Drawer)
-                └── WebDesktopLayout.js   # 데스크탑 웹: 단일 바텀 시트 전략 (Single Bottom Sheet)
+            └── layouts/                  # [껍데기] 네이티브 레이아웃 전략
+                └── NativeLayout.js       # iOS/Android: 단일 바텀 시트 전략 (Single Bottom Sheet)
 
 ```

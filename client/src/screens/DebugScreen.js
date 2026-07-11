@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Platform } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert } from 'react-native';
 import { useRouter } from 'expo-router';
 import dayjs from 'dayjs';
 import { useQueryClient } from '@tanstack/react-query';
@@ -22,14 +22,11 @@ import {
 } from '../services/db/completionService';
 import {
   getPendingChanges as sqliteGetPendingChanges,
-  addPendingChange,
   clearPendingChanges as sqliteClearPendingChanges,
   getPendingChangesCount,
   getPendingReady,
-  markPendingDeadLetter,
 } from '../services/db/pendingService';
 import { runPendingPush } from '../services/sync/pendingPush';
-import { generateId } from '../utils/idGenerator';
 import { runCommonQueryForDate, runCommonQueryForRange } from '../services/query-aggregation';
 import {
   adaptTodoScreenFromDateHandoff,
@@ -113,21 +110,7 @@ export default function DebugScreen() {
   };
 
   const promptDebugDate = () => {
-    if (Platform.OS !== 'web' || typeof window === 'undefined' || typeof window.prompt !== 'function') {
-      addLog('⚠️ 직접 입력은 웹에서만 지원됩니다. ±1/±7 버튼을 사용하세요.');
-      return;
-    }
-
-    const input = window.prompt('테스트 날짜 입력 (YYYY-MM-DD)', selectedDate);
-    if (input == null) return;
-
-    const trimmed = input.trim();
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
-      addLog(`❌ 날짜 형식 오류: ${trimmed}`);
-      return;
-    }
-
-    setDebugDate(trimmed);
+    addLog('⚠️ 직접 입력은 비활성화되어 있습니다. ±1/±7 버튼을 사용하세요.');
   };
 
   const clearLogs = () => {
@@ -142,12 +125,7 @@ export default function DebugScreen() {
 
     const text = logs.join('\n');
     try {
-      if (Platform.OS === 'web' && typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
-        await navigator.clipboard.writeText(text);
-        addLog(`✅ 로그 ${logs.length}줄 복사 완료`);
-      } else {
-        addLog('⚠️ 현재 플랫폼은 자동 로그 복사를 지원하지 않습니다');
-      }
+      addLog('⚠️ 현재 플랫폼은 자동 로그 복사를 지원하지 않습니다');
     } catch (error) {
       addLog(`❌ 로그 복사 실패: ${error.message}`);
     }
@@ -727,42 +705,7 @@ export default function DebugScreen() {
     addLog('🧪 반복 split pending seed');
     addLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 
-    if (Platform.OS !== 'web' || typeof window === 'undefined' || typeof window.prompt !== 'function') {
-      addLog('⚠️ 웹 prompt 환경에서만 지원됩니다.');
-      addLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-      return;
-    }
-
-    const rawTodoId = window.prompt('반복 split seed용 todoId를 입력하세요', '');
-    const todoId = rawTodoId?.trim();
-    if (!todoId) {
-      addLog('❌ todoId가 필요합니다');
-      addLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-      return;
-    }
-
-    const nextDate = addDaysDateOnly(selectedDate, 1) || dayjs(selectedDate).add(1, 'day').format('YYYY-MM-DD');
-
-    try {
-      const firstId = generateId();
-      const secondId = generateId();
-
-      await addPendingChange({
-        type: 'createCompletion',
-        entityId: `${todoId}_${selectedDate}`,
-        data: { _id: firstId, todoId, date: selectedDate, isRecurring: true },
-      });
-      await addPendingChange({
-        type: 'createCompletion',
-        entityId: `${todoId}_${nextDate}`,
-        data: { _id: secondId, todoId, date: nextDate, isRecurring: true },
-      });
-
-      addLog(`✅ seed 완료: ${todoId}_${selectedDate}, ${todoId}_${nextDate}`);
-    } catch (error) {
-      addLog(`❌ seed 실패: ${error.message}`);
-    }
-
+    addLog('⚠️ todoId 직접 입력 seed는 현재 비활성화되어 있습니다.');
     addLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
   };
 
@@ -771,43 +714,7 @@ export default function DebugScreen() {
     addLog('🧪 dead_letter coexist seed');
     addLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 
-    if (Platform.OS !== 'web' || typeof window === 'undefined' || typeof window.prompt !== 'function') {
-      addLog('⚠️ 웹 prompt 환경에서만 지원됩니다.');
-      addLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-      return;
-    }
-
-    const rawTodoId = window.prompt('dead_letter coexist seed용 todoId를 입력하세요', '');
-    const todoId = rawTodoId?.trim();
-    if (!todoId) {
-      addLog('❌ todoId가 필요합니다');
-      addLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-      return;
-    }
-
-    try {
-      const completionKey = `${todoId}_null`;
-      const deadLetterId = await addPendingChange({
-        type: 'createCompletion',
-        entityId: completionKey,
-        data: { _id: generateId(), todoId, date: null, isRecurring: false },
-      });
-
-      await markPendingDeadLetter(deadLetterId, { lastError: 'manual dead letter seed' });
-
-      const readyId = await addPendingChange({
-        type: 'createCompletion',
-        entityId: completionKey,
-        data: { _id: generateId(), todoId, date: null, isRecurring: false },
-      });
-
-      addLog(`✅ dead_letter seed 완료: key=${completionKey}`);
-      addLog(`  - deadLetterId=${deadLetterId}`);
-      addLog(`  - readyId=${readyId}`);
-    } catch (error) {
-      addLog(`❌ dead_letter seed 실패: ${error.message}`);
-    }
-
+    addLog('⚠️ todoId 직접 입력 seed는 현재 비활성화되어 있습니다.');
     addLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
   };
 
@@ -1605,19 +1512,14 @@ export default function DebugScreen() {
   const clearPending = async () => {
     const confirmClear = () => {
       return new Promise((resolve) => {
-        if (Platform.OS === 'web') {
-          const confirmed = window.confirm('⚠️ Pending Changes를 삭제하시겠습니까?');
-          resolve(confirmed);
-        } else {
-          Alert.alert(
-            '⚠️ Pending 삭제',
-            'Pending Changes를 삭제하시겠습니까?',
-            [
-              { text: '취소', style: 'cancel', onPress: () => resolve(false) },
-              { text: '삭제', style: 'destructive', onPress: () => resolve(true) }
-            ]
-          );
-        }
+        Alert.alert(
+          '⚠️ Pending 삭제',
+          'Pending Changes를 삭제하시겠습니까?',
+          [
+            { text: '취소', style: 'cancel', onPress: () => resolve(false) },
+            { text: '삭제', style: 'destructive', onPress: () => resolve(true) }
+          ]
+        );
       });
     };
 
@@ -1647,21 +1549,14 @@ export default function DebugScreen() {
   const resetDb = async () => {
     const confirmReset = () => {
       return new Promise((resolve) => {
-        if (Platform.OS === 'web') {
-          const confirmed = window.confirm(
-            '⚠️ SQLite 데이터를 전체 삭제하시겠습니까?\n\n이 작업은 되돌릴 수 없습니다!'
-          );
-          resolve(confirmed);
-        } else {
-          Alert.alert(
-            '⚠️ SQLite 전체 삭제',
-            'SQLite 데이터를 전체 삭제하시겠습니까?\n\n이 작업은 되돌릴 수 없습니다!',
-            [
-              { text: '취소', style: 'cancel', onPress: () => resolve(false) },
-              { text: '삭제', style: 'destructive', onPress: () => resolve(true) }
-            ]
-          );
-        }
+        Alert.alert(
+          '⚠️ SQLite 전체 삭제',
+          'SQLite 데이터를 전체 삭제하시겠습니까?\n\n이 작업은 되돌릴 수 없습니다!',
+          [
+            { text: '취소', style: 'cancel', onPress: () => resolve(false) },
+            { text: '삭제', style: 'destructive', onPress: () => resolve(true) }
+          ]
+        );
       });
     };
 
@@ -1695,26 +1590,16 @@ export default function DebugScreen() {
   const forceMigration = async () => {
     const confirmMigration = () => {
       return new Promise((resolve) => {
-        if (Platform.OS === 'web') {
-          const confirmed = window.confirm(
-            '🔧 강제 마이그레이션\n\n' +
-            'migration_version을 리셋하고 v3 마이그레이션을 강제 실행합니다.\n\n' +
-            'completions 테이블이 재생성됩니다.\n\n' +
-            '계속하시겠습니까?'
-          );
-          resolve(confirmed);
-        } else {
-          Alert.alert(
-            '🔧 강제 마이그레이션',
-            'migration_version을 리셋하고 v3 마이그레이션을 강제 실행합니다.\n\n' +
-            'completions 테이블이 재생성됩니다.\n\n' +
-            '계속하시겠습니까?',
-            [
-              { text: '취소', style: 'cancel', onPress: () => resolve(false) },
-              { text: '실행', style: 'destructive', onPress: () => resolve(true) }
-            ]
-          );
-        }
+        Alert.alert(
+          '🔧 강제 마이그레이션',
+          'migration_version을 리셋하고 v3 마이그레이션을 강제 실행합니다.\n\n' +
+          'completions 테이블이 재생성됩니다.\n\n' +
+          '계속하시겠습니까?',
+          [
+            { text: '취소', style: 'cancel', onPress: () => resolve(false) },
+            { text: '실행', style: 'destructive', onPress: () => resolve(true) }
+          ]
+        );
       });
     };
 
@@ -1759,20 +1644,10 @@ export default function DebugScreen() {
       await db.runAsync('DELETE FROM metadata WHERE key = ?', ['migration_version']);
       addLog('✅ migration_version 삭제 완료');
 
-      // 4. 페이지 새로고침 안내
+      // 4. 앱 재시작 안내
       addLog('');
       addLog('✅ 강제 마이그레이션 준비 완료!');
-      addLog('🔄 3초 후 페이지를 새로고침합니다...');
-      addLog('   (새로고침 후 v3 마이그레이션이 자동 실행됩니다)');
-
-      // 3초 후 새로고침
-      setTimeout(() => {
-        if (Platform.OS === 'web') {
-          window.location.reload();
-        } else {
-          addLog('💡 앱을 재시작해주세요.');
-        }
-      }, 3000);
+      addLog('💡 앱을 재시작해주세요.');
 
     } catch (error) {
       addLog(`❌ 강제 마이그레이션 실패: ${error.message}`);
@@ -1785,30 +1660,18 @@ export default function DebugScreen() {
   const fullReset = async () => {
     const confirmFullReset = () => {
       return new Promise((resolve) => {
-        if (Platform.OS === 'web') {
-          const confirmed = window.confirm(
-            '🚨 완전 초기화\n\n' +
-            '다음 작업을 수행합니다:\n' +
-            '1. SQLite DB 파일 삭제 (IndexedDB)\n' +
-            '2. React Query 캐시 클리어\n' +
-            '3. 페이지 새로고침 필요\n\n' +
-            '계속하시겠습니까?'
-          );
-          resolve(confirmed);
-        } else {
-          Alert.alert(
-            '🚨 완전 초기화',
-            '다음 작업을 수행합니다:\n\n' +
-            '1. SQLite 전체 삭제\n' +
-            '2. React Query 캐시 클리어\n' +
-            '3. 앱 재시작 필요\n\n' +
-            '계속하시겠습니까?',
-            [
-              { text: '취소', style: 'cancel', onPress: () => resolve(false) },
-              { text: '초기화', style: 'destructive', onPress: () => resolve(true) }
-            ]
-          );
-        }
+        Alert.alert(
+          '🚨 완전 초기화',
+          '다음 작업을 수행합니다:\n\n' +
+          '1. SQLite 전체 삭제\n' +
+          '2. React Query 캐시 클리어\n' +
+          '3. 앱 재시작 필요\n\n' +
+          '계속하시겠습니까?',
+          [
+            { text: '취소', style: 'cancel', onPress: () => resolve(false) },
+            { text: '초기화', style: 'destructive', onPress: () => resolve(true) }
+          ]
+        );
       });
     };
 
@@ -1823,71 +1686,25 @@ export default function DebugScreen() {
     addLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 
     try {
-      // 웹 환경: IndexedDB 삭제
-      if (Platform.OS === 'web') {
-        addLog('1️⃣ IndexedDB 삭제 중...');
-        
-        // SQLite DB 파일 삭제
-        const dbNames = ['todos.db', 'SQLite'];
-        for (const dbName of dbNames) {
-          try {
-            await new Promise((resolve, reject) => {
-              const request = indexedDB.deleteDatabase(dbName);
-              request.onsuccess = () => {
-                addLog(`✅ ${dbName} 삭제 완료`);
-                resolve();
-              };
-              request.onerror = () => {
-                addLog(`⚠️ ${dbName} 삭제 실패 (없을 수 있음)`);
-                resolve(); // 에러여도 계속 진행
-              };
-              request.onblocked = () => {
-                addLog(`⚠️ ${dbName} 삭제 차단됨 (다른 탭에서 사용 중)`);
-                resolve();
-              };
-            });
-          } catch (e) {
-            addLog(`⚠️ ${dbName} 삭제 중 오류: ${e.message}`);
-          }
-        }
+      addLog('1️⃣ SQLite 초기화 중...');
+      await resetDatabase();
+      addLog('✅ SQLite 초기화 완료');
 
-        // 2. React Query 캐시 클리어
-        addLog('2️⃣ React Query 캐시 클리어 중...');
-        queryClient.clear();
-        addLog('✅ 캐시 클리어 완료');
+      addLog('2️⃣ React Query 캐시 클리어 중...');
+      queryClient.clear();
+      addLog('✅ 캐시 클리어 완료');
 
-        addLog('');
-        addLog('✅ 완전 초기화 완료!');
-        addLog('🔄 3초 후 페이지를 새로고침합니다...');
-        
-        // 3초 후 새로고침
-        setTimeout(() => {
-          window.location.reload();
-        }, 3000);
-      } else {
-        // 네이티브: SQLite 초기화
-        addLog('1️⃣ SQLite 초기화 중...');
-        await resetDatabase();
-        addLog('✅ SQLite 초기화 완료');
-
-        // 2. React Query 캐시 클리어
-        addLog('2️⃣ React Query 캐시 클리어 중...');
-        queryClient.clear();
-        addLog('✅ 캐시 클리어 완료');
-
-        // 3. 상태 확인
-        addLog('3️⃣ 상태 확인 중...');
-        const stats = await getDbStats();
-        addLog('');
-        addLog('📊 현재 상태:');
-        addLog(`  - Todos: ${stats.todos}개`);
-        addLog(`  - Completions: ${stats.completions}개`);
-        addLog(`  - Categories: ${stats.categories}개`);
-        addLog(`  - Pending: ${stats.pending}개`);
-        addLog('');
-        addLog('✅ 완전 초기화 완료!');
-        addLog('💡 앱을 재시작하거나 로그인하여 서버 데이터를 동기화하세요.');
-      }
+      addLog('3️⃣ 상태 확인 중...');
+      const stats = await getDbStats();
+      addLog('');
+      addLog('📊 현재 상태:');
+      addLog(`  - Todos: ${stats.todos}개`);
+      addLog(`  - Completions: ${stats.completions}개`);
+      addLog(`  - Categories: ${stats.categories}개`);
+      addLog(`  - Pending: ${stats.pending}개`);
+      addLog('');
+      addLog('✅ 완전 초기화 완료!');
+      addLog('💡 앱을 재시작하거나 로그인하여 서버 데이터를 동기화하세요.');
     } catch (error) {
       addLog(`❌ 초기화 실패: ${error.message}`);
       console.error('Full reset error:', error);

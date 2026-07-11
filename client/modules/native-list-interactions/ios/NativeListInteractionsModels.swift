@@ -32,6 +32,7 @@ struct NativeItem: Decodable {
   let toggleControlId: String?
   let toggleControlSource: String?
   let completed: Bool?
+  let selected: Bool?
 }
 
 struct NativeListMenuActionDescriptor {

@@ -372,7 +372,7 @@ export default function NativeSettingsCatalogScreen() {
   };
 
   const renderNativeMount = () => {
-    if (!previewState || Platform.OS === 'web') {
+    if (!previewState) {
       return null;
     }
 
