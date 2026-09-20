@@ -23,6 +23,8 @@ When working with Codex, read in this order:
 5. `ROADMAP.md`
 6. Relevant `.kiro/specs/<feature>/...`
 
+During the Web GPT / CoS handoff, read `WEB_GPT_HANDOFF.md` after the startup documents and before resuming implementation. It distinguishes frozen policy, partial implementation, and dated validation evidence.
+
 ## 3. Codex-Specific Rules
 
 - Default conversation language: Korean (unless user requests English).

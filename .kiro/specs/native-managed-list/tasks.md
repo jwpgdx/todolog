@@ -1,14 +1,16 @@
 # Native Managed List — Tasks
 
-## Current Status: 2026-05-16
+## Current Status: 2026-09-21 (static audit)
+
+현재 구현/검증 구분은 [구현 감사표](../../../docs/handoff/IMPLEMENTATION_AUDIT.md)를 읽는다. 아래 Phase 체크박스는 누적 이력이며 최신 모든 화면의 완료 판정으로 사용하지 않는다.
 
 - Contract/facade path는 `client/src/components/ui/native-managed-list/` 아래에 있다.
-- iOS native 구현은 아직 `client/modules/native-list-interactions/ios/NativeListInteractionsView.swift` 한 파일에 집중되어 있다.
+- iOS native 구현은 `client/modules/native-list-interactions/ios/`의 model/layout/datasource/menu/drag/autoscroll 등 여러 Swift 파일로 분리되어 있다.
 - `NativeTodoManagedList` wrapper는 iOS Todo category-grouped pilot path에서 활성화되어 있다.
 - `TODO SCREEN > 카테고리별 순서`와 `ALL TODOS SCREEN`은 같은 category-grouped interaction model을 재사용한다.
 - Category header reorder, todo cross-category move, collapsed category hover auto-expand, drag auto-scroll, Inbox pinned ordering, native bottom inset이 iOS path에 구현되어 있다.
 - Android `variant="category"` first slice는 RecyclerView 기반 native path로 `My Page > 카테고리`에 연결되어 있고, render/overflow menu/build/install smoke가 통과했다.
-- 다음 우선순위는 Android todo/favorite drag parity가 아니라 Android category path 안정화와 계약 누락분 정리다.
+- 현재는 문서 인수인계 단계다. 선택/bulk 이동은 부분 구현이며 Android todo/favorite native parity는 미완성이다. 다음 구현은 인수인계 검토와 기기 연결 확인 후 정한다.
 
 ## Phase 0: Spec Freeze
 
@@ -35,7 +37,7 @@
 ## Phase 2: JS Facade Alignment
 
 - [x] `client/src/components/ui/native-managed-list/NativeManagedList.tsx` public facade 정리
-- [x] `client/src/components/ui/native-managed-list/NativeManagedList.web.tsx` fallback 유지
+- [x] JS fallback 유지 (`NativeManagedListFallback.tsx`); 별도 web runtime은 이후 은퇴
 - [x] native view manager prop shape를 contract와 일치시킴
 - [x] `sectionsJson` serialization 정리
 - [x] native event -> typed callback 변환 정리
@@ -76,7 +78,7 @@
 - [x] complete control mapping 정의
 - [x] trailing favorite control placeholder 정의
 - [x] sub label 표시 정책 정리
-- [x] TodoScreen `시간순 / 사용자 지정 / 카테고리별 순서`와 연결되는 데이터 shape 정의
+- [x] TodoScreen `시간순 / 카테고리순` 데이터 shape 정의 (독립 사용자 지정 모드는 폐기)
 - [x] `ALL TODOS`에서 재사용 가능한 최소 contract 확인
 - [ ] `CATEGORY SCREEN`, `FAVORITE`에서 재사용 가능한 최소 contract 확인
 
@@ -134,9 +136,9 @@
 
 ## Phase 9: Favorite Follow-up
 
-- Favorite 기능 요구사항 별도 spec 여부 결정
-- `favoriteTodo` variant에 필요한 추가 필드 확정
-- FavoriteScreen 적용은 Favorite feature 구현 후 진행
+- Favorite screen과 top favorites section은 이후 구현 및 수동 검증 이력이 있다.
+- 실제 native 연결은 facade `usesNativeView`와 화면 전달 variant로 확인한다. `favoriteTodo`라는 타입이 있다고 전용 native renderer가 있다고 가정하지 않는다.
+- 현재 후속 작업은 선택모드의 Favorite 화면 해제 override, bulk handler와 검증이다.
 
 ## Phase 10: Validation
 

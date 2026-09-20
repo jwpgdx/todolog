@@ -1,5 +1,9 @@
 # Todolog New Mac Handoff
 
+> Historical machine-transfer checkpoint. For the 2026-09-21 Web GPT / CoS handoff,
+> start with [WEB_GPT_HANDOFF.md](WEB_GPT_HANDOFF.md). Tool versions and test results
+> below are dated records, not guarantees for a new machine or the current runtime.
+
 Last Updated: 2026-07-12
 Branch: `codex/macbook-handoff-2026-07-12`
 Purpose: Restore the current WIP state on a new Apple Silicon Mac and continue with Codex without relying on the previous chat history.

@@ -2,6 +2,11 @@
 
 This runbook is the Codex handoff document for local native validation.
 
+For the current Web GPT / CoS handoff and physical-device readiness checklist, start with
+[WEB_GPT_HANDOFF.md](WEB_GPT_HANDOFF.md) and [execution guide](docs/handoff/EXECUTION_GUIDE.md).
+The commands below are examples; discover the actual device, port, and LAN address first.
+No new native runtime validation was performed in the 2026-09-21 documentation audit.
+
 Web and Playwright paths were retired on 2026-05-16. Use iOS/Android dev-client
 smoke checks for UI/runtime validation.
 
@@ -103,7 +108,7 @@ npm run ios -- --device "iPhone 17" --no-bundler
 Attach the rebuilt app to Metro and open a route:
 
 ```bash
-xcrun simctl openurl booted 'com.anonymous.client://expo-development-client/?url=http%3A%2F%2F172.30.1.5%3A8081'
+xcrun simctl openurl booted 'com.anonymous.client://expo-development-client/?url=<URL_ENCODED_METRO_URL>'
 xcrun simctl openurl booted 'com.anonymous.client://my-page/favorites'
 xcrun simctl openurl booted 'com.anonymous.client://todo/category-select?todoIds=<id1>,<id2>'
 ```
@@ -115,6 +120,9 @@ xcrun simctl io booted screenshot /tmp/todo-screen.png
 ```
 
 Notes:
+
+- Replace `<URL_ENCODED_METRO_URL>` with the actual Metro URL, URL-encoded. Do not reuse another project's host/port.
+- Use `booted` only when exactly one simulator is running; otherwise specify its UDID. For Android, use `adb -s <serial>` when multiple devices are connected.
 
 - `expo run:ios` in the current SDK uses `--device`, not `--simulator`.
 - If the app opens to a blank dev-client screen after rebuild, inject the dev-client URL again and then reopen the target route.

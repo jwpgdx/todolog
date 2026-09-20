@@ -1,5 +1,7 @@
 # Native Settings Subsystem — Tasks
 
+> 2026-09-21: 초기 catalog 작업 목록이다. Web 항목은 은퇴 범위이며 재개하지 않는다. Settings 전체 rollout은 후순위이고, 현재 작업은 [웹 GPT 인수인계](../../../WEB_GPT_HANDOFF.md)다. 체크박스를 최신 모든 화면의 완료 증거로 사용하지 않는다.
+
 ## Task 1: Spec Baseline
 
 - `requirements.md` 작성

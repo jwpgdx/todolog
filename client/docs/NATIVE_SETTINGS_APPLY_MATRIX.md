@@ -1,10 +1,12 @@
 # Native Settings Apply Matrix
 
+> 2026-09-21: 초기 적용안이다. language/timezone은 검색 고정 screen, 짧은 selection은 non-scroll child로 후속 freeze되었다. 현재 상태/순서는 [웹 GPT 인수인계](../../WEB_GPT_HANDOFF.md)를 따른다.
+
 **작성일:** 2026-03-18
 **상태:** Draft
 **목적:** Native Settings Subsystem을 우리 앱 화면에 어떻게 적용할지, 어떤 패턴이 필요한지, 무엇을 v1에 넣고 무엇을 미루는지 표 중심으로 정리한다.
 **문서 역할:** 적용 매핑 / 우선순위 / 패턴 정리 문서
-**함께 보는 문서:** [NATIVE_SETTINGS_SUBSYSTEM.md](/Users/admin/Documents/github/todo/client/docs/NATIVE_SETTINGS_SUBSYSTEM.md)
+**함께 보는 문서:** [NATIVE_SETTINGS_SUBSYSTEM.md](NATIVE_SETTINGS_SUBSYSTEM.md)
 
 ---
 

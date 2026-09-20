@@ -3,6 +3,8 @@
 Last Updated: 2026-05-21
 Scope: iOS only
 
+Documentation audit: 2026-09-21. Test environment/results below are historical; no new UI run occurred in this audit. Frozen policy and implementation status are separate. Start at [WEB_GPT_HANDOFF.md](WEB_GPT_HANDOFF.md); see [decision register](docs/handoff/DECISIONS.md). Later freezes supersede raw-memo proposals; color selection uses staged selection and header commit.
+
 ## Test Environment
 
 - Xcode: 26.2
@@ -191,7 +193,7 @@ Scope: iOS only
 
 ## Frozen Native Settings List Migration Order
 
-1. Category color selection: short `SelectionList`, single-select, immediate commit.
+1. Category color selection: short `SelectionList`, single-select, staged selection with header `완료` commit (later decision; implemented in `CategoryColorScreen.js`).
 2. Settings theme selection: short `SelectionList`, single-select, immediate commit.
 3. Settings start-day selection: short `SelectionList`, single-select, immediate commit.
 4. Settings language selection: searchable `SelectionListScreen` with pinned search, single-select, immediate commit.

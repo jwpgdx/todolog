@@ -1,5 +1,7 @@
 # Native Managed List — Design
 
+> 2026-09-21: 초기 pilot 설계 이력을 포함한다. 현재 연결/코드 근거는 [구현 감사표](../../../docs/handoff/IMPLEMENTATION_AUDIT.md), 확정 정책은 [결정 목록](../../../docs/handoff/DECISIONS.md)을 함께 읽는다. 아래 단계 순서를 새 작업 순서로 다시 실행하지 않는다.
+
 ## Background / Decision
 
 기존 `native-list-interactions` 스파이크는 iOS category row에서 원하는 UX를 실험했다.
@@ -36,7 +38,7 @@
 - `TODO SCREEN > 카테고리별 순서`는 selected date 기준 todo만 보여주되 category-grouped interaction model을 사용한다.
 - `ALL TODOS SCREEN`은 같은 category-grouped interaction model을 사용하되 날짜 필터 없이 전체 todo를 보여준다.
 - iOS todo category-grouped path는 floating snapshot 기반 custom drag engine으로 same-gesture cross-section reorder와 collapsed section auto-expand를 처리한다.
-- Android 구현은 아직 production 범위가 아니며 JS fallback/후속 native implementation 대상으로 둔다.
+- Android category는 native RecyclerView에 연결되었다. todo/favorite native parity는 후속이며 fallback 경로가 남아 있다.
 
 따라서 현재 design의 핵심은 "공통 primitive를 화면 전체에 즉시 적용"이 아니라,
 "category path로 contract를 고정하고, iOS todo category-grouped pilot으로 cross-section interaction을 검증"하는 데 있다.

@@ -1,7 +1,9 @@
 # Todo Screen V2 Triage
 
-Last Updated: 2026-07-12
+Last Updated: 2026-09-21
 Status: Layout/selection decisions frozen; calendar-free selection mode and category picker partially implemented; formal requirements/design/tasks promotion pending
+
+현재 인수인계는 [WEB_GPT_HANDOFF.md](../../../WEB_GPT_HANDOFF.md)에서 시작한다. 상단 freeze와 하단 과거 후보/질문이 함께 남아 있으므로, [결정 목록](../../../docs/handoff/DECISIONS.md)으로 확정 여부를 확인한다. 이번 감사는 코드 정적 확인이며 runtime 재검증이 아니다.
 
 이 문서는 `raw-memo.md`를 코드 확인 결과에 맞춰 `확정 후보`, `토론 필요`, `코드 확인 결과`, `나중 작업`으로 나눈다.
 아직 최종 요구사항 문서가 아니며, 다음 단계에서 freeze한 항목만 `requirements.md` / `design.md` / `tasks.md`로 승격한다.
@@ -19,6 +21,7 @@ Status: Layout/selection decisions frozen; calendar-free selection mode and cate
 - `NativeManagedListFallback`에는 자체 bottom action sheet 모양의 `Modal`이 있지만, 앱 전체 공통 메뉴 컴포넌트로 분리되어 있지는 않다.
 - `CategoryFormScreen`은 Expo Router route이며 category form은 modal로 열린다. 일정 이동용 `todo/category-select` modal route가 추가되어 단일 `todoId`와 bulk `todoIds`를 처리한다.
 - todo 단일 삭제는 `Alert.alert` 확인 후 `useDeleteTodo`를 호출한다.
+  - 초기 raw memo의 즉시 삭제 요청보다 후속 presentation freeze의 undo 전 확인 정책을 기준으로 한다. 결정 목록 R01 참고.
 - `useDeleteTodo`는 SQLite/pending 기반 offline-first 삭제다.
 - `deleteTodos(ids)` DB 함수는 있지만, 현재 `useBulkDeleteTodos`는 서버 API 중심이라 offline-first bulk delete로 보기 어렵다.
 - `completionService`에는 `createCompletion(todoId, date)` / `deleteCompletion(todoId, date)`가 있다. bulk complete/uncomplete는 toggle 반복이 아니라 이 idempotent helper를 써야 한다.
@@ -36,6 +39,15 @@ Status: Layout/selection decisions frozen; calendar-free selection mode and cate
 - 이후 실제 `AllTodosScreen`에서 `NativeManagedList`를 화면의 직접 primary content로 배치하고, iOS native `headerLargeTitle` collapse가 정상 동작하는 것을 확인했다.
 - `SafeAreaView` / wrapper `View` / RN top header가 `NativeManagedList` 앞에 있으면 native-stack이 내부 `UICollectionView`를 primary scroll view로 안정적으로 잡지 못할 수 있다.
 - 단, 현재 `NativeManagedList`는 React children / `ListHeaderComponent` / arbitrary RN component embedding을 지원하지 않는다. 기존 RN/Reanimated calendar widget을 `NativeManagedList` 내부 스크롤 콘텐츠로 그대로 넣는 방식은 현재 구조상 불가능하다.
+
+### 2026-09-21 구현 차이
+
+- 선택 action bar는 이동만 연결됐다. 삭제/완료/즐겨찾기는 미연결이다.
+- bulk move는 이미 target category에 있는 선택 항목도 재정렬하며 클릭 순서를 사용한다. 아래 no-op / 화면상 순서 freeze와 차이가 있다.
+- 성공 시 picker가 back만 호출하고 부모 selection 종료를 명시적으로 연결하지 않는다.
+- 선택은 ID만 보존한다. occurrence context와 stale/missing ID 처리 계약이 필요하다.
+- AllTodos의 현재 wrapper는 정의되지 않은 `styles.screen`을 사용한다. 과거 native header 실험 성공과 최신 화면 상태를 구분한다.
+- 자세한 소스 근거와 검증 항목은 `docs/handoff/IMPLEMENTATION_AUDIT.md` A01-A13을 따른다.
 
 ## 확정된 결정
 
@@ -156,6 +168,7 @@ TodoScreen header menu는 아래 방식으로 고정한다.
   - sync는 completion마다 기존 `deleteCompletion` pending change를 쌓는다.
 - `bulk favorite`
   - 즐겨찾기 추가/해제를 모두 지원한다.
+  - Favorites 이외 화면은 추가만 제공하며, 이미 즐겨찾기인 항목은 no-op이다. Favorites 화면은 해제만 제공한다.
   - 추가 시 현재 favorite order의 마지막 뒤에 `ORDER_STEP` 간격으로 순차 부여한다.
   - 해제 시 `favorite_order` / `order.favorite`는 `null`로 둔다.
   - Favorites 화면에서는 기본 action override로 `즐겨찾기 해제`를 사용한다.
@@ -166,6 +179,12 @@ TodoScreen header menu는 아래 방식으로 고정한다.
   - 이미 대상 category에 있는 todo는 no-op으로 둔다. bulk move가 의도하지 않은 reorder를 만들지 않게 한다.
   - `custom_order`와 `favorite_order`는 move 액션 자체에서는 변경하지 않는다.
   - sync는 todo마다 기존 `updateTodo` pending change를 쌓는다.
+
+추가 공통 규칙 (`PRESENTATION_IOS_TEST.md` / Android 동일 정책):
+
+- append order는 클릭 순서가 아니라 선택된 화면상 순서를 보존한다.
+- 로컬 bulk 성공 후 선택모드를 종료하고 tab bar를 복원한다.
+- 선택 도중 항목이 사라진 경우의 처리 정책은 D02에서 별도 결정한다. 현재의 조용한 누락을 atomic success로 간주하지 않는다.
 
 캐시/무효화 정책:
 

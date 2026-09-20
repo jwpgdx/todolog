@@ -6,6 +6,8 @@ Last updated: 2026-07-12
 
 This document records the currently validated local iOS simulator setup and the exact build/run/test workflow for this repository.
 
+September handoff note: this is a historical validated baseline, not a fresh runtime check or a universal version prescription for a new Mac. Use [WEB_GPT_HANDOFF.md](../../WEB_GPT_HANDOFF.md) for current status. Confirm new hardware/OS compatibility, installed runtime and device UDID before running commands below. Do not reset or reinstall merely because a CLI command fails.
+
 Use this when:
 
 - rebuilding the iOS dev client locally

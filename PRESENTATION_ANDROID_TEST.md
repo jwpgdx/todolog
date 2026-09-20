@@ -3,6 +3,8 @@
 Last Updated: 2026-05-21
 Scope: Android only
 
+Documentation audit: 2026-09-21. Test environment/results below are historical; no new UI run occurred in this audit. Start at [WEB_GPT_HANDOFF.md](WEB_GPT_HANDOFF.md). Android todo/favorite selection and native drag parity remain incomplete; these presentation tests do not establish that parity. Color selection's later staged commit decision supersedes its original immediate-commit proposal.
+
 ## Test Environment
 
 - Device: Android Emulator `Medium_Phone_API_36.1`
@@ -191,7 +193,7 @@ Scope: Android only
 
 ## Frozen Native Settings List Migration Order
 
-1. Category color selection: short `SelectionList`, single-select, immediate commit.
+1. Category color selection: short `SelectionList`, single-select, staged selection with header `완료` commit (later decision; implemented in `CategoryColorScreen.js`).
 2. Settings theme selection: short `SelectionList`, single-select, immediate commit.
 3. Settings start-day selection: short `SelectionList`, single-select, immediate commit.
 4. Settings language selection: searchable `SelectionListScreen` with pinned search, single-select, immediate commit.

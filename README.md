@@ -4,6 +4,14 @@ Offline-first Todo and Calendar app built with React Native (Expo) and Node.js.
 
 Todolog is designed to work fully offline, then sync safely to server and Google Calendar when online.
 
+## Current Handoff (2026-09-21)
+
+Feature development is paused for documentation review and Web GPT / CoS handoff.
+Start with [WEB_GPT_HANDOFF.md](WEB_GPT_HANDOFF.md) on branch
+`codex/web-gpt-handoff-2026-09-21`. It separates frozen decisions, actual implementation,
+historical validation, and outstanding work. The July snapshot below is historical;
+no fresh native build or end-to-end test was performed during this documentation audit.
+
 ## Highlights
 
 - Offline-first by default (local writes first)
@@ -49,7 +57,7 @@ As of 2026-07-12:
   - React Compiler is enabled through `client/app.json` with env-aware overrides in `client/app.config.js`
   - iOS prebuild now opts into React Native source build through `expo-build-properties`
   - Android emulator and iOS simulator smoke runs passed; Android was revalidated after SDK 55 patch alignment on 2026-05-16
-  - the preserved WIP baseline still builds on iOS, but current Expo SDK 55 patch alignment is pending; see `NEW_MAC_HANDOFF_2026-07-12.md` before changing dependencies
+  - the preserved WIP baseline had a successful iOS build in the July handoff record; dependency alignment and a fresh build on the target machine remain separate checks
 - Native todo selection mode is partially implemented on Favorites, All Todos, and Category detail; bulk category move exists, while bulk delete/complete/favorite and TodoScreen selection mode remain follow-up work
 
 See `ROADMAP.md` for dated milestones and next steps.

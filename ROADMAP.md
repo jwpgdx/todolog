@@ -1,6 +1,6 @@
 # Todolog Roadmap
 
-Last Updated: 2026-07-12
+Last Updated: 2026-09-21
 Owner: Product + Engineering
 
 ## 1. Purpose
@@ -15,6 +15,10 @@ For implementation truth, see `PROJECT_CONTEXT.md`.
 For execution rules, see `.kiro/steering/requirements.md`.
 
 ## 2. Current Focus
+
+Current priority is documentation handoff, not a new feature Gate. Start with
+`WEB_GPT_HANDOFF.md` and `docs/handoff/EXECUTION_GUIDE.md` (H0-H5). Web GPT will review
+open decisions before coding resumes. The milestones below retain historical validation.
 
 Current state:
 
@@ -39,14 +43,17 @@ Current state:
 - Floating tab bar implementation has landed: the product shell now uses a detached custom tab bar with a three-tab menu shell, a separate circular `+` quick action, shared reserved inset hooks, blurred shared surface, and animated moving selected pill
 - Floating tab bar iOS simulator validation passed after rebuilding the dev client for `expo-blur`/`react-native-svg`; Android/manual parity validation is still pending
 - Web runtime and Playwright validation paths have been retired; native dev-client smoke is the active UI/runtime validation path
-- `react-native-wheel-pick` remains as the only non-blocking Expo doctor warning and is slated for later native replacement
+- The 2026-07-12 Expo doctor record passed 16/19 checks: SDK patch alignment, missing direct `expo-constants` peer, and `react-native-wheel-pick` verification remain recorded issues; no September doctor rerun was performed
 - Calendar-free screen selection mode is partially implemented on Favorites, All Todos, and Category detail
 - Shared category picker supports single and bulk todo IDs; the latest bulk selection -> move -> SQLite commit path still needs manual verification
 - The selection action bar currently wires Move only; offline-first bulk delete/complete/favorite hooks remain pending
 - TodoScreen V2 architecture decisions are frozen in triage, but formal requirements/design/tasks and TodoScreen selection chrome remain pending
-- A new-Mac handoff checkpoint is documented in `NEW_MAC_HANDOFF_2026-07-12.md`
+- A historical new-Mac checkpoint is documented in `NEW_MAC_HANDOFF_2026-07-12.md`; the current Web GPT / CoS handoff is `WEB_GPT_HANDOFF.md`
 
 Immediate objective:
+
+- finish Web GPT handoff, resolve documented decision conflicts, and validate CoS/device access before selecting the next implementation Gate
+- treat the remaining bullets as the backlog, not authorization to start all work at once
 
 - maintain sync operational stability (retry/dead-letter/throughput monitoring)
 - reduce runtime debug log noise after Phase 3 integration

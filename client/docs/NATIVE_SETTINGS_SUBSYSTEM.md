@@ -1,5 +1,7 @@
 # Native Settings Subsystem
 
+> 2026-09-21: 초기 설계 초안/이력이다. 현재 구현 및 후속 freeze는 [웹 GPT 인수인계](../../WEB_GPT_HANDOFF.md)에서 확인한다. Web 지원 복원, Settings 전면 전환, Account Hub 구현을 이 문서만 보고 자동 시작하지 않는다.
+
 **작성일:** 2026-03-18
 **상태:** Draft
 **목적:** Expo SDK 55 기반 앱에서 재사용 가능한 네이티브 설정 서브시스템의 큰 방향, 구조, 계약, 구현 순서를 한 문서에서 정리한다.

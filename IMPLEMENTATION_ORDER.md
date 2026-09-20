@@ -1,7 +1,9 @@
 # Implementation Order
 
-Last Updated: 2026-07-12
-Status: In Progress
+Last Updated: 2026-09-21
+Status: Feature implementation paused for documentation handoff
+
+현재 진입점은 [WEB_GPT_HANDOFF.md](WEB_GPT_HANDOFF.md)다. 아래 완료/검증 표시는 과거 기록이며 이번 정적 감사에서 앱을 재실행하지 않았다. 현재 구현 차이는 `docs/handoff/IMPLEMENTATION_AUDIT.md`, 재개 순서는 `docs/handoff/EXECUTION_GUIDE.md`를 따른다.
 
 ## Phase 1. Order Schema 실제 반영
 
@@ -28,7 +30,7 @@ Status: In Progress
 - todo용 wrapper 방향 정리
 - category / todo / favorite가 같은 iOS 엔진을 타도록 구조 정리
 - category-grouped 화면은 custom drag engine 기준으로 정리
-- 단일 flat list 화면은 UIKit built-in reorder 기준으로 정리
+- 단일 section flat list는 UIKit built-in reorder 우선. 즐겨찾기 등 section 간 이동이 있으면 시간순 화면도 custom engine 경로를 사용
 - Native List 스타일 taxonomy와 iOS preview style resolver 분리 완료
 
 ## Phase 3. iOS 화면 적용
@@ -38,7 +40,7 @@ Status: In Progress
   - 정렬 모드 `시간순 / 카테고리순` UI 교체
   - 마지막 선택값 로컬 저장 / 복원
   - `시간순`은 시간이 지정된 일정을 시간순으로 상단 고정하고 reorder 불가
-  - `시간순`에서 시간이 없는 일정만 하단 영역에서 iOS UIKit built-in reorder 적용
+  - `시간순`에서 시간 없는 일정은 하단 영역 내 순서 변경 가능. 상단 즐겨찾기 cross-section 이동이 있는 현재 구조는 custom engine 경로도 사용
   - `시간순`에서 시간이 없는 일정을 시간 지정 영역으로 drop하면 원위치 복귀
   - `카테고리순`은 category-grouped custom drag engine 유지
   - `카테고리순`은 카테고리 헤더 reorder와 일정 cross-category reorder를 같은 화면에서 지원
@@ -67,7 +69,9 @@ Status: In Progress
   - bulk `이동`은 `todo/category-select?todoIds=...` modal로 진입
   - bulk 이동 시 target category 맨 아래 `category_order` 뒤로 순차 append
   - `TODO SCREEN` 선택모드는 calendar / 정렬모드 UX 검증 후 별도 적용
-  - 상태: 구현 완료, iOS 빌드 통과, 수동 end-to-end 검증 대기
+  - 상태: 부분 구현. 과거 iOS 빌드 통과, 최신 수동 end-to-end/SQLite 검증 대기
+  - 현재 action bar는 이동만 연결. bulk 삭제/완료/즐겨찾기는 미연결
+  - 대상 category 기존 항목 no-op, 화면상 순서 보존, 성공 후 선택 종료가 freeze와 다름. 감사 A03-A07 참고
 
 ## Phase 4. 즐겨찾기 기능 추가
 
@@ -95,11 +99,11 @@ Status: In Progress
 
 ## Phase 5. Android 대응
 
-- 상태: 대기
-- Android용 `NativeManagedList` 또는 fallback wrapper 구현
-- iOS 구조 고정 후 Android UX 별도 적용
-- Android UI / gesture 차이 반영
-- Android QA
+- 상태: category native first slice 구현 및 과거 검증 기록 있음. todo/favorite native parity 미완성
+- My Page category는 RecyclerView 기반 NativeManagedList 사용
+- todo/favorite는 facade fallback 또는 Category detail의 별도 FlashList 경로
+- Android 선택/reorder UX 미결정을 먼저 정리하고 범위별 구현
+- iOS 결과를 Android 검증 결과로 대체하지 않음
 
 ## 메모
 
@@ -138,7 +142,9 @@ Status: In Progress
   - todo / category / header preview 시각 디자인 polish
   - 단, preview 시각 디자인 변경은 명시 요청 전까지 보류한다.
 
-## Verification
+## Historical Verification Checklist
+
+아래는 과거 검증 절차와 결과 기록이다. 첫 두 단계의 서버 초기화/재설치는 신규 인수인계의 기본 절차가 아니다. 실제 데이터와 pending 보존 여부를 확인하고 명시적으로 승인된 테스트 환경에서만 실행한다. 현재 재개 검증은 `docs/handoff/EXECUTION_GUIDE.md` 6절을 사용한다.
 
 1. 서버 초기화
 - `node server/src/scripts/resetDevData.js`

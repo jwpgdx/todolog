@@ -1,5 +1,7 @@
 # Native Settings Subsystem — Requirements
 
+> 2026-09-21 상태 주석: 아래는 초기 catalog 설계를 포함한다. Web 지원은 이후 은퇴했으며 새 구현 대상으로 복원하지 않는다. SelectionList의 non-scroll child와 긴 검색 screen 분리, staged color commit 등 후속 결정은 [결정 목록](../../../docs/handoff/DECISIONS.md)을 따른다. production 화면 전체 migration은 아직 완료되지 않았다.
+
 ## Goal
 
 Expo SDK 55 앱 안에서 재사용 가능한 네이티브 설정 서브시스템을 만든다.

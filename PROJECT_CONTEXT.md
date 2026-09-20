@@ -1,14 +1,16 @@
 # Todolog Project Context
 
-Last Updated: 2026-07-12
-Status: Core offline-first/sync/calendar foundations are stable; NativeManagedList iOS category/todo/favorite interactions are implemented; Android category first slice is validated; calendar-free screen selection mode and bulk category move are partially implemented and awaiting final manual/SQLite verification; new-Mac handoff checkpoint is prepared.
+Last Updated: 2026-09-21
+Status: Feature development paused for Web GPT / CoS documentation handoff. Native-list foundations have historical validation; selection mode and bulk category move remain partial. Current static findings and unverified behavior are tracked in `docs/handoff/IMPLEMENTATION_AUDIT.md`.
+
+Start with [WEB_GPT_HANDOFF.md](WEB_GPT_HANDOFF.md). The September audit did not rebuild or run the app. Historical "validated" statements below describe prior checks, not a fresh full regression pass.
 
 ## 1. Purpose
 
 This is the implementation source-of-truth document for contributors and AI agents.
 Use it to understand current architecture, data contracts, runtime flow, and where to make changes safely.
 
-If this document conflicts with a feature spec, the feature spec under `.kiro/specs/<feature>/` wins for that feature.
+Feature specs describe intended behavior; source code describes current implementation. When they differ, record the gap rather than calling the feature complete. Use `docs/handoff/DECISIONS.md` to locate later explicit freezes and unresolved conflicts in older specs.
 
 ## 2. Current Snapshot
 
@@ -48,7 +50,7 @@ Server:
 - Cache-policy unification (Option A -> Option B): complete and validated (shared range cache + sync invalidation unification)
 - Cache retention (memory control): enabled (shared range cache + calendar L1 caches pruned to anchor ±6 months)
 - Expo SDK 55 upgrade: complete and validated (`expo` `55.0.24`, `react-native` `0.83.6`, React Compiler enabled, unused `zeego`/native-menu deps removed)
-- Native validation after SDK 55 patch alignment: Android `assembleDebug` + emulator launch succeeded; iOS simulator build/launch succeeded; `expo-doctor` dependency check is clean after `npx expo install --fix`
+- Historical native validation after SDK 55 patch alignment: Android `assembleDebug` + emulator launch and iOS simulator build/launch succeeded. A later 2026-07-12 doctor run passed 16/19 checks; do not treat the earlier clean result as current dependency health.
 - Todo Calendar V2 (`client/src/features/todo-calendar-v2/`): line-monthly baseline complete; `calendar` tab now renders TC2 as the primary monthly calendar path, adjacent-month cells stay in the 42-day grid but their labels/lines/overflow are hidden, completion glyphs remain out of scope in the frozen baseline, the old `todo-calendar` runtime has been retired, and the duplicate standalone `TC2` tab route has been removed
 - Strip-calendar legacy path: kept only as historical/spec reference; no active app route or Todo runtime mount depends on it
 - Week Flow Calendar: `client/src/features/week-flow-calendar/` now backs the Todo header surface via `WeekFlowTodoHeader`; default iOS interaction uses weekly single-row + monthly drag-snap shell, monthly->weekly selected-week recenter, and the dedicated `week-flow` evaluation tab has been removed
@@ -73,11 +75,14 @@ Server:
 - Physical-device development builds now include `expo-dev-client` and use launcher mode so reopening after network changes prefers the dev-client launcher over silently reconnecting to a stale LAN Metro URL.
 - `client/scripts/dev-launcher.js` now defaults `ios-sim` to `host=lan` because the iOS dev-client path was unreliable when the simulator tried to reopen `localhost` directly. The launcher no longer exposes a web target.
 - `expo-blur` and `react-native-svg` are now active client dependencies for the floating tab bar shell and SVG tab icons; adding or upgrading either requires a native dev-client rebuild before simulator/device verification.
-- `react-native-wheel-pick` is still present and is the only known non-blocking `expo-doctor` warning after the SDK 55 upgrade; replacement is planned with a native implementation later.
+- `react-native-wheel-pick` remains present and has a New Architecture verification warning. It was not the only issue in the 2026-07-12 doctor record; see the dependency alignment note below.
 - Codex local skill `upgrading-expo` is installed and listed in `AGENTS.md` for future Expo SDK upgrade work.
 - Current validated local iOS baseline is recorded in `client/docs/IOS_SIMULATOR_RUNBOOK.md`: macOS `15.7.3`, Xcode `26.2`, build SDK `iPhoneSimulator26.2.sdk`, simulator runtime `iOS 26.3.1`, simulator device `iPhone 17`. When Codex runs `xcodebuild`, `xcrun simctl`, or Maestro, run them outside the sandbox to avoid misleading CoreSimulator failures.
 - Dependency alignment note (2026-07-12): `npx expo-doctor` passes 16/19 checks. The preserved baseline is behind the newest SDK 55 patch set, `expo-constants` is missing as a direct peer dependency, and `react-native-wheel-pick` remains untested on the New Architecture. Do not auto-fix during machine migration; reproduce the lockfile baseline first, then handle dependency alignment as a separate approved task.
-- New-Mac restore and continuation instructions live in `NEW_MAC_HANDOFF_2026-07-12.md`.
+- The historical new-Mac restore record is `NEW_MAC_HANDOFF_2026-07-12.md`; current Web GPT / CoS entry is `WEB_GPT_HANDOFF.md`.
+- Static audit gaps: bulk move reorders selected todos already in the target category, uses selection click order rather than visible order, and does not explicitly exit parent selection mode. Missing IDs are skipped. These differ from frozen semantics; see audit A03-A07.
+- Latest AllTodos render references an undefined `styles.screen`; Favorites/Category detail retain wrapper/header structures. Revalidate layout and native header tracking after fixing the identified gaps; an earlier header spike is not proof of the current WIP layout.
+- My Page Completed/Upcoming/Inbox dedicated routes are placeholders. Settings screens remain largely RN; Account Hub and pinned language/timezone search are not implemented.
 
 ## 3. Non-Negotiable Architecture Commitments
 

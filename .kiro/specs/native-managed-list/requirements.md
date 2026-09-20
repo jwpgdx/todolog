@@ -1,5 +1,7 @@
 # Native Managed List — Requirements
 
+> 2026-09-21: 이 문서의 초기 rollout 요구와 후속 freeze를 구분한다. 현재 구현은 [감사표](../../../docs/handoff/IMPLEMENTATION_AUDIT.md), 최신 결정 및 충돌은 [결정 목록](../../../docs/handoff/DECISIONS.md)을 확인한다. 요구사항의 존재가 구현/검증 완료를 뜻하지 않는다.
+
 ## Goal
 
 `NativeManagedList`는 앱 안에서 사용자가 직접 관리하는 목록을 위한 공통 네이티브 리스트 family다.
