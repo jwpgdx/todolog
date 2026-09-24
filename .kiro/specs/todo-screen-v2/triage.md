@@ -1,7 +1,7 @@
 # Todo Screen V2 Triage
 
 Last Updated: 2026-09-24
-Status: Layout/selection/D02 stale-data decisions frozen; calendar-free selection mode and category picker partially implemented; formal requirements/design/tasks promotion pending
+Status: Layout/selection/D02 stale-data/D03 TodoScreen selection chrome decisions frozen; calendar-free selection mode and category picker partially implemented; formal requirements/design/tasks promotion pending
 
 현재 인수인계는 [WEB_GPT_HANDOFF.md](../../../WEB_GPT_HANDOFF.md)에서 시작한다. 상단 freeze와 하단 과거 후보/질문이 함께 남아 있으므로, [결정 목록](../../../docs/handoff/DECISIONS.md)으로 확정 여부를 확인한다. 이번 감사는 코드 정적 확인이며 runtime 재검증이 아니다.
 
@@ -130,7 +130,22 @@ TodoScreen header menu는 아래 방식으로 고정한다.
 - swipe action은 선택모드 중 비활성화한다.
 - 선택모드에서 summary item은 숨기는 것을 기본 후보로 둔다. 필요하면 선택 개수 title과 중복되지 않는 보조 정보만 남긴다.
 - category move 액션은 선택모드 자체를 별도 page로 이동시키지 않고, 현재 selection mode 위에서 별도 picker sheet/page를 연다.
-- TodoScreen 선택모드도 in-place mode를 우선 후보로 두되, RN title/date/calendar chrome hide/collapse 방식은 후속 spike 후 freeze한다.
+- TodoScreen도 별도 route/page 없이 in-place selection mode를 사용한다. RN title/date/calendar chrome 처리와 상태 보존 규칙은 아래 D03 freeze를 따른다.
+
+### TodoScreen selection chrome (D03, 2026-09-24 freeze)
+
+TodoScreen도 다른 일정 list 화면과 같은 **in-place selection mode**를 사용한다. 별도 selection route/page를 만들지 않는다.
+
+- selection 진입 시 `currentDate`, 현재 sort mode, section/collapse 구조와 선택 대상 scope를 바꾸지 않는다.
+- RN content chrome인 title/date와 `WeekFlowTodoHeader` calendar는 selection 중 화면에서 숨기고 조작할 수 없게 한다.
+- calendar를 숨긴다는 이유로 사용자가 보던 weekly/monthly mode, visible week/month viewport 같은 상태를 잃어서는 안 된다.
+- 상태 보존을 위해 calendar를 계속 mount한 채 layout에서 숨길지, 필요한 state를 상위로 lift할지는 구현 세부사항이다. 제품 계약은 **선택 종료 시 진입 전 calendar mode/viewport가 그대로 복원되는 것**이다.
+- selection 중 날짜 이동, 오늘 이동, 이전/다음 주·월 이동, weekly/monthly toggle, calendar drag/scroll 등 날짜 scope를 바꾸는 interaction은 허용하지 않는다.
+- calendar chrome이 빠진 공간은 `NativeManagedList`가 사용한다. selection 때문에 별도 RN vertical scroll owner를 추가하지 않는다.
+- native header의 `일정 선택` / `n개 선택됨`, 오른쪽 `완료`, bottom tab 숨김과 공통 `SelectionActionBar`는 다른 일정 list 화면과 동일한 contract를 사용한다.
+- selection 종료 또는 성공 후 원래 TodoScreen으로 돌아오면 기존 `currentDate`, sort/section 상태와 calendar presentation 상태를 복원한다.
+- 이 결정은 calendar 자체 재구현, one-page-scroll, scroll bridge를 요구하지 않는다. 해당 항목은 기존 보류 범위를 유지한다.
+- 실제 전환 animation, 숨김 방식과 iOS/Android 세부 layout은 구현 후 기기에서 검증한다.
 
 ### Bulk action data layer
 
