@@ -364,6 +364,7 @@ root에 `ActionSheetProvider`가 있으므로 `@expo/react-native-action-sheet`�
 - cross-section todo drag도 `UICollectionViewDragDelegate/DropDelegate`가 gesture/preview/drop을 소유하고 Todolog가 target/order semantics만 소유하는 방식의 bounded spike를 먼저 검증한다.
 - collapsed hover-expand, Favorites/Inbox/order 정책, category section-header reorder는 UIKit이 제품 의미를 자동 제공하지 않으므로 custom policy가 계속 필요하다.
 - 자세한 근거와 spike 경계는 `docs/handoff/IOS_NATIVE_INTERACTION_AUDIT.md`를 따른다. 이 감사 자체는 D04 freeze나 기존 engine 교체 승인이 아니다.
+- Android의 공식 selection/reorder/menu 근거와 두 long-press 후보의 충돌은 `docs/handoff/ANDROID_NATIVE_INTERACTION_AUDIT.md`를 따른다. 현재 Android category baseline의 long-press reorder를 todo/favorite 최종 UX로 자동 확장하지 않는다.
 
 ## 코드 확인 필요 / 구현 전 점검
 
