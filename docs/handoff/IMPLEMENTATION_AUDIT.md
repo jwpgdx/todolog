@@ -1,6 +1,7 @@
 # 구현 감사표
 
 기준: 2026-09-21, 코드 `79cbc8d`. 정적 검토이며 전체 기능 회귀 테스트가 아니다.
+2026-09-24 문서 후속: D02 stale/missing selection 정책은 F24로 freeze했다. 아래 코드 차이는 구현 전 상태를 그대로 기록한다.
 아래 경로는 저장소 루트 기준이다. 함수 이름은 다음 작업자가 검색할 근거다.
 
 ## 1. 구조와 데이터 경로
@@ -61,14 +62,14 @@ iOS 엔진 선택은 `NativeListInteractionsSections.swift::shouldUseCustomTodoC
 | A03 | `TodoCategorySelectScreen.js::buildMoveOrderUpdates`는 이미 target category에 있는 선택 todo도 업데이트 | 기존 target todo는 no-op이라는 triage freeze와 충돌. mixed-category selection으로 검증 |
 | A04 | `useTodoSelectionMode.js`는 클릭한 순서대로 ID 배열에 append; picker가 해당 순서로 order 생성 | 선택된 화면상 순서 보존 freeze와 충돌. 아래 row를 먼저 선택하는 테스트 필요 |
 | A05 | picker 성공은 `router.back()`만 호출. 부모 `exitSelectionMode` 통지 없음 | 성공 후 선택모드 종료 freeze 미연결. modal cancel은 선택 유지와 구분 |
-| A06 | picker는 못 찾은 ID를 `filter(Boolean)`로 누락; `updateTodoOrdersBatch`도 없는 todo를 `continue` | transaction rollback과 누락 허용은 별개. 요청 집합 검증 필요; 경쟁 상태 정책은 결정 목록 D02 |
+| A06 | picker는 못 찾은 ID를 `filter(Boolean)`로 누락; `updateTodoOrdersBatch`도 없는 todo를 `continue` | F24와 불일치. 실행 직전 active 요청 집합 전체를 검증하고, 하나라도 stale/missing/scope-invalid면 write/pending 없이 전체 중단해야 함. 정책 확정, 구현·검증 미완료 |
 | A07 | 선택 hook은 ID만 저장; occurrenceDate snapshot 없음 | bulk complete 구현 전 화면 occurrence context를 보존하는 계약 필요 |
 | A08 | `useAppChromeStore`의 전역 숨김 boolean을 각 선택 hook effect/cleanup이 변경 | focus/blur, 여러 stack 화면, modal cancel/back에서 tab 복원 검증. 경쟁 가능성은 가설 |
 | A09 | 화면 header는 `선택` 직접 버튼. bottom bar action 목록/라벨 고정 | freeze는 `... > 일정 선택`, Favorites 해제 override, 확장 가능한 action contract |
 | A10 | 선택모드 list bottom inset이 화면에서 96 고정 | safe area / 실제 action bar 높이와 맞는지 작은·큰 기기 검증 |
 | A11 | `useBulkDeleteTodos.js`가 `/todos/bulk-delete` 서버 API 직접 호출 | 새 선택 UI에 그대로 연결 금지. SQLite/pending transaction 기반 bulk hook 필요 |
 | A12 | picker `headerActionText` 색상을 common constant로 지정 | iOS header 색상을 시스템에 맡긴 정책이 custom RN header button까지 완전히 적용된 것은 아님 |
-| A13 | picker target order 계산은 query snapshot을 사용 | commit 시 DB 최신 target 최대 order와 일치하는지 확인. 동시 변경 시 검증 필요 |
+| A13 | picker target order 계산은 query snapshot을 사용 | commit 시 DB 최신 target 최대 order와 target category 유효성을 SQLite에서 확인해야 함. F24에 따라 target 삭제/누락은 전체 중단. 최신 target order 경쟁 상태 처리도 구현·검증 필요 |
 
 이 표는 수정 완료 목록이 아니다. 이번 문서 작업에서는 앱 소스를 고치지 않는다.
 

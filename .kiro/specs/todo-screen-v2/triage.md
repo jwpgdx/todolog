@@ -1,7 +1,7 @@
 # Todo Screen V2 Triage
 
-Last Updated: 2026-09-21
-Status: Layout/selection decisions frozen; calendar-free selection mode and category picker partially implemented; formal requirements/design/tasks promotion pending
+Last Updated: 2026-09-24
+Status: Layout/selection/D02 stale-data decisions frozen; calendar-free selection mode and category picker partially implemented; formal requirements/design/tasks promotion pending
 
 현재 인수인계는 [WEB_GPT_HANDOFF.md](../../../WEB_GPT_HANDOFF.md)에서 시작한다. 상단 freeze와 하단 과거 후보/질문이 함께 남아 있으므로, [결정 목록](../../../docs/handoff/DECISIONS.md)으로 확정 여부를 확인한다. 이번 감사는 코드 정적 확인이며 runtime 재검증이 아니다.
 
@@ -45,7 +45,7 @@ Status: Layout/selection decisions frozen; calendar-free selection mode and cate
 - 선택 action bar는 이동만 연결됐다. 삭제/완료/즐겨찾기는 미연결이다.
 - bulk move는 이미 target category에 있는 선택 항목도 재정렬하며 클릭 순서를 사용한다. 아래 no-op / 화면상 순서 freeze와 차이가 있다.
 - 성공 시 picker가 back만 호출하고 부모 selection 종료를 명시적으로 연결하지 않는다.
-- 선택은 ID만 보존한다. occurrence context와 stale/missing ID 처리 계약이 필요하다.
+- 선택은 ID만 보존한다. occurrence context 보존은 bulk complete 구현 전에 필요하다. stale/missing ID 처리 정책은 2026-09-24 D02로 freeze했지만 코드는 아직 미반영이다.
 - AllTodos의 현재 wrapper는 정의되지 않은 `styles.screen`을 사용한다. 과거 native header 실험 성공과 최신 화면 상태를 구분한다.
 - 자세한 소스 근거와 검증 항목은 `docs/handoff/IMPLEMENTATION_AUDIT.md` A01-A13을 따른다.
 
@@ -184,7 +184,17 @@ TodoScreen header menu는 아래 방식으로 고정한다.
 
 - append order는 클릭 순서가 아니라 선택된 화면상 순서를 보존한다.
 - 로컬 bulk 성공 후 선택모드를 종료하고 tab bar를 복원한다.
-- 선택 도중 항목이 사라진 경우의 처리 정책은 D02에서 별도 결정한다. 현재의 조용한 누락을 atomic success로 간주하지 않는다.
+
+#### Stale / missing selection policy (D02, 2026-09-24 freeze)
+
+- bulk action은 실행 직전 로컬 SQLite를 source of truth로 선택된 요청 집합 전체를 다시 검증한다. React Query 목록에 현재 보이는지 여부만으로 삭제를 판정하지 않는다.
+- 같은 todo ID가 active 상태로 남아 있고 해당 action의 현재 scope에서 유효하다면 제목·시간·order 같은 일반 필드 변경만으로 선택을 무효화하지 않는다. 실제 write에는 commit 시점의 최신 local row를 사용한다.
+- 선택 항목 중 삭제/tombstone, 실제 누락, 또는 현재 selection/action scope에서 더 이상 유효하지 않은 항목이 하나라도 있으면 해당 bulk action은 아무 write/pending change도 만들지 않고 전체 중단한다. 유효한 일부만 조용히 처리하지 않는다.
+- 실패 후 무효 항목만 selection에서 제거하고 나머지 유효 선택은 유지한다. 사용자가 변경 내용을 확인한 뒤 action을 다시 실행해야 하며 자동 재실행하지 않는다.
+- query refetch/loading/cache 공백처럼 로컬 SQLite의 active row 존재 여부가 아직 확인되지 않은 상태는 삭제로 간주하지 않는다. 이 경우 실행을 보류하거나 재검증한다.
+- 이미 완료, 이미 favorite, 이미 target category처럼 각 action에 기존에 정의된 idempotent no-op은 stale/missing 오류가 아니다.
+- move처럼 필수 target이 있는 action은 target category도 commit 시점에 유효해야 한다. target이 삭제/누락되면 전체 action을 중단한다.
+- 요청 집합 검증과 실제 local write는 그 사이 경쟁 상태로 부분 성공이 생기지 않도록 같은 SQLite transaction 경계에서 보장한다. 검증 실패 시 pending change도 생성하지 않는다.
 
 캐시/무효화 정책:
 
