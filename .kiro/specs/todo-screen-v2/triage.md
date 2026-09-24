@@ -356,6 +356,15 @@ root에 `ActionSheetProvider`가 있으므로 `@expo/react-native-action-sheet`�
 추천 후보는 route 기반 `pageSheet/formSheet` category picker다.
 선택 후 오른쪽 `이동`, 왼쪽 `취소`, group list, 선택 checkmark 구조를 만들기 쉽다.
 
+### iOS native interaction 재감사 (2026-09-24, D04 선행 근거)
+
+- 현재 UIKit은 context menu와 drag interaction을 시스템적으로 연동할 수 있으므로, reorderable todo에서 system context menu를 끄고 custom pan/snapshot으로 전환하는 현 구현이 유일한 방법은 아니다.
+- 현재 코드의 `dragInteractionEnabled = false`와 reorderable todo의 system context-menu suppression은 과거 custom engine 선택이며, 최신 제품 freeze로 간주하지 않는다.
+- flat reorder는 기존 diffable `reorderingHandlers`를 포함한 UIKit 경로를 우선한다.
+- cross-section todo drag도 `UICollectionViewDragDelegate/DropDelegate`가 gesture/preview/drop을 소유하고 Todolog가 target/order semantics만 소유하는 방식의 bounded spike를 먼저 검증한다.
+- collapsed hover-expand, Favorites/Inbox/order 정책, category section-header reorder는 UIKit이 제품 의미를 자동 제공하지 않으므로 custom policy가 계속 필요하다.
+- 자세한 근거와 spike 경계는 `docs/handoff/IOS_NATIVE_INTERACTION_AUDIT.md`를 따른다. 이 감사 자체는 D04 freeze나 기존 engine 교체 승인이 아니다.
+
 ## 코드 확인 필요 / 구현 전 점검
 
 - `NativeManagedList` scroll offset event와 imperative command는 TodoScreen one-page-scroll prototype 전까지 보류한다.

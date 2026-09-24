@@ -39,7 +39,7 @@ F03은 AllTodos 과거 실험의 최종 결론이다. 초기에 pageTitle을 권
 
 | ID | 질문 | 현재 근거 / 처리 방향 |
 |---|---|---|
-| D04 | Android todo/favorite long-press·선택·reorder 진입 UX | 메뉴 구조의 long-press reorder와 사용자 후속 선택/순서모드 논의가 함께 존재. category baseline을 전체 화면 freeze로 간주하지 말 것 |
+| D04 | iOS/Android todo/favorite의 long-press·selection·reorder 진입 UX와 native/custom 경계 | 2026-09-24 `IOS_NATIVE_INTERACTION_AUDIT.md`에서 current UIKit을 재검토. iOS는 system context menu→native drag/drop 전환을 더 활용할 여지가 있으나 hover-expand/section semantics 등은 custom 정책이 필요. Android까지 포함한 최종 gesture 계약은 아직 freeze하지 않음 |
 | D05 | summary item의 최종 표시·액션, 선택모드에서 노출 여부 | summary item 방향은 F04. 화면별 문구/지우기 범위/selection 표시 일부는 후보 |
 | D06 | 문서 정리 후 첫 구현 범위를 어디까지로 묶을지 | 추천: 환경 확인 후 calendar-free 선택/bulk 이동부터. settings/theme/account를 동시에 펼치지 않음 |
 
