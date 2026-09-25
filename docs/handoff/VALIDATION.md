@@ -58,7 +58,7 @@ H0 산출물은 인수인계 문서, 구현 감사표, 결정 목록, 실행 가
 - Remote is `https://github.com/jwpgdx/todolog.git`.
 - Host: Microsoft Windows 10 `10.0.19045.6466`, AMD64.
 - Tool versions observed: Node `v24.14.1`, npm `11.12.1`, Git `2.53.0.windows.2`.
-- Root, client, and server `package-lock.json` files are present. Dependency reproduction/`npm ci` was **not** run, so the lockfile-based dependency baseline remains pending.
+- Root, client, and server `package-lock.json` files are present. On 2026-09-26, `npm ci` completed for all three without tracked lockfile changes.
 - This Windows environment is suitable for repository/document work, but it cannot satisfy the UIKit/Xcode/device portions of H2. iOS-capable Mac/Xcode and simulator/physical-device verification remain pending.
 - No app source, SQLite, pending queue, dependency, build/install, or runtime mutation occurred in this partial H2 verification.
 
@@ -69,3 +69,19 @@ H0 산출물은 인수인계 문서, 구현 감사표, 결정 목록, 실행 가
 - Production `NativeTodoManagedList` currently forces `custom-lifted` and remains untouched during the spike.
 - Current Swift explicitly suppresses a system context menu for reorderable todo rows and keeps `dragInteractionEnabled = false`; these are the exact native blockers the bounded spike must address under a system-mode todo guard.
 - No feature/native source was edited in this Windows preflight.
+
+## 2026-09-26 Windows F28 bulk-move stabilization
+
+- Code commit: `d2d39ac8dcda96cadabfcaa3555d108d26b87ce5` (`fix: stabilize bulk todo move transaction`).
+- Scope stayed within calendar-free selection/bulk-move stabilization. No Swift/UIKit, TodoScreen selection, bulk delete/complete/favorite, DB schema, or dependency-version changes were made.
+- Added a dedicated bulk-move SQLite service/hook. It validates active target + exact selected set + origin scope, separates membership from screen-visible order, applies target-category no-op semantics, reads the latest target max order, writes moved rows, and enqueues existing `updateTodo` pending records in one `withExclusiveTransactionAsync` connection.
+- Picker no longer calculates target order or uses todo React Query data as mutation authority. Both single and multi move require an explicit target-category row selection.
+- Selection success/stale results are session-scoped. Success exits parent selection; stale removes only invalid IDs. Bottom-tab hiding is owner-scoped to avoid cross-screen cleanup races.
+- AllTodos missing `styles.screen` was fixed; loading/empty early returns no longer hide selection chrome while selection mode is active.
+- `node --check` passed for all changed/new JS files.
+- Pure `selectionOrder` invariant smoke passed: reverse tap order is converted to visible order, and a non-visible selected ID is not assigned a fallback tap-order position.
+- `git diff --check` passed.
+- Android JS/Metro export smoke passed twice; final run bundled 2,306 modules and exported successfully to `C:\dev\_cos_tmp\todolog-android-bundle-smoke-final`.
+- Two independent CoS read-only reviews passed the final dirty tree with no remaining concrete issue in the bounded data/lifecycle audit.
+- Full `npx tsc --noEmit` is **not** a usable project gate in this checkout: it fails on pre-existing vendored sources under `client/docs/` (Expo SQLite, keyboard-controller/safe-area examples, missing their test/example dependencies) and existing native-module type-resolution issues. These errors were not introduced by this package.
+- No actual app SQLite mutation, pending replay, Android device UI, iOS build/simulator, or iPhone interaction test was run for this package. Gate 8 database/device evidence remains required before runtime completion is claimed.
