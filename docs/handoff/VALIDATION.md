@@ -50,3 +50,14 @@ H0 산출물은 인수인계 문서, 구현 감사표, 결정 목록, 실행 가
 - Approved basis: D02-D06 = F24-F28, plus the formal `requirements.md`, `design.md`, and `tasks.md`.
 - Approval authorizes moving to H2 environment/workspace verification; it does **not** authorize scope expansion beyond F28.
 - No feature code, SQLite, pending queue, build/install, or device runtime was changed by recording this approval.
+
+## 2026-09-25 H2 Windows workspace verification
+
+- CoS Windows approved root contained no existing Todolog checkout, so a fresh `/dev/todolog` clone was created from `codex/web-gpt-handoff-2026-09-21`.
+- Clone HEAD matched the approval-record remote commit and `git status --porcelain` was clean before this documentation update.
+- Remote is `https://github.com/jwpgdx/todolog.git`.
+- Host: Microsoft Windows 10 `10.0.19045.6466`, AMD64.
+- Tool versions observed: Node `v24.14.1`, npm `11.12.1`, Git `2.53.0.windows.2`.
+- Root, client, and server `package-lock.json` files are present. Dependency reproduction/`npm ci` was **not** run, so the lockfile-based dependency baseline remains pending.
+- This Windows environment is suitable for repository/document work, but it cannot satisfy the UIKit/Xcode/device portions of H2. iOS-capable Mac/Xcode and simulator/physical-device verification remain pending.
+- No app source, SQLite, pending queue, dependency, build/install, or runtime mutation occurred in this partial H2 verification.

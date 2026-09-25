@@ -29,14 +29,14 @@ Feature-code baseline remains `79cbc8d667019e99799bc4ade545c8085b8cba35`; later 
 
 Run only after formal spec acceptance.
 
-- [ ] verify active repository/workspace
-- [ ] verify branch and HEAD
-- [ ] verify clean/known dirty state; no reset/stash of unrelated work
+- [x] verify active repository/workspace — Windows CoS: `/dev/todolog`
+- [x] verify branch and HEAD — `codex/web-gpt-handoff-2026-09-21` at approval-record commit
+- [x] verify clean/known dirty state; no reset/stash of unrelated work
 - [ ] verify lockfile-based dependency baseline
 - [ ] verify iOS-capable Mac/Xcode environment before iOS code/device work
 - [ ] verify simulator or physical iOS device target
 - [ ] verify dev build / Metro / API connectivity needed for the selected test
-- [ ] record environment facts in validation evidence
+- [x] record current Windows workspace facts in validation evidence; iOS-capable environment evidence remains pending
 
 Windows may be used for document/repository work, but UIKit build/device validation requires the iOS-capable Mac environment.
 
