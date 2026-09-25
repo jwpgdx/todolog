@@ -9,11 +9,16 @@ import { PanResponder, StyleSheet, Text, View } from 'react-native';
  *
  * No animation: the parent can instantly swap modes for perf.
  */
-export default function WeekFlowModeToggleBar({ mode, onToggleMode }) {
+export default function WeekFlowModeToggleBar({
+  mode,
+  onToggleMode,
+  interactionEnabled = true,
+}) {
   const panResponder = useMemo(
     () =>
       PanResponder.create({
         onMoveShouldSetPanResponder: (_, gestureState) =>
+          interactionEnabled &&
           Math.abs(gestureState.dy) > 8 &&
           Math.abs(gestureState.dy) > Math.abs(gestureState.dx),
         onPanResponderRelease: (_, gestureState) => {
@@ -30,11 +35,15 @@ export default function WeekFlowModeToggleBar({ mode, onToggleMode }) {
           }
         },
       }),
-    [mode, onToggleMode]
+    [interactionEnabled, mode, onToggleMode]
   );
 
   return (
-    <View style={styles.container} {...panResponder.panHandlers}>
+    <View
+      pointerEvents={interactionEnabled ? 'auto' : 'none'}
+      style={[styles.container, !interactionEnabled && styles.disabled]}
+      {...panResponder.panHandlers}
+    >
       <View style={styles.touchArea}>
         <View style={styles.bar} />
         <Text style={styles.chevron}>{mode === 'weekly' ? '˅' : '˄'}</Text>
@@ -64,6 +73,9 @@ const styles = StyleSheet.create({
     marginTop: 2,
     fontSize: 12,
     color: '#6B7280',
+  },
+  disabled: {
+    opacity: 0.4,
   },
 });
 

@@ -19,7 +19,12 @@ import {
   DEFAULT_WEEK_FLOW_WEEKLY_RECENTER_ANIMATION_ENABLED,
   WEEK_ROW_HEIGHT,
 } from "../utils/weekFlowConstants";
-import { addWeeks, toMonthStart, toWeekStart } from "../utils/weekFlowDateUtils";
+import {
+  addDays,
+  addWeeks,
+  toMonthStart,
+  toWeekStart,
+} from "../utils/weekFlowDateUtils";
 import {
   formatHeaderYearMonth,
   resolveCalendarLanguage,
@@ -115,6 +120,7 @@ export default function WeekFlowDragSnapCard({
   const [monthlySyncTopWeekStart, setMonthlySyncTopWeekStart] = useState(null);
 
   const monthlyViewportWeekStartRef = useRef(weeklyWeekStart || null);
+  const previousStartDayOfWeekRef = useRef(startDayOfWeek);
   const latestSelectedDateRef = useRef(currentDate || null);
   const dragStartProgressRef = useSharedValue(initialProgress);
   const progress = useSharedValue(initialProgress);
@@ -171,6 +177,35 @@ export default function WeekFlowDragSnapCard({
     );
   }, []);
 
+  useEffect(() => {
+    const previousStartDayOfWeek = previousStartDayOfWeekRef.current;
+    previousStartDayOfWeekRef.current = startDayOfWeek;
+    if (previousStartDayOfWeek === startDayOfWeek) return;
+
+    const currentTopWeekStart =
+      monthlyViewportWeekStartRef.current ||
+      previewWeeklyWeekStart ||
+      weeklyWeekStart ||
+      toWeekStart(currentDate, previousStartDayOfWeek);
+    const anchorDate = currentTopWeekStart
+      ? addDays(currentTopWeekStart, 3)
+      : currentDate;
+    const rebasedTopWeekStart = toWeekStart(anchorDate, startDayOfWeek);
+    if (!rebasedTopWeekStart) return;
+
+    commitMonthlyViewportWeekStart(rebasedTopWeekStart);
+    setMonthlySyncTopWeekStart(rebasedTopWeekStart);
+    setPreviewWeeklyWeekStart((prev) =>
+      prev === rebasedTopWeekStart ? prev : rebasedTopWeekStart,
+    );
+  }, [
+    commitMonthlyViewportWeekStart,
+    currentDate,
+    previewWeeklyWeekStart,
+    startDayOfWeek,
+    weeklyWeekStart,
+  ]);
+
   const commitPreviewWeeklySelectedDate = useCallback((dateYmd) => {
     if (!dateYmd) return;
     latestSelectedDateRef.current = dateYmd;
@@ -193,14 +228,12 @@ export default function WeekFlowDragSnapCard({
   useEffect(() => {
     if (!weeklyWeekStart) return;
     if (weeklyRecenterTransition) return;
+    if (committedMode !== "weekly") return;
 
     setPreviewWeeklyWeekStart((prev) =>
       prev === weeklyWeekStart ? prev : weeklyWeekStart,
     );
-
-    if (committedMode === "weekly") {
-      commitMonthlyViewportWeekStart(weeklyWeekStart);
-    }
+    commitMonthlyViewportWeekStart(weeklyWeekStart);
   }, [
     commitMonthlyViewportWeekStart,
     committedMode,
@@ -456,14 +489,15 @@ export default function WeekFlowDragSnapCard({
   );
 
   const handleTogglePress = useCallback(() => {
+    if (!enabled) return;
     const targetProgress = committedMode === "weekly" ? 1 : 0;
     animateToMode(targetProgress);
-  }, [animateToMode, committedMode]);
+  }, [animateToMode, committedMode, enabled]);
 
   const panGesture = useMemo(
     () =>
       Gesture.Pan()
-        .enabled(!weeklyRecenterTransition)
+        .enabled(enabled && !weeklyRecenterTransition)
         .minDistance(4)
         .activeOffsetX([-16, 16])
         .onBegin(() => {
@@ -488,6 +522,7 @@ export default function WeekFlowDragSnapCard({
       applyVisualMode,
       commitMode,
       dragStartProgressRef,
+      enabled,
       progress,
       travelDistance,
       weeklyRecenterTransition,
@@ -631,13 +666,14 @@ export default function WeekFlowDragSnapCard({
   const monthlyScrollEnabled = enabled && committedMode === "monthly";
   const monthlySyncTarget =
     monthlySyncTopWeekStart ||
-    (enabled && committedMode === "weekly"
+    (committedMode === "weekly"
       ? previewWeeklyWeekStart || weeklyWeekStart || null
       : null);
 
   return (
     <View style={styles.wrapper}>
       <WeekFlowHeader
+        interactionEnabled={enabled}
         title={headerTitle}
         mode={committedMode}
         showTodayJumpButton={showTodayJumpButton}
@@ -650,13 +686,14 @@ export default function WeekFlowDragSnapCard({
 
       <AnimatedView style={[styles.surface, surfaceStyle]}>
         <AnimatedView
-          pointerEvents={committedMode === "monthly" ? "auto" : "none"}
+          pointerEvents={enabled && committedMode === "monthly" ? "auto" : "none"}
           style={[styles.layer, monthlyLayerStyle]}
         >
           <View onLayout={handleMonthlyLayout}>
             <WeekFlowMonthly
               embedded
               enableDaySummaries={committedMode === "monthly"}
+              interactionEnabled={enabled && committedMode === "monthly"}
               initialTopWeekStart={monthlyViewportWeekStart || weeklyWeekStart}
               onSelectedDateChange={handleMonthlySelectedDateChange}
               onTopWeekStartChange={handleMonthlyTopWeekStartChange}
@@ -671,7 +708,9 @@ export default function WeekFlowDragSnapCard({
         {!weeklyRecenterTransition ? (
           <AnimatedView
             pointerEvents={
-              committedMode === "weekly" && !weeklyRecenterTransition ? "auto" : "none"
+              enabled && committedMode === "weekly" && !weeklyRecenterTransition
+                ? "auto"
+                : "none"
             }
             style={[styles.layer, weeklyLayerStyle]}
           >
@@ -679,6 +718,7 @@ export default function WeekFlowDragSnapCard({
               <WeekFlowWeekly
                 embedded
                 enableDaySummaries={committedMode === "weekly"}
+                interactionEnabled={enabled && committedMode === "weekly"}
                 onVisibleWeekStartChange={handleWeeklyVisibleWeekStartChange}
                 showHeader={false}
                 showToggle={false}
@@ -695,6 +735,7 @@ export default function WeekFlowDragSnapCard({
               <WeekFlowWeekly
                 embedded
                 enableDaySummaries={false}
+                interactionEnabled={false}
                 showHeader={false}
                 showToggle={false}
                 selectedDate={previewWeeklySelectedDate}
@@ -706,6 +747,7 @@ export default function WeekFlowDragSnapCard({
               <WeekFlowWeekly
                 embedded
                 enableDaySummaries={false}
+                interactionEnabled={false}
                 showHeader={false}
                 showToggle={false}
                 selectedDate={previewWeeklySelectedDate}
@@ -718,7 +760,7 @@ export default function WeekFlowDragSnapCard({
 
       <GestureDetector gesture={panGesture}>
         <Pressable
-          disabled={Boolean(weeklyRecenterTransition)}
+          disabled={!enabled || Boolean(weeklyRecenterTransition)}
           onPress={handleTogglePress}
           style={styles.handleContainer}
         >

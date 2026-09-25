@@ -123,6 +123,7 @@ export default function WeekFlowMonthly({
   showDebugPanel = false,
   embedded = false,
   enableDaySummaries = true,
+  interactionEnabled = true,
   scrollEnabled = true,
   syncTopWeekStart = null,
   showHeader = true,
@@ -425,14 +426,16 @@ export default function WeekFlowMonthly({
 
   const onDayPress = useCallback(
     (dateYmd) => {
+      if (!interactionEnabled) return;
       if (!dateYmd) return;
       onSelectedDateChange?.(dateYmd);
       setCurrentDate(dateYmd);
     },
-    [onSelectedDateChange, setCurrentDate],
+    [interactionEnabled, onSelectedDateChange, setCurrentDate],
   );
 
   const onTodayJump = useCallback(() => {
+    if (!interactionEnabled) return;
     if (!todayDate) return;
     onSelectedDateChange?.(todayDate);
     setCurrentDate(todayDate);
@@ -440,6 +443,7 @@ export default function WeekFlowMonthly({
     ensureWeekStartVisible(weekStart);
   }, [
     ensureWeekStartVisible,
+    interactionEnabled,
     onSelectedDateChange,
     setCurrentDate,
     startDayOfWeek,
@@ -447,6 +451,7 @@ export default function WeekFlowMonthly({
   ]);
 
   const onPrevMonth = useCallback(() => {
+    if (!interactionEnabled) return;
     const baseMonthStart =
       visibleMonthStart || getMonthStartFromYmd(currentDate);
     if (!baseMonthStart) return;
@@ -462,6 +467,7 @@ export default function WeekFlowMonthly({
   }, [
     currentDate,
     ensureWeekStartVisible,
+    interactionEnabled,
     onSelectedDateChange,
     setCurrentDate,
     startDayOfWeek,
@@ -469,6 +475,7 @@ export default function WeekFlowMonthly({
   ]);
 
   const onNextMonth = useCallback(() => {
+    if (!interactionEnabled) return;
     const baseMonthStart =
       visibleMonthStart || getMonthStartFromYmd(currentDate);
     if (!baseMonthStart) return;
@@ -484,6 +491,7 @@ export default function WeekFlowMonthly({
   }, [
     currentDate,
     ensureWeekStartVisible,
+    interactionEnabled,
     onSelectedDateChange,
     setCurrentDate,
     startDayOfWeek,
@@ -586,10 +594,11 @@ export default function WeekFlowMonthly({
         days={getWeekMeta(item, language)}
         selectedDate={currentDate}
         todayDate={todayDate}
+        interactionEnabled={interactionEnabled}
         onDayPress={onDayPress}
       />
     ),
-    [currentDate, language, onDayPress, todayDate],
+    [currentDate, interactionEnabled, language, onDayPress, todayDate],
   );
 
   const keyExtractor = useCallback((item) => item, []);
@@ -748,6 +757,7 @@ export default function WeekFlowMonthly({
     <View style={[styles.container, embedded ? styles.embeddedContainer : null]}>
       {showHeader ? (
         <WeekFlowHeader
+          interactionEnabled={interactionEnabled}
           title={headerTitle}
           mode="monthly"
           showTodayJumpButton={showTodayJumpButton}
@@ -789,7 +799,7 @@ export default function WeekFlowMonthly({
           onMomentumScrollEnd={onMomentumScrollEnd}
           scrollEventThrottle={32}
           onScrollToIndexFailed={onScrollToIndexFailed}
-          scrollEnabled={scrollEnabled}
+          scrollEnabled={interactionEnabled && scrollEnabled}
           showsVerticalScrollIndicator={false}
           getItemType={() => "week"}
         />
@@ -802,7 +812,11 @@ export default function WeekFlowMonthly({
       </View>
 
       {showToggle ? (
-        <WeekFlowModeToggleBar mode="monthly" onToggleMode={onToggleMode} />
+        <WeekFlowModeToggleBar
+          interactionEnabled={interactionEnabled}
+          mode="monthly"
+          onToggleMode={onToggleMode}
+        />
       ) : null}
 
       {showDebugPanel ? (

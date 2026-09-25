@@ -9,7 +9,14 @@ function isDateInWeek(dateYmd, weekStartYmd, weekEndYmd) {
   return dateYmd >= weekStartYmd && dateYmd <= weekEndYmd;
 }
 
-function WeekRow({ weekStart, days, selectedDate, todayDate, onDayPress }) {
+function WeekRow({
+  weekStart,
+  days,
+  selectedDate,
+  todayDate,
+  onDayPress,
+  interactionEnabled = true,
+}) {
   return (
     <View style={styles.row}>
       {days.map((day) => (
@@ -21,6 +28,7 @@ function WeekRow({ weekStart, days, selectedDate, todayDate, onDayPress }) {
           isEvenMonth={day.isEvenMonth}
           isSelected={day.date === selectedDate}
           isToday={day.date === todayDate}
+          interactionEnabled={interactionEnabled}
           onPress={onDayPress}
         />
       ))}
@@ -32,6 +40,7 @@ function areEqual(prev, next) {
   if (prev.weekStart !== next.weekStart) return false;
   if (prev.days !== next.days) return false;
   if (prev.onDayPress !== next.onDayPress) return false;
+  if (prev.interactionEnabled !== next.interactionEnabled) return false;
 
   const weekEnd = prev.days?.[prev.days.length - 1]?.date || null;
   const weekStart = prev.weekStart;

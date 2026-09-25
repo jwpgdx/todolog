@@ -10,6 +10,7 @@ function DayCell({
   isEvenMonth,
   isSelected,
   isToday,
+  interactionEnabled = true,
   onPress,
 }) {
   const summary =
@@ -25,6 +26,7 @@ function DayCell({
 
   return (
     <Pressable
+      disabled={!interactionEnabled}
       style={[styles.cell, isEvenMonth ? styles.evenMonthCell : styles.oddMonthCell]}
       onPress={handlePress}
     >

@@ -24,6 +24,7 @@ export default function WeekFlowWeekly({
   onVisibleWeekStartChange,
   embedded = false,
   enableDaySummaries = true,
+  interactionEnabled = true,
   showHeader = true,
 }) {
   const { currentDate, setCurrentDate } = useDateStore();
@@ -82,31 +83,35 @@ export default function WeekFlowWeekly({
   }, [startDayOfWeek, todayDate, visibleWeekStart]);
 
   const onTodayJump = useCallback(() => {
+    if (!interactionEnabled) return;
     if (!todayDate) return;
     const todayWeekStart = toWeekStart(todayDate, startDayOfWeek);
     commitVisibleWeekStart(todayWeekStart);
     setCurrentDate(todayDate);
-  }, [commitVisibleWeekStart, setCurrentDate, startDayOfWeek, todayDate]);
+  }, [commitVisibleWeekStart, interactionEnabled, setCurrentDate, startDayOfWeek, todayDate]);
 
   const onPrev = useCallback(() => {
+    if (!interactionEnabled) return;
     if (!visibleWeekStart) return;
     const nextWeekStart = addWeeks(visibleWeekStart, -1);
     commitVisibleWeekStart(nextWeekStart);
-  }, [commitVisibleWeekStart, visibleWeekStart]);
+  }, [commitVisibleWeekStart, interactionEnabled, visibleWeekStart]);
 
   const onNext = useCallback(() => {
+    if (!interactionEnabled) return;
     if (!visibleWeekStart) return;
     const nextWeekStart = addWeeks(visibleWeekStart, 1);
     commitVisibleWeekStart(nextWeekStart);
-  }, [commitVisibleWeekStart, visibleWeekStart]);
+  }, [commitVisibleWeekStart, interactionEnabled, visibleWeekStart]);
 
   const onDayPress = useCallback(
     (dateYmd) => {
+      if (!interactionEnabled) return;
       if (!dateYmd) return;
       commitVisibleWeekStart(toWeekStart(dateYmd, startDayOfWeek));
       setCurrentDate(dateYmd);
     },
-    [commitVisibleWeekStart, setCurrentDate, startDayOfWeek],
+    [commitVisibleWeekStart, interactionEnabled, setCurrentDate, startDayOfWeek],
   );
 
   const activeRange = useMemo(() => {
@@ -131,6 +136,7 @@ export default function WeekFlowWeekly({
     <View style={[styles.container, embedded ? styles.embeddedContainer : null]}>
       {showHeader ? (
         <WeekFlowHeader
+          interactionEnabled={interactionEnabled}
           title={headerTitle}
           mode="weekly"
           showTodayJumpButton={showTodayJumpButton}
@@ -151,6 +157,7 @@ export default function WeekFlowWeekly({
       </View>
 
       <WeekModeRow
+        interactionEnabled={interactionEnabled}
         visibleWeekStart={visibleWeekStart}
         todayDate={todayDate}
         selectedDate={selectedDate}
@@ -161,7 +168,11 @@ export default function WeekFlowWeekly({
       />
 
       {showToggle ? (
-        <WeekFlowModeToggleBar mode="weekly" onToggleMode={onToggleMode} />
+        <WeekFlowModeToggleBar
+          interactionEnabled={interactionEnabled}
+          mode="weekly"
+          onToggleMode={onToggleMode}
+        />
       ) : null}
     </View>
   );

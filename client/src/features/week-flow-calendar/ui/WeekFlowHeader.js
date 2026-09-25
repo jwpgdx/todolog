@@ -11,6 +11,7 @@ const AnimatedText = Animated.createAnimatedComponent(Text);
 export default function WeekFlowHeader({
   title,
   mode,
+  interactionEnabled = true,
   showTodayJumpButton,
   onTodayJump,
   onPrev,
@@ -35,7 +36,11 @@ export default function WeekFlowHeader({
         <Text style={styles.title}>{title}</Text>
 
         {showToggle ? (
-          <Pressable onPress={onToggleMode} style={styles.toggleButton}>
+          <Pressable
+            disabled={!interactionEnabled}
+            onPress={onToggleMode}
+            style={[styles.toggleButton, !interactionEnabled && styles.disabledControl]}
+          >
             <AnimatedText style={[styles.modeText, modeIconStyle]}>{'›'}</AnimatedText>
           </Pressable>
         ) : (
@@ -45,7 +50,11 @@ export default function WeekFlowHeader({
 
       <View style={styles.centerGroup}>
         {showTodayJumpButton ? (
-          <Pressable onPress={onTodayJump} style={styles.todayButton}>
+          <Pressable
+            disabled={!interactionEnabled}
+            onPress={onTodayJump}
+            style={[styles.todayButton, !interactionEnabled && styles.disabledControl]}
+          >
             <Text style={styles.todayText}>{t('calendar.today')}</Text>
           </Pressable>
         ) : (
@@ -56,10 +65,18 @@ export default function WeekFlowHeader({
       <View style={styles.rightGroup}>
         {mode === 'weekly' ? (
           <>
-            <Pressable onPress={onPrev} style={styles.iconButton}>
+            <Pressable
+              disabled={!interactionEnabled}
+              onPress={onPrev}
+              style={[styles.iconButton, !interactionEnabled && styles.disabledControl]}
+            >
               <Text style={styles.iconText}>{'<'}</Text>
             </Pressable>
-            <Pressable onPress={onNext} style={styles.iconButton}>
+            <Pressable
+              disabled={!interactionEnabled}
+              onPress={onNext}
+              style={[styles.iconButton, !interactionEnabled && styles.disabledControl]}
+            >
               <Text style={styles.iconText}>{'>'}</Text>
             </Pressable>
           </>
@@ -142,5 +159,8 @@ const styles = StyleSheet.create({
     fontSize: 18,
     color: '#111827',
     fontWeight: '700',
+  },
+  disabledControl: {
+    opacity: 0.4,
   },
 });

@@ -5,6 +5,7 @@ import { getWeekMeta } from '../utils/weekFlowWeekMetaCache';
 import WeekRow from './WeekRow';
 
 export default function WeekModeRow({
+  interactionEnabled = true,
   visibleWeekStart,
   todayDate,
   selectedDate,
@@ -19,7 +20,9 @@ export default function WeekModeRow({
     () =>
       PanResponder.create({
         onMoveShouldSetPanResponder: (_, gestureState) =>
-          Math.abs(gestureState.dx) > 10 && Math.abs(gestureState.dx) > Math.abs(gestureState.dy),
+          interactionEnabled &&
+          Math.abs(gestureState.dx) > 10 &&
+          Math.abs(gestureState.dx) > Math.abs(gestureState.dy),
         onPanResponderRelease: (_, gestureState) => {
           const dx = gestureState.dx;
           if (dx > 30) {
@@ -31,7 +34,7 @@ export default function WeekModeRow({
           }
         },
       }),
-    [onNextWeek, onPrevWeek]
+    [interactionEnabled, onNextWeek, onPrevWeek]
   );
 
   return (
@@ -41,6 +44,7 @@ export default function WeekModeRow({
         days={days}
         selectedDate={selectedDate}
         todayDate={todayDate}
+        interactionEnabled={interactionEnabled}
         onDayPress={onDayPress}
       />
     </View>
