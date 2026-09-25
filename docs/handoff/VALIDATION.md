@@ -61,3 +61,11 @@ H0 산출물은 인수인계 문서, 구현 감사표, 결정 목록, 실행 가
 - Root, client, and server `package-lock.json` files are present. Dependency reproduction/`npm ci` was **not** run, so the lockfile-based dependency baseline remains pending.
 - This Windows environment is suitable for repository/document work, but it cannot satisfy the UIKit/Xcode/device portions of H2. iOS-capable Mac/Xcode and simulator/physical-device verification remain pending.
 - No app source, SQLite, pending queue, dependency, build/install, or runtime mutation occurred in this partial H2 verification.
+
+### Gate 2 preflight from Windows
+
+- Read-only inspection found no current todo-specific native interaction harness. The surviving `/native-category-menu` harness is category-specific.
+- The bounded iOS spike should therefore use a new test-only todo route that renders `NativeManagedList` directly with `variant="todo"` and system gesture mode, backed only by mock in-memory rows.
+- Production `NativeTodoManagedList` currently forces `custom-lifted` and remains untouched during the spike.
+- Current Swift explicitly suppresses a system context menu for reorderable todo rows and keeps `dragInteractionEnabled = false`; these are the exact native blockers the bounded spike must address under a system-mode todo guard.
+- No feature/native source was edited in this Windows preflight.

@@ -55,7 +55,7 @@ Scope:
 
 Tasks:
 
-- [ ] identify the smallest existing harness/list path that can isolate simple todo reorder
+- [x] identify the smallest isolated harness path: add a dedicated test-only todo route using `NativeManagedList(variant="todo", iosCategoryGestureMode="system")`; keep the existing category harness and production `NativeTodoManagedList(custom-lifted)` unchanged
 - [ ] keep existing custom production engine intact
 - [ ] enable native context-menu + collection drag only in the bounded spike path
 - [ ] verify long press shows UIKit system menu
@@ -69,6 +69,17 @@ Tasks:
 **PASS:** system context menu → native drag → simple reorder works and meets the product contract.
 
 **STOP/REPORT:** if this cannot be achieved reliably, do not delete or broadly replace the existing custom engine. Report the exact UIKit limitation and preserve the baseline.
+
+Prepared spike boundary from Windows read-only audit:
+
+- test-only JS surface: new `NativeTodoInteractionSpikeScreen` + file route; mock/in-memory todos only, no SQLite/sync/domain mutation
+- use one simple section with a few reorderable `kind="todo"` items and a `선택` menu action
+- route may be added to the same public test-route allowlist used by `/native-category-menu` for isolated launch
+- do not repurpose or weaken the existing `/native-category-menu` category baseline
+- production `NativeTodoManagedList.js` continues to force `custom-lifted` during the spike
+- current Swift blockers are explicit: reorderable todo system context menu is suppressed and collection drag interaction is disabled
+- isolate the native experiment to system-mode todo rows; do not include cross-section move, Favorites semantics, hover-expand, section-header drag, SQLite, or pending sync
+- prefer a small dedicated system-todo-drag Swift extension plus narrowly guarded wiring over changes to the custom drag engine
 
 ## Gate 3: Selection State Foundation — Calendar-Free iOS
 
