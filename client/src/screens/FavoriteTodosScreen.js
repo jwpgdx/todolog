@@ -23,7 +23,9 @@ import { useTodayDate } from '../hooks/useTodayDate';
 import { useFloatingTabBarScrollPadding } from '../navigation/useFloatingTabBarInset';
 import { ORDER_STEP } from '../services/db/todoService';
 import { useTodoFormStore } from '../store/todoFormStore';
-import TodoSelectionActionBar from '../features/todo/selection/TodoSelectionActionBar';
+import TodoSelectionActionBar, {
+  useTodoSelectionActionBarInset,
+} from '../features/todo/selection/TodoSelectionActionBar';
 import { orderSelectedTodoIds } from '../features/todo/selection/selectionOrder';
 import useTodoSelectionMode from '../features/todo/selection/useTodoSelectionMode';
 
@@ -67,6 +69,7 @@ export default function FavoriteTodosScreen() {
     toggleSelectedTodo,
   } = useTodoSelectionMode();
   const bottomInset = useFloatingTabBarScrollPadding(32);
+  const selectionBottomInset = useTodoSelectionActionBarInset();
 
   const categoryById = useMemo(
     () => new Map((categories || []).map((category) => [category._id, category])),
@@ -322,7 +325,7 @@ export default function FavoriteTodosScreen() {
             listId="favorite-todos"
             variant="todo"
             sections={managedSections}
-            contentInsetBottom={isSelectionMode ? 96 : bottomInset}
+            contentInsetBottom={isSelectionMode ? selectionBottomInset : bottomInset}
             onPressItem={({ itemId }) => {
               const todo = todoById.get(itemId);
               if (!todo) {

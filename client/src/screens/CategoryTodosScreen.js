@@ -27,7 +27,9 @@ import { hasRecurrenceRule } from '../utils/recurrenceEngine';
 import NativeManagedList from '../components/ui/native-managed-list/NativeManagedList';
 import { buildManagedTodoItem } from '../features/todo/native/managedTodoItemAdapter';
 import { ORDER_STEP } from '../services/db/todoService';
-import TodoSelectionActionBar from '../features/todo/selection/TodoSelectionActionBar';
+import TodoSelectionActionBar, {
+    useTodoSelectionActionBarInset,
+} from '../features/todo/selection/TodoSelectionActionBar';
 import { orderSelectedTodoIds } from '../features/todo/selection/selectionOrder';
 import useTodoSelectionMode from '../features/todo/selection/useTodoSelectionMode';
 
@@ -213,6 +215,7 @@ export default function CategoryTodosScreen() {
         exitSelectionMode,
         toggleSelectedTodo,
     } = useTodoSelectionMode();
+    const selectionBottomInset = useTodoSelectionActionBarInset();
 
     const sortedTodos = useMemo(() => {
         return [...todos].sort((a, b) => {
@@ -503,7 +506,7 @@ export default function CategoryTodosScreen() {
                             listId={`category-todos:${categoryId || 'unknown'}`}
                             variant="todo"
                             sections={managedSections}
-                            contentInsetBottom={isSelectionMode ? 96 : bottomInset}
+                            contentInsetBottom={isSelectionMode ? selectionBottomInset : bottomInset}
                             onPressItem={({ itemId }) => {
                                 const todo = todoById.get(itemId);
                                 if (!todo) {

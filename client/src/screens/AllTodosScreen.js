@@ -33,7 +33,9 @@ import {
   mergeTodoReorderUpdates,
 } from '../features/todo/native/todoFavoriteOrder';
 import { ORDER_STEP } from '../services/db/todoService';
-import TodoSelectionActionBar from '../features/todo/selection/TodoSelectionActionBar';
+import TodoSelectionActionBar, {
+  useTodoSelectionActionBarInset,
+} from '../features/todo/selection/TodoSelectionActionBar';
 import {
   getVisibleTodoIdsFromManagedSections,
   orderSelectedTodoIds,
@@ -71,6 +73,7 @@ export default function AllTodosScreen() {
     toggleSelectedTodo,
   } = useTodoSelectionMode();
   const bottomInset = useFloatingTabBarScrollPadding(DRAG_BOTTOM_BUFFER);
+  const selectionBottomInset = useTodoSelectionActionBarInset();
   const { handleCategoryHeaderAction } = useManagedCategoryHeaderActions({ categories });
 
   useEffect(() => {
@@ -505,7 +508,7 @@ export default function AllTodosScreen() {
         includeEmptyCategorySections
         selectionMode={isSelectionMode}
         selectedTodoIds={selectedTodoIds}
-        contentInsetBottom={isSelectionMode ? 96 : bottomInset}
+        contentInsetBottom={isSelectionMode ? selectionBottomInset : bottomInset}
         itemOptions={{
           includeFavoriteAction: true,
           includeSelectAction: true,

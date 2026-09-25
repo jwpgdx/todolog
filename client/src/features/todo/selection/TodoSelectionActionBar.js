@@ -9,6 +9,24 @@ const ACTIONS = [
   { id: 'move', label: '이동' },
 ];
 
+const ACTION_BAR_TOP_PADDING = 10;
+const ACTION_BAR_SURFACE_MIN_HEIGHT = 48;
+const ACTION_BAR_MIN_BOTTOM_PADDING = 10;
+const ACTION_BAR_CONTENT_CLEARANCE = 8;
+
+export function getTodoSelectionActionBarOccupiedInset(safeAreaBottom = 0) {
+  return (
+    ACTION_BAR_TOP_PADDING +
+    ACTION_BAR_SURFACE_MIN_HEIGHT +
+    Math.max(safeAreaBottom, ACTION_BAR_MIN_BOTTOM_PADDING)
+  );
+}
+
+export function useTodoSelectionActionBarInset(extra = ACTION_BAR_CONTENT_CLEARANCE) {
+  const insets = useSafeAreaInsets();
+  return getTodoSelectionActionBarOccupiedInset(insets.bottom) + extra;
+}
+
 export default function TodoSelectionActionBar({
   selectedCount = 0,
   onDelete,
@@ -27,7 +45,12 @@ export default function TodoSelectionActionBar({
   };
 
   return (
-    <View style={[styles.wrapper, { paddingBottom: Math.max(insets.bottom, 10) }]}>
+    <View
+      style={[
+        styles.wrapper,
+        { paddingBottom: Math.max(insets.bottom, ACTION_BAR_MIN_BOTTOM_PADDING) },
+      ]}
+    >
       <View style={styles.surface}>
         {ACTIONS.map((action) => {
           const handler = handlers[action.id];
@@ -64,7 +87,7 @@ const styles = StyleSheet.create({
     right: 0,
     bottom: 0,
     paddingHorizontal: 16,
-    paddingTop: 10,
+    paddingTop: ACTION_BAR_TOP_PADDING,
     backgroundColor: 'rgba(249, 250, 251, 0.94)',
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: 'rgba(148, 163, 184, 0.36)',
@@ -82,7 +105,7 @@ const styles = StyleSheet.create({
   },
   action: {
     flex: 1,
-    minHeight: 48,
+    minHeight: ACTION_BAR_SURFACE_MIN_HEIGHT,
     alignItems: 'center',
     justifyContent: 'center',
   },
