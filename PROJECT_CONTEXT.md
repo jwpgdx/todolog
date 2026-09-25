@@ -1,7 +1,7 @@
 # Todolog Project Context
 
-Last Updated: 2026-09-21
-Status: Feature development paused for Web GPT / CoS documentation handoff. Native-list foundations have historical validation; selection mode and bulk category move remain partial. Current static findings and unverified behavior are tracked in `docs/handoff/IMPLEMENTATION_AUDIT.md`.
+Last Updated: 2026-09-25
+Status: Feature development remains paused. D02-D06 are frozen as F24-F28 and Todo Screen V2 formal requirements/design/tasks have been drafted for user review. Native-list foundations have historical validation; selection mode and bulk category move remain partial and unimplemented against the latest freezes.
 
 Start with [WEB_GPT_HANDOFF.md](WEB_GPT_HANDOFF.md). The September audit did not rebuild or run the app. Historical "validated" statements below describe prior checks, not a fresh full regression pass.
 
@@ -65,7 +65,7 @@ Server:
 - NativeManagedList Android category first slice: `variant="category"` now uses the `native-list-interactions` RecyclerView path on Android for `My Page > 카테고리`, including category row rendering, `Inbox` pinned/non-reorderable behavior from the shared contract, overflow `⋮` menu actions, delete action emission, and within-section long-press reorder scaffolding. Verified with Android `:app:assembleDebug`, `:app:installDebug`, emulator launch, `My Page > 카테고리` render, and overflow menu smoke. Todo/favorite Android native drag parity remains a follow-up.
 - Todo selection mode WIP: `FAVORITE SCREEN`, `ALL TODOS SCREEN`, and `CATEGORY SCREEN` have in-place selection state, selected-row/native selection control payloads, bottom tab bar hiding, shared `TodoSelectionActionBar`, and selection-mode interaction disabling. The shared action bar currently wires only `이동`; bulk delete/complete/favorite hooks are not implemented.
 - Todo category picker WIP: `todo/category-select` accepts a single `todoId` or comma-separated `todoIds`, renders `NativeSelectionList` in an Expo Router modal with `취소 / 카테고리 선택 / 이동`, and appends moved todos to target category order while preserving custom/favorite/schedule fields. Single move was previously verified with Maestro + SQLite; the latest multi-select UI commit still needs manual/SQLite verification because Maestro timed out.
-- TodoScreen V2 decisions are frozen in `.kiro/specs/todo-screen-v2/triage.md`: native Stack header + RN title/calendar + NativeManagedList list scroll. Formal requirements/design/tasks promotion and TodoScreen selection-mode chrome remain pending.
+- TodoScreen V2 decisions are frozen through F28. `.kiro/specs/todo-screen-v2/requirements.md`, `design.md`, and `tasks.md` were formalized on 2026-09-25. TodoScreen selection-mode implementation itself is deferred; the first production milestone is iOS calendar-free AllTodos/Favorites/Category detail selection + bulk move.
 - Web runtime and Playwright validation paths were retired on 2026-05-16; native dev-client smoke is now the active UI/runtime validation path. Active app code no longer carries web targets, `.web.*` implementations, or direct web-only dependencies such as `react-dom`, `react-native-web`, `@expo/metro-runtime`, `@react-oauth/google`, `@dnd-kit/*`, Playwright, Vaul, or `react-native-draggable-flatlist`.
 - Guest migration server validation: completion import preserves exported active `_id`, and forced signup partial-failure rolls back imported todos/completions so the server account remains Inbox-only
 
@@ -80,7 +80,7 @@ Server:
 - Current validated local iOS baseline is recorded in `client/docs/IOS_SIMULATOR_RUNBOOK.md`: macOS `15.7.3`, Xcode `26.2`, build SDK `iPhoneSimulator26.2.sdk`, simulator runtime `iOS 26.3.1`, simulator device `iPhone 17`. When Codex runs `xcodebuild`, `xcrun simctl`, or Maestro, run them outside the sandbox to avoid misleading CoreSimulator failures.
 - Dependency alignment note (2026-07-12): `npx expo-doctor` passes 16/19 checks. The preserved baseline is behind the newest SDK 55 patch set, `expo-constants` is missing as a direct peer dependency, and `react-native-wheel-pick` remains untested on the New Architecture. Do not auto-fix during machine migration; reproduce the lockfile baseline first, then handle dependency alignment as a separate approved task.
 - The historical new-Mac restore record is `NEW_MAC_HANDOFF_2026-07-12.md`; current Web GPT / CoS entry is `WEB_GPT_HANDOFF.md`.
-- Static audit gaps: bulk move reorders selected todos already in the target category, uses selection click order rather than visible order, and does not explicitly exit parent selection mode. Missing IDs are skipped. These differ from frozen semantics; see audit A03-A07.
+- Static audit gaps remain in code: bulk move reorders already-target todos, uses click order rather than screen-visible order, does not explicitly exit parent selection mode, and skips missing IDs. F24/F28 now define the required all-or-nothing behavior; see audit A03-A07/A13 and the formal Todo Screen V2 spec.
 - Latest AllTodos render references an undefined `styles.screen`; Favorites/Category detail retain wrapper/header structures. Revalidate layout and native header tracking after fixing the identified gaps; an earlier header spike is not proof of the current WIP layout.
 - My Page Completed/Upcoming/Inbox dedicated routes are placeholders. Settings screens remain largely RN; Account Hub and pinned language/timezone search are not implemented.
 
