@@ -28,6 +28,7 @@ import NativeManagedList from '../components/ui/native-managed-list/NativeManage
 import { buildManagedTodoItem } from '../features/todo/native/managedTodoItemAdapter';
 import { ORDER_STEP } from '../services/db/todoService';
 import TodoSelectionActionBar from '../features/todo/selection/TodoSelectionActionBar';
+import { orderSelectedTodoIds } from '../features/todo/selection/selectionOrder';
 import useTodoSelectionMode from '../features/todo/selection/useTodoSelectionMode';
 
 const DEFAULT_CONTROL_TINT = '#007AFF';
@@ -207,6 +208,7 @@ export default function CategoryTodosScreen() {
         selectedTodoIds,
         selectedTodoIdSet,
         selectedCount,
+        selectionSessionId,
         enterSelectionMode,
         exitSelectionMode,
         toggleSelectedTodo,
@@ -228,6 +230,14 @@ export default function CategoryTodosScreen() {
             return String(a?._id || '').localeCompare(String(b?._id || ''));
         });
     }, [todos]);
+    const orderedSelectedTodoIds = useMemo(
+        () =>
+            orderSelectedTodoIds(
+                sortedTodos.map((todo) => todo._id),
+                selectedTodoIds
+            ),
+        [selectedTodoIds, sortedTodos]
+    );
 
     const headerTitle = category?.name || '카테고리';
     const handleOpenTodo = useCallback((todo, target = null) => {
@@ -252,9 +262,15 @@ export default function CategoryTodosScreen() {
 
         router.push({
             pathname: '/(app)/todo/category-select',
-            params: { todoIds: selectedTodoIds.join(',') },
+            params: {
+                todoIds: selectedTodoIds.join(','),
+                orderedTodoIds: orderedSelectedTodoIds.join(','),
+                selectionSessionId,
+                sourceScreen: 'category',
+                sourceCategoryId: categoryId,
+            },
         });
-    }, [router, selectedTodoIds]);
+    }, [categoryId, orderedSelectedTodoIds, router, selectedTodoIds, selectionSessionId]);
 
     const handleToggleComplete = useCallback((todo) => {
         toggleCompletion({

@@ -24,6 +24,7 @@ import { useFloatingTabBarScrollPadding } from '../navigation/useFloatingTabBarI
 import { ORDER_STEP } from '../services/db/todoService';
 import { useTodoFormStore } from '../store/todoFormStore';
 import TodoSelectionActionBar from '../features/todo/selection/TodoSelectionActionBar';
+import { orderSelectedTodoIds } from '../features/todo/selection/selectionOrder';
 import useTodoSelectionMode from '../features/todo/selection/useTodoSelectionMode';
 
 function compareByCreatedAt(a, b) {
@@ -60,6 +61,7 @@ export default function FavoriteTodosScreen() {
     selectedTodoIds,
     selectedTodoIdSet,
     selectedCount,
+    selectionSessionId,
     enterSelectionMode,
     exitSelectionMode,
     toggleSelectedTodo,
@@ -82,6 +84,14 @@ export default function FavoriteTodosScreen() {
   const todoById = useMemo(
     () => new Map(favoriteTodos.map((todo) => [todo._id, todo])),
     [favoriteTodos]
+  );
+  const orderedSelectedTodoIds = useMemo(
+    () =>
+      orderSelectedTodoIds(
+        favoriteTodos.map((todo) => todo._id),
+        selectedTodoIds
+      ),
+    [favoriteTodos, selectedTodoIds]
   );
 
   const handleOpenTodo = useCallback((todo, target = null) => {
@@ -106,9 +116,14 @@ export default function FavoriteTodosScreen() {
 
     router.push({
       pathname: '/(app)/todo/category-select',
-      params: { todoIds: selectedTodoIds.join(',') },
+      params: {
+        todoIds: selectedTodoIds.join(','),
+        orderedTodoIds: orderedSelectedTodoIds.join(','),
+        selectionSessionId,
+        sourceScreen: 'favorites',
+      },
     });
-  }, [router, selectedTodoIds]);
+  }, [orderedSelectedTodoIds, router, selectedTodoIds, selectionSessionId]);
 
   const handleToggleComplete = useCallback((todo) => {
     toggleCompletion({

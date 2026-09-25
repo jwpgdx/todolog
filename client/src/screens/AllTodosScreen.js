@@ -24,6 +24,7 @@ import { useTodoFormStore } from '../store/todoFormStore';
 import NativeTodoManagedList, {
   TODO_MANAGED_LIST_MODE,
 } from '../features/todo/native/NativeTodoManagedList';
+import { buildManagedTodoSections } from '../features/todo/native/buildManagedTodoSections';
 import { useManagedCategoryHeaderActions } from '../features/todo/native/useManagedCategoryHeaderActions';
 import {
   buildFavoriteOrderUpdatesFromEvent,
@@ -33,6 +34,10 @@ import {
 } from '../features/todo/native/todoFavoriteOrder';
 import { ORDER_STEP } from '../services/db/todoService';
 import TodoSelectionActionBar from '../features/todo/selection/TodoSelectionActionBar';
+import {
+  getVisibleTodoIdsFromManagedSections,
+  orderSelectedTodoIds,
+} from '../features/todo/selection/selectionOrder';
 import useTodoSelectionMode from '../features/todo/selection/useTodoSelectionMode';
 
 const CATEGORY_ORDER_STEP = 100;
@@ -60,6 +65,7 @@ export default function AllTodosScreen() {
     selectedTodoIds,
     selectedTodoIdSet,
     selectedCount,
+    selectionSessionId,
     enterSelectionMode,
     exitSelectionMode,
     toggleSelectedTodo,
@@ -117,6 +123,36 @@ export default function AllTodosScreen() {
         (todo) => !favoriteTodoIdSet.has(todo._id)
       ),
     [favoriteTodoIdSet, todos]
+  );
+
+  const selectionOrderSections = useMemo(
+    () =>
+      buildManagedTodoSections({
+        mode: TODO_MANAGED_LIST_MODE.CATEGORY,
+        todos: visibleTodos,
+        categories,
+        collapsedCategoryIds,
+        favoriteTodos,
+        includeFavoriteSection: true,
+        favoriteSectionReorderMode: 'withinSection',
+        favoriteSectionCollapsed: isFavoriteSectionCollapsed,
+        includeEmptyCategorySections: true,
+      }),
+    [
+      categories,
+      collapsedCategoryIds,
+      favoriteTodos,
+      isFavoriteSectionCollapsed,
+      visibleTodos,
+    ]
+  );
+  const orderedSelectedTodoIds = useMemo(
+    () =>
+      orderSelectedTodoIds(
+        getVisibleTodoIdsFromManagedSections(selectionOrderSections),
+        selectedTodoIds
+      ),
+    [selectedTodoIds, selectionOrderSections]
   );
 
   const handleToggleCollapsedCategory = useCallback((categoryId) => {
@@ -223,9 +259,14 @@ export default function AllTodosScreen() {
 
     router.push({
       pathname: '/(app)/todo/category-select',
-      params: { todoIds: selectedTodoIds.join(',') },
+      params: {
+        todoIds: selectedTodoIds.join(','),
+        orderedTodoIds: orderedSelectedTodoIds.join(','),
+        selectionSessionId,
+        sourceScreen: 'allTodos',
+      },
     });
-  }, [router, selectedTodoIds]);
+  }, [orderedSelectedTodoIds, router, selectedTodoIds, selectionSessionId]);
 
   const handleDelete = useCallback((todo) => {
     Alert.alert(
@@ -388,7 +429,7 @@ export default function AllTodosScreen() {
     }
   }, [categories, favoriteTodos, reorderCategoryMutation, reorderTodoMutation, visibleTodos]);
 
-  if (isLoading) {
+  if (isLoading && !isSelectionMode) {
     return (
       <SafeAreaView style={styles.container}>
         <View style={styles.centerContainer}>
@@ -399,7 +440,11 @@ export default function AllTodosScreen() {
     );
   }
 
-  if (visibleTodos.length === 0 && favoriteTodos.length === 0) {
+  if (
+    !isSelectionMode &&
+    visibleTodos.length === 0 &&
+    favoriteTodos.length === 0
+  ) {
     return (
       <SafeAreaView style={styles.container}>
         <View style={styles.centerContainer}>
@@ -504,6 +549,10 @@ export default function AllTodosScreen() {
 }
 
 const styles = StyleSheet.create({
+  screen: {
+    flex: 1,
+    backgroundColor: '#F9FAFB',
+  },
   container: {
     flex: 1,
     backgroundColor: '#F9FAFB',

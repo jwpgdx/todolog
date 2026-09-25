@@ -107,8 +107,8 @@ export async function hasPendingChange(id) {
  * @param {string} [change.date] - Completion용 날짜
  * @returns {Promise<string>} - 생성된 ID
  */
-export async function addPendingChange(change) {
-    const db = getDatabase();
+export async function addPendingChangeOnConnection(connection, change) {
+    const db = connection || getDatabase();
     const id = change.id || generateId();
 
     await db.runAsync(`
@@ -129,6 +129,10 @@ export async function addPendingChange(change) {
     ]);
 
     return id;
+}
+
+export async function addPendingChange(change) {
+    return addPendingChangeOnConnection(getDatabase(), change);
 }
 
 /**

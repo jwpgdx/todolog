@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   Platform,
   ScrollView,
   StyleSheet,
@@ -12,11 +13,9 @@ import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 
 import { NativeSelectionList } from '../features/settings';
 import { NATIVE_SELECTION_LIST_COLORS } from '../features/settings/native/selectionListColors';
-import { useAllTodos } from '../hooks/queries/useAllTodos';
+import { useTodoSelectionResultStore } from '../features/todo/selection/todoSelectionResultStore';
+import { useBulkMoveTodos } from '../hooks/queries/useBulkMoveTodos';
 import { useCategories } from '../hooks/queries/useCategories';
-import { useReorderTodo } from '../hooks/queries/useReorderTodo';
-import { useTodayDate } from '../hooks/useTodayDate';
-import { ORDER_STEP } from '../services/db/todoService';
 
 function compareCategories(a, b) {
   const aInbox = a?.systemKey === 'inbox' ? 0 : 1;
@@ -51,76 +50,66 @@ function parseTodoIds(rawTodoId, rawTodoIds) {
   return todoId ? [todoId] : [];
 }
 
-function getCommonCategoryId(todos) {
-  if (!todos.length) {
-    return null;
+function buildOriginScope(sourceScreen, sourceCategoryId) {
+  if (sourceScreen === 'allTodos') {
+    return { screen: 'allTodos' };
   }
 
-  const firstCategoryId = todos[0]?.categoryId || null;
-  return todos.every((todo) => (todo?.categoryId || null) === firstCategoryId)
-    ? firstCategoryId
-    : null;
-}
+  if (sourceScreen === 'favorites') {
+    return { screen: 'favorites' };
+  }
 
-function buildMoveOrderUpdates(todos, allTodos, categoryId) {
-  const selectedIdSet = new Set(todos.map((todo) => todo._id));
-  const maxOrder = (allTodos || []).reduce((currentMax, todo) => {
-    if (!todo || selectedIdSet.has(todo._id) || todo.categoryId !== categoryId) {
-      return currentMax;
-    }
+  if (sourceScreen === 'category' && sourceCategoryId) {
+    return {
+      screen: 'category',
+      categoryId: sourceCategoryId,
+    };
+  }
 
-    return Math.max(currentMax, Number(todo.order?.category ?? todo.categoryOrder ?? 0));
-  }, 0);
-
-  return todos.map((todo, index) => ({
-    id: todo._id,
-    categoryId,
-    order: {
-      category: maxOrder + (index + 1) * ORDER_STEP,
-    },
-  }));
+  return null;
 }
 
 export default function TodoCategorySelectScreen() {
   const router = useRouter();
-  const { todoId: rawTodoId, todoIds: rawTodoIds } = useLocalSearchParams();
+  const {
+    todoId: rawTodoId,
+    todoIds: rawTodoIds,
+    orderedTodoIds: rawOrderedTodoIds,
+    selectionSessionId: rawSelectionSessionId,
+    sourceScreen: rawSourceScreen,
+    sourceCategoryId: rawSourceCategoryId,
+  } = useLocalSearchParams();
   const todoIds = useMemo(
     () => parseTodoIds(rawTodoId, rawTodoIds),
     [rawTodoId, rawTodoIds]
   );
-  const { todayDate } = useTodayDate();
-  const { data: todos = [], isLoading: isTodosLoading } = useAllTodos(todayDate);
+  const orderedTodoIds = useMemo(() => {
+    const parsedOrderedTodoIds = parseTodoIds(null, rawOrderedTodoIds);
+    if (parsedOrderedTodoIds.length > 0) {
+      return parsedOrderedTodoIds;
+    }
+
+    return todoIds.length === 1 ? todoIds : [];
+  }, [rawOrderedTodoIds, todoIds]);
+  const selectionSessionId = getParamValue(rawSelectionSessionId) || null;
+  const sourceScreen = getParamValue(rawSourceScreen) || null;
+  const sourceCategoryId = getParamValue(rawSourceCategoryId) || null;
+  const originScope = useMemo(
+    () => buildOriginScope(sourceScreen, sourceCategoryId),
+    [sourceCategoryId, sourceScreen]
+  );
   const { data: categories = [], isLoading: isCategoriesLoading } = useCategories();
-  const reorderTodoMutation = useReorderTodo(todayDate);
+  const bulkMoveMutation = useBulkMoveTodos();
+  const publishSelectionResult = useTodoSelectionResultStore((state) => state.publishResult);
 
-  const selectedTodos = useMemo(
-    () =>
-      todoIds
-        .map((todoId) => (Array.isArray(todos) ? todos : []).find((item) => item?._id === todoId))
-        .filter(Boolean),
-    [todoIds, todos]
-  );
-
-  const commonCategoryId = useMemo(
-    () => getCommonCategoryId(selectedTodos),
-    [selectedTodos]
-  );
-
-  const [pendingCategoryId, setPendingCategoryId] = useState(commonCategoryId);
+  const [pendingCategoryId, setPendingCategoryId] = useState(null);
+  const todoRequestKey = todoIds.join(',');
 
   useEffect(() => {
-    if (commonCategoryId) {
-      setPendingCategoryId(commonCategoryId);
-    }
-  }, [commonCategoryId]);
+    setPendingCategoryId(null);
+  }, [todoRequestKey]);
 
-  const selectedCategoryId = pendingCategoryId || commonCategoryId || null;
-  const hasCategoryChange = useMemo(
-    () =>
-      Boolean(selectedCategoryId) &&
-      selectedTodos.some((todo) => (todo?.categoryId || null) !== selectedCategoryId),
-    [selectedCategoryId, selectedTodos]
-  );
+  const selectedCategoryId = pendingCategoryId || null;
 
   const options = useMemo(
     () =>
@@ -137,24 +126,100 @@ export default function TodoCategorySelectScreen() {
   );
 
   const canApply =
-    selectedTodos.length > 0 &&
+    todoIds.length > 0 &&
     Boolean(selectedCategoryId) &&
-    hasCategoryChange &&
-    !reorderTodoMutation.isPending;
+    !bulkMoveMutation.isPending;
 
   const handleApply = useCallback(async () => {
     if (!canApply) {
       return;
     }
+    if (todoIds.length > 1 && (!selectionSessionId || !originScope?.screen)) {
+      Alert.alert(
+        '선택 정보를 확인할 수 없습니다',
+        '이전 화면으로 돌아가 일정을 다시 선택한 뒤 이동해 주세요.'
+      );
+      return;
+    }
 
     try {
-      const updates = buildMoveOrderUpdates(selectedTodos, todos, selectedCategoryId);
-      await reorderTodoMutation.mutateAsync({ updates });
+      const result = await bulkMoveMutation.mutateAsync({
+        selectedTodoIds: todoIds,
+        orderedTodoIds,
+        targetCategoryId: selectedCategoryId,
+        originScope,
+      });
+
+      if (result?.status === 'selection_stale') {
+        if (selectionSessionId) {
+          publishSelectionResult({
+            sessionId: selectionSessionId,
+            status: 'selection_stale',
+            invalidTodoIds: result.invalidTodoIds || [],
+            validTodoIds: result.validTodoIds || [],
+          });
+        }
+
+        Alert.alert(
+          '선택 항목이 변경되었습니다',
+          '선택한 일정 중 현재 상태에서 이동할 수 없는 항목이 있어 이동을 취소했습니다. 변경된 항목을 제외한 뒤 다시 확인해 주세요.',
+          [
+            {
+              text: '확인',
+              onPress: () => router.back(),
+            },
+          ]
+        );
+        return;
+      }
+
+      if (result?.status === 'target_invalid') {
+        setPendingCategoryId(null);
+        Alert.alert(
+          '카테고리를 사용할 수 없습니다',
+          '선택한 카테고리가 삭제되었거나 더 이상 사용할 수 없습니다. 다른 카테고리를 선택해 주세요.'
+        );
+        return;
+      }
+
+      if (result?.status === 'selection_order_unresolved') {
+        Alert.alert(
+          '목록 순서를 다시 확인해 주세요',
+          '선택한 일정의 현재 화면 순서를 확정할 수 없어 이동을 취소했습니다. 목록으로 돌아가 상태를 확인한 뒤 다시 시도해 주세요.',
+          [
+            {
+              text: '확인',
+              onPress: () => router.back(),
+            },
+          ]
+        );
+        return;
+      }
+
+      if (selectionSessionId) {
+        publishSelectionResult({
+          sessionId: selectionSessionId,
+          status: 'success',
+          movedTodoIds: result?.movedTodoIds || [],
+          noOpTodoIds: result?.noOpTodoIds || [],
+        });
+      }
       router.back();
     } catch (error) {
       console.error('[TodoCategorySelectScreen] move failed:', error?.message || error);
+      Alert.alert('이동하지 못했습니다', '로컬 저장 중 문제가 발생했습니다. 잠시 후 다시 시도해 주세요.');
     }
-  }, [canApply, reorderTodoMutation, router, selectedCategoryId, selectedTodos, todos]);
+  }, [
+    bulkMoveMutation,
+    canApply,
+    originScope,
+    orderedTodoIds,
+    publishSelectionResult,
+    router,
+    selectedCategoryId,
+    selectionSessionId,
+    todoIds,
+  ]);
 
   const handleSelectionCommit = useCallback(({ selectedIds }) => {
     const nextCategoryId = selectedIds?.[0];
@@ -178,7 +243,7 @@ export default function TodoCategorySelectScreen() {
           },
         };
 
-  const isLoading = isTodosLoading || isCategoriesLoading;
+  const isLoading = isCategoriesLoading;
 
   return (
     <View style={styles.screen}>
@@ -215,7 +280,7 @@ export default function TodoCategorySelectScreen() {
         <View style={styles.centered}>
           <ActivityIndicator color={NATIVE_SELECTION_LIST_COLORS.action} />
         </View>
-      ) : selectedTodos.length === 0 ? (
+      ) : todoIds.length === 0 ? (
         <View style={styles.centered}>
           <Text style={styles.emptyText}>이동할 일정을 찾을 수 없습니다.</Text>
         </View>
