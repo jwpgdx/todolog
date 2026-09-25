@@ -1,7 +1,7 @@
 # 구현 감사표
 
 기준: 2026-09-21, 코드 `79cbc8d`. 정적 검토이며 전체 기능 회귀 테스트가 아니다.
-2026-09-24 문서 후속: D02 stale/missing selection 정책은 F24로 freeze했다. 아래 코드 차이는 구현 전 상태를 그대로 기록한다.
+2026-09-25 문서 후속: D02 stale/missing selection은 F24, D03 TodoScreen selection chrome은 F25, D04 platform-native interaction은 F26, D05 summary contract는 F27로 freeze했다. 아래 코드 차이는 구현 전 상태를 그대로 기록한다.
 아래 경로는 저장소 루트 기준이다. 함수 이름은 다음 작업자가 검색할 근거다.
 
 ## 1. 구조와 데이터 경로
@@ -43,8 +43,8 @@ iOS 엔진 선택은 `NativeListInteractionsSections.swift::shouldUseCustomTodoC
 |---|---|---|
 | `TodoScreen.js` | WeekFlowTodoHeader + inline 시간순/카테고리순 + NativeTodoManagedList. 즐겨찾기 section | 과거 iOS 검증. v2 native header 및 Todo 선택모드 미연결 |
 | `AllTodosScreen.js` | 날짜 범위 없는 category-grouped 목록 + favorites + 선택모드 | header/primary scroll 과거 검증. 최근 wrapper/style 문제 A01 확인 필요 |
-| `FavoriteTodosScreen.js` | 즐겨찾기 목록, 완료/해제/reorder, 선택모드 | SafeAreaView / RN 상단 구조가 남음. native header rollout 재검증 |
-| `CategoryTodosScreen.js` | iOS managed list; Android FlashList 분기 | Android 선택·드래그 동등성 미완성 |
+| `FavoriteTodosScreen.js` | 즐겨찾기 목록, 완료/해제/reorder, 선택모드 | SafeAreaView / RN `총 n개` 상단 구조가 남음. F27과 달리 summary가 native list item이 아니므로 rollout 재검증 |
+| `CategoryTodosScreen.js` | iOS managed list; Android FlashList 분기 | RN/FlashList `총 n개` header가 F27 summary contract와 다름. Android 선택·드래그 동등성도 미완성 |
 | `MyPageScreen.js` | RN ScrollView + 카테고리 manager + 일반 메뉴/프로필 + 실험 진입점 | 전체 NativeSettingsList 또는 Account Hub로 전환되지 않음 |
 | `CategoryFormScreen.js`, `CategoryColorScreen.js` | form modal; 색상 row는 pending 선택, 완료로 store 반영 후 back | 색상은 즉시 commit 정책이 아님. 양 플랫폼 흐름 재검증 필요 |
 | `TodoCategorySelectScreen.js` | single/bulk IDs, NativeSelectionList, staged target, 이동 action | 단일 이동 과거 검증. bulk는 A02~A06 |

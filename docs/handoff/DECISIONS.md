@@ -33,6 +33,7 @@
 | F24 | bulk action 실행 직전 로컬 SQLite 기준으로 선택 집합과 action의 필수 대상을 재검증한다. 선택 항목 중 삭제/tombstone·누락·현재 action scope 무효가 하나라도 있으면 아무 write/pending도 만들지 않고 전체 action을 중단한다. 무효 항목만 선택에서 제거하고 나머지 유효 선택은 유지하며 사용자가 다시 실행한다. 일시적 query/cache 공백은 삭제로 간주하지 않고, 기존 action별 idempotent no-op은 정상으로 본다. 검증과 write는 경쟁 상태로 부분 성공하지 않도록 같은 local transaction 경계에서 보장한다. | 2026-09-24 사용자 확정 D02; `.kiro/specs/todo-screen-v2/triage.md` stale selection policy |
 | F25 | TodoScreen도 별도 selection route/page를 만들지 않고 현재 화면 안에서 선택모드로 전환한다. 진입 시 현재 날짜·정렬·section 및 calendar의 mode/viewport 상태를 보존하되 RN title/date/calendar chrome은 화면에서 숨기고 조작할 수 없게 한다. NativeManagedList가 남은 본문 영역을 사용하며 공통 selection header/action bar 계약을 따른다. 선택 종료 시 진입 전 calendar 상태를 복원한다. | 2026-09-24 사용자 확정 D03; `.kiro/specs/todo-screen-v2/triage.md` TodoScreen selection chrome |
 | F26 | 플랫폼 간 기능 계약은 공유하되 gesture/presentation parity를 강제하지 않고 OS native primitive를 우선한다. iOS todo row long-press는 UIKit system context menu를 기본으로 하고, reorder 가능한 item은 `UICollectionView` native Drag & Drop으로 같은 gesture에서 drag 전환하는 경로를 우선 검증한다. UIKit은 gesture/lift/preview/drag session/ordinary feedback/drop animation을 소유하고 Todolog는 drop target, Favorites/category/order 의미, Inbox/timed constraints, hover-expand/persistence를 소유한다. Android todo row long-press는 contextual selection 진입으로 사용해 해당 row를 최초 선택하며, reorder는 명시적 native drag affordance에서 `ItemTouchHelper.startDrag()`로 시작한다. Android app-bar/row `⋮`는 anchored/overflow native menu가 기본이다. Selection 중에는 양 플랫폼 모두 reorder/drag/swipe/item menu/collapse를 비활성화한다. 기존 iOS custom engine은 native spike가 실제 기기에서 합격한 범위만 단계적으로 대체하고 그 전까지 reference/fallback baseline으로 보존한다. | 2026-09-25 사용자 확정 D04; iOS/Android native interaction audits |
+| F27 | Calendar-free todo list의 count/summary는 `NativeManagedList` 내부 non-interactive `summary` item으로 표시하고 RN header View를 list 앞에 두지 않는다. Count는 현재 화면의 scope/filter를 적용한 유효 todo 수이며 section collapse는 count를 바꾸지 않고 동일 todo는 중복 계산하지 않는다. Summary item은 selection/reorder/swipe/menu/drag-drop target이 아니며 selection mode에서는 header의 selected-count와 중복되지 않게 숨긴다. Summary trailing action은 별도 의미가 freeze된 경우에만 허용하며 Completed의 `지우기` 의미는 별도 결정 전 구현하지 않는다. | 2026-09-25 사용자 확정 D05; todo-screen-v2 summary contract |
 
 F03은 AllTodos 과거 실험의 최종 결론이다. 초기에 pageTitle을 권했던 외부 AI 답변은 최신 freeze가 아니다. F18은 form 내부 color의 예외이며 "모든 선택 화면을 새 modal로 연다"로 확대하지 않는다.
 
@@ -40,10 +41,9 @@ F03은 AllTodos 과거 실험의 최종 결론이다. 초기에 pageTitle을 권
 
 | ID | 질문 | 현재 근거 / 처리 방향 |
 |---|---|---|
-| D05 | summary item의 최종 표시·액션, 선택모드에서 노출 여부 | summary item 방향은 F04. 화면별 문구/지우기 범위/selection 표시 일부는 후보 |
 | D06 | 문서 정리 후 첫 구현 범위를 어디까지로 묶을지 | 추천: 환경 확인 후 calendar-free 선택/bulk 이동부터. settings/theme/account를 동시에 펼치지 않음 |
 
-한 번에 모든 질문을 다시 묻지 않는다. D02는 F24, D03은 F25, D04는 F26으로 freeze했다. 이제 D05처럼 다음 작업에 영향을 주는 미결정부터 확인하고, 사용자의 결정으로 정해진 항목은 반복 토론하지 않는다.
+한 번에 모든 질문을 다시 묻지 않는다. D02는 F24, D03은 F25, D04는 F26, D05는 F27로 freeze했다. 이제 D06처럼 다음 작업에 영향을 주는 미결정부터 확인하고, 사용자의 결정으로 정해진 항목은 반복 토론하지 않는다.
 
 ## 3. 논의보다 구현·검증이 필요한 항목
 
@@ -52,6 +52,7 @@ F03은 AllTodos 과거 실험의 최종 결론이다. 초기에 pageTitle을 권
 - A06의 missing/stale selection 처리와 A13의 필수 target 유효성은 F24로 확정됐다. 현재 코드는 아직 이 계약을 구현하지 않았으므로 구현·검증 대상으로 남긴다.
 - TodoScreen 선택모드 chrome은 F25로 확정됐다. 현재 TodoScreen에는 선택모드 자체가 미연결이므로 calendar hide/state restore와 공통 selection chrome은 구현·기기 검증 대상으로 남긴다.
 - 플랫폼 native interaction은 F26으로 확정됐다. iOS 기존 custom engine을 즉시 삭제하지 않으며 system context-menu → native collection drag → simple reorder bounded spike가 합격한 범위만 단계적으로 대체한다. Android todo/favorite native 구현은 long-press selection + explicit drag affordance 계약을 따른다.
+- Calendar-free summary item은 F27로 확정됐다. 현재 Favorites/Category의 RN `총 n개` header와 화면별 불일치는 구현·회귀 검증 대상으로 남긴다. Completed `지우기`는 의미가 별도 freeze되기 전 구현하지 않는다.
 - bulk 순서 보존과 성공 후 selection 종료도 이미 확정됐다. 코드 수정과 테스트 대상이다.
 - native header가 가능한지 다시 처음부터 실험하지 않는다. 현재 wrapper/layout 상태를 먼저 검증한다.
 - 색상 staged commit은 현재 코드와 최신 결정이 일치한다. 오래된 immediate-commit 문구는 폐기한다.

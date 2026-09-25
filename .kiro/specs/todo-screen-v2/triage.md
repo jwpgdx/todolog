@@ -1,7 +1,7 @@
 # Todo Screen V2 Triage
 
 Last Updated: 2026-09-25
-Status: Layout/selection/D02 stale-data/D03 TodoScreen selection chrome/D04 platform-native interaction decisions frozen; calendar-free selection mode and category picker partially implemented; formal requirements/design/tasks promotion pending
+Status: Layout/selection/D02 stale-data/D03 TodoScreen selection chrome/D04 platform-native interaction/D05 summary decisions frozen; calendar-free selection mode and category picker partially implemented; formal requirements/design/tasks promotion pending
 
 현재 인수인계는 [WEB_GPT_HANDOFF.md](../../../WEB_GPT_HANDOFF.md)에서 시작한다. 상단 freeze와 하단 과거 후보/질문이 함께 남아 있으므로, [결정 목록](../../../docs/handoff/DECISIONS.md)으로 확정 여부를 확인한다. 이번 감사는 코드 정적 확인이며 runtime 재검증이 아니다.
 
@@ -128,7 +128,7 @@ TodoScreen header menu는 아래 방식으로 고정한다.
 - todo 완료 toggle 자리는 checkbox/multiselect control로 대체한다.
 - 일정 item은 selected 상태 디자인을 가진다.
 - swipe action은 선택모드 중 비활성화한다.
-- 선택모드에서 summary item은 숨기는 것을 기본 후보로 둔다. 필요하면 선택 개수 title과 중복되지 않는 보조 정보만 남긴다.
+- 선택모드에서 summary item은 숨긴다. selection count는 native header가 담당하고 summary chrome은 표시하지 않는다.
 - category move 액션은 선택모드 자체를 별도 page로 이동시키지 않고, 현재 selection mode 위에서 별도 picker sheet/page를 연다.
 - TodoScreen도 별도 route/page 없이 in-place selection mode를 사용한다. RN title/date/calendar chrome 처리와 상태 보존 규칙은 아래 D03 freeze를 따른다.
 
@@ -285,6 +285,20 @@ AllTodos, Favorites, Category detail, Completed처럼 RN calendar가 없는 nati
 - Android도 같은 JS contract를 받되, Material list/header 스타일은 별도 Android policy에서 조정한다.
 
 이 결정은 RN header가 native large title collapse를 깨지 않게 하면서도, iOS 리스트 안의 header/footer/row 스타일을 활용하기 위한 1차 정책이다.
+### Summary count / action semantics (D05, 2026-09-25 freeze)
+
+- AllTodos: `총 n개의 일정`.
+- Favorites: `총 n개의 즐겨찾기`.
+- Category detail: `총 n개의 일정`.
+- Completed: `n개 완료됨`.
+- `n`은 해당 화면의 현재 scope/filter를 적용한 유효 todo 수다. 단순 section collapse는 presentation 상태이므로 count를 줄이지 않는다.
+- 동일 todo가 Favorites 상단과 일반 section 등에서 중복 표현될 수 있는 구조라도 summary count에서는 같은 todo를 두 번 세지 않는다.
+- summary item은 selectable, reorderable, swipeable, menuable 하지 않고 todo drag/drop insertion target도 아니다.
+- selection mode에서는 summary item을 숨긴다. header의 `n개 선택됨`과 전체 count를 동시에 경쟁시키지 않는다.
+- summary의 trailing action은 action의 데이터 의미와 파괴 범위가 별도로 freeze된 경우에만 제공한다.
+- Completed의 과거 예시 `지우기`는 무엇을 지우는지 의미가 아직 정의되지 않았으므로 D05에서 승인된 action이 아니다. 별도 freeze 전에는 구현하지 않는다.
+- iOS는 native list/content configuration을 우선하고 Android는 같은 summary contract를 Material/native list 표현으로 렌더한다.
+
 
 ## 확정 후보
 
