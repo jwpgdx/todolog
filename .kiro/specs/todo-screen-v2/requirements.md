@@ -274,7 +274,7 @@ When F24 validation fails:
 
 - the user must be informed that the selected set changed or is no longer fully valid;
 - the failed action must not auto-retry;
-- invalid selected entries may be removed from selection;
+- invalid selected entries shall be removed from selection when the structured validation result identifies them;
 - valid selected entries remain selected for review;
 - the UI must provide a path back to the originating selection surface.
 
