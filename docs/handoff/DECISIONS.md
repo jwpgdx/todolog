@@ -73,4 +73,4 @@ D02~D06은 각각 F24~F28로 freeze했다. 사용자 요청 없이 같은 정책
 
 웹 GPT와 결정할 때 ID, 질문, 기존 근거, 결정, 적용 화면/플랫폼, 제외 범위, 검증 조건을 해당 spec에 기록한다. 이 목록에서는 상태와 연결만 갱신한다. 원문 메모와 과거 검증 이력은 삭제하지 않는다.
 
-정책 확인이 끝나면 `.kiro/specs/todo-screen-v2/requirements.md`, `design.md`, `tasks.md`를 필요한 범위로 작성한다. 2026-09-21에는 raw-memo와 triage만 존재한다. 초안 작성 뒤 사용자 검토를 받고, 다음 구현 Gate를 자동 시작하지 않는다.
+D02-D06 정책 확인 후 `.kiro/specs/todo-screen-v2/requirements.md`, `design.md`, `tasks.md` formal draft를 2026-09-25 작성했다. 사용자 검토/승인 전에는 H2/H3 구현 Gate를 자동 시작하지 않는다.

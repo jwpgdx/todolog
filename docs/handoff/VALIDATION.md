@@ -29,3 +29,16 @@
 GitHub branch push 뒤 remote HEAD와 local HEAD를 대조한다. 최종 전달 메시지에 실제 commit을 기록한다. 문서 자체의 commit hash를 문서 안에 자기참조로 고정하지 않는다.
 
 H0 산출물은 인수인계 문서, 구현 감사표, 결정 목록, 실행 가이드, 시작 프롬프트다. 앱 기능 완료나 다음 구현 Gate 승인을 의미하지 않는다.
+
+
+## 2026-09-25 문서 후속
+
+범위: D02-D06 freeze 및 Todo Screen V2 formal spec 작성.
+
+- `docs/handoff/DECISIONS.md`에서 D02-D06을 F24-F28로 freeze했다.
+- iOS/Android native interaction audit 문서를 추가하고 D04 platform-native 경계를 freeze했다.
+- `.kiro/specs/todo-screen-v2/requirements.md`, `design.md`, `tasks.md`를 최신 freeze 기준으로 작성했다.
+- 첫 production milestone은 iOS calendar-free selection + bulk move로 제한했다.
+- TodoScreen selection, bulk delete/complete/favorite, Android todo/favorite native parity는 후속 milestone로 명시 분리했다.
+- 이 문서 단계에서 앱 소스, SQLite, pending queue, build/install, device runtime은 변경/실행하지 않았다.
+- formal spec은 사용자 검토 전 상태이며, 작성 자체가 implementation Gate 승인을 뜻하지 않는다.

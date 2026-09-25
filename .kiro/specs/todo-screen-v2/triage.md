@@ -1,12 +1,12 @@
 # Todo Screen V2 Triage
 
 Last Updated: 2026-09-25
-Status: D02-D06 frozen through F24-F28; calendar-free selection mode and category picker partially implemented; formal requirements/design/tasks promotion is the next gate
+Status: D02-D06 frozen through F24-F28; formal requirements/design/tasks drafted for user review; calendar-free selection mode and category picker remain partially implemented
 
 현재 인수인계는 [WEB_GPT_HANDOFF.md](../../../WEB_GPT_HANDOFF.md)에서 시작한다. 상단 freeze와 하단 과거 후보/질문이 함께 남아 있으므로, [결정 목록](../../../docs/handoff/DECISIONS.md)으로 확정 여부를 확인한다. 이번 감사는 코드 정적 확인이며 runtime 재검증이 아니다.
 
 이 문서는 `raw-memo.md`를 코드 확인 결과에 맞춰 `확정 후보`, `토론 필요`, `코드 확인 결과`, `나중 작업`으로 나눈다.
-아직 최종 요구사항 문서가 아니며, 다음 단계에서 freeze한 항목만 `requirements.md` / `design.md` / `tasks.md`로 승격한다.
+`requirements.md` / `design.md` / `tasks.md`는 2026-09-25 최신 freeze를 기준으로 formal draft가 작성됐다. 사용자 검토 전까지 implementation Gate를 자동 시작하지 않는다.
 
 ## 코드 확인 결과
 
