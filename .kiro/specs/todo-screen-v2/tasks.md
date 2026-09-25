@@ -20,8 +20,8 @@ Feature-code baseline remains `79cbc8d667019e99799bc4ade545c8085b8cba35`; later 
 - [x] `requirements.md` drafted from latest freeze
 - [x] `design.md` drafted from latest freeze
 - [x] `tasks.md` drafted from latest freeze
-- [ ] user review/acceptance of the formal spec
-- [ ] after user acceptance, record the approved spec commit before implementation
+- [x] user review/acceptance of the formal spec — approved 2026-09-25
+- [x] approval recorded before environment/implementation Gate
 
 **STOP:** do not start feature implementation automatically from this documentation gate.
 

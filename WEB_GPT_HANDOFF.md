@@ -7,7 +7,7 @@
 
 ## 지금 어디에서 멈췄는가
 
-사용자는 기능 개발을 멈추고 웹 GPT에서 문서/정책을 먼저 정리했다. D02-D06은 F24-F28로 freeze되었고, `.kiro/specs/todo-screen-v2/requirements.md`, `design.md`, `tasks.md` formal draft까지 작성됐다. 아직 사용자 formal-spec 검토 전이며 기능 구현, 의존성 업데이트, DB 변경, 새 기기 설치는 시작하지 않는다.
+사용자는 기능 개발을 멈추고 웹 GPT에서 문서/정책을 먼저 정리했다. D02-D06은 F24-F28로 freeze되었고, `.kiro/specs/todo-screen-v2/requirements.md`, `design.md`, `tasks.md` formal spec은 2026-09-25 사용자 승인을 받았다. 다음 Gate는 H2 환경/workspace 확인이며, 기능 구현·의존성 업데이트·DB 변경은 H2 확인 전 시작하지 않는다.
 
 마지막 기능 작업은 **캘린더 없는 화면의 선택모드와 다중 카테고리 이동**이다. Favorites / All Todos / Category detail에 선택 UI가 부분 구현되어 있다. 하단 네 액션 중 **이동만 연결**되어 있고, 삭제 / 완료 / 즐겨찾기는 미연결이다. 최신 다중 선택부터 SQLite 저장까지의 실제 기기 검증은 남아 있다.
 
@@ -65,6 +65,6 @@
 
 ## 웹 GPT에서 바로 할 일
 
-첫 작업은 **formal spec 3종(`requirements.md` / `design.md` / `tasks.md`)을 사용자와 검토해 승인 여부를 확인하는 것**이다. D02-D06은 이미 freeze됐으므로 다시 토론하지 않는다. 승인 후에도 바로 코드로 뛰지 말고 H2 환경/기기 확인을 먼저 하고, F28의 첫 production milestone만 실행한다.
+formal spec 3종은 2026-09-25 사용자 승인 완료다. 다음 작업은 **H2 환경/workspace 확인**이다. D02-D06을 다시 토론하지 않고, H2가 끝난 뒤 F28의 첫 production milestone만 실행한다.
 
 CoS는 사용자가 연결할 실행 도구다. 이 인수인계만으로 웹 대화에 파일·로컬 Mac·연결 휴대폰 접근 권한이 생기지 않는다. 아직 지정된 웹 대화로 이 문서를 전송하거나 CoS 로컬 실행을 검증하지 않았다.

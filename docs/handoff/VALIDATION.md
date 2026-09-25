@@ -42,3 +42,11 @@ H0 산출물은 인수인계 문서, 구현 감사표, 결정 목록, 실행 가
 - TodoScreen selection, bulk delete/complete/favorite, Android todo/favorite native parity는 후속 milestone로 명시 분리했다.
 - 이 문서 단계에서 앱 소스, SQLite, pending queue, build/install, device runtime은 변경/실행하지 않았다.
 - formal spec은 사용자 검토 전 상태이며, 작성 자체가 implementation Gate 승인을 뜻하지 않는다.
+
+
+## 2026-09-25 formal spec approval
+
+- User explicitly approved the Todo Screen V2 formal spec and instructed continuation.
+- Approved basis: D02-D06 = F24-F28, plus the formal `requirements.md`, `design.md`, and `tasks.md`.
+- Approval authorizes moving to H2 environment/workspace verification; it does **not** authorize scope expansion beyond F28.
+- No feature code, SQLite, pending queue, build/install, or device runtime was changed by recording this approval.
