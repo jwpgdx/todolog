@@ -127,8 +127,8 @@ export async function ensureInboxCategory() {
  * @param {string} id
  * @returns {Promise<Object|null>}
  */
-export async function getCategoryById(id) {
-    const db = getDatabase();
+export async function getCategoryById(id, connection = null) {
+    const db = connection || getDatabase();
 
     const result = await db.getFirstAsync(
         'SELECT * FROM categories WHERE _id = ?',
@@ -155,9 +155,11 @@ export async function getCategoryByName(name) {
     return result ? deserializeCategory(result) : null;
 }
 
-export async function getNextUserCategoryOrder() {
-    await ensureDatabase();
-    const db = getDatabase();
+export async function getNextUserCategoryOrder(connection = null) {
+    if (!connection) {
+        await ensureDatabase();
+    }
+    const db = connection || getDatabase();
 
     const result = await db.getFirstAsync(
         `SELECT COALESCE(MAX(order_index), ?) as max_order
@@ -180,8 +182,8 @@ export async function getNextUserCategoryOrder() {
  * @param {Object} category
  * @returns {Promise<void>}
  */
-export async function upsertCategory(category) {
-    const db = getDatabase();
+export async function upsertCategory(category, connection = null) {
+    const db = connection || getDatabase();
 
     await db.runAsync(`
     INSERT OR REPLACE INTO categories 
@@ -260,28 +262,38 @@ export async function deleteCategoryCascade(id) {
     const now = new Date().toISOString();
 
     await db.withTransactionAsync(async () => {
-        await db.runAsync(
-            'UPDATE categories SET deleted_at = ?, updated_at = ? WHERE _id = ?',
-            [now, now, id]
-        );
-
-        await db.runAsync(
-            `UPDATE todos
-             SET deleted_at = ?, updated_at = ?
-             WHERE category_id = ? AND deleted_at IS NULL`,
-            [now, now, id]
-        );
-
-        await db.runAsync(
-            `UPDATE completions
-             SET deleted_at = ?
-             WHERE deleted_at IS NULL
-               AND todo_id IN (
-                 SELECT _id FROM todos WHERE category_id = ?
-               )`,
-            [now, id]
-        );
+        await deleteCategoryCascadeOnConnection(db, id, now);
     });
+}
+
+export async function deleteCategoryCascadeOnConnection(
+    connection,
+    id,
+    deletedAt = new Date().toISOString()
+) {
+    if (!connection || !id) return;
+
+    await connection.runAsync(
+        'UPDATE categories SET deleted_at = ?, updated_at = ? WHERE _id = ?',
+        [deletedAt, deletedAt, id]
+    );
+
+    await connection.runAsync(
+        `UPDATE todos
+         SET deleted_at = ?, updated_at = ?
+         WHERE category_id = ? AND deleted_at IS NULL`,
+        [deletedAt, deletedAt, id]
+    );
+
+    await connection.runAsync(
+        `UPDATE completions
+         SET deleted_at = ?
+         WHERE deleted_at IS NULL
+           AND todo_id IN (
+             SELECT _id FROM todos WHERE category_id = ?
+           )`,
+        [deletedAt, id]
+    );
 }
 
 /**

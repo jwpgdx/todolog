@@ -1,8 +1,8 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import NetInfo from '@react-native-community/netinfo';
-import { deleteTodo } from '../../services/db/todoService';
-import { addPendingChange } from '../../services/db/pendingService';
-import { ensureDatabase } from '../../services/db/database';
+import { deleteTodoOnConnection } from '../../services/db/todoService';
+import { addPendingChangeOnConnection } from '../../services/db/pendingService';
+import { withWriteTransaction } from '../../services/db/database';
 import { invalidateTodoSummary as invalidateDaySummariesTodo } from '../../features/calendar-day-summaries';
 import { invalidateTodoCalendarV2Layouts } from '../../features/todo-calendar-v2/services/todoCalendarV2InvalidationService';
 import { useSyncContext } from '../../providers/SyncProvider';
@@ -20,11 +20,11 @@ export const useDeleteTodo = () => {
       await queryClient.cancelQueries({ queryKey: ['todos', todo.startDate] });
       
       // 2. 이전 데이터 백업
-      const previousAll = queryClient.getQueryData(['todos', 'all']);
+      const previousAllQueries = queryClient.getQueriesData({ queryKey: ['todos', 'all'] });
       const previousDate = queryClient.getQueryData(['todos', todo.startDate]);
       
       // 3. 캐시에서 제거
-      queryClient.setQueryData(['todos', 'all'], (old) => {
+      queryClient.setQueriesData({ queryKey: ['todos', 'all'] }, (old) => {
         if (!old) return old;
         return old.filter(t => t._id !== todo._id);
       });
@@ -40,7 +40,7 @@ export const useDeleteTodo = () => {
       }
       
       if (todo.categoryId) {
-        queryClient.setQueryData(['todos', 'category', todo.categoryId], (old) => {
+        queryClient.setQueriesData({ queryKey: ['todos', 'category', todo.categoryId] }, (old) => {
           if (!old) return old;
           return old.filter(t => t._id !== todo._id);
         });
@@ -49,24 +49,19 @@ export const useDeleteTodo = () => {
       const mutateEndTime = performance.now();
       console.log(`⚡ [useDeleteTodo] onMutate 완료: ${(mutateEndTime - mutateStartTime).toFixed(2)}ms`);
       
-      return { previousAll, previousDate, deletedTodo: todo };
+      return { previousAllQueries, previousDate, deletedTodo: todo };
     },
     mutationFn: async (todo) => {
       const fnStartTime = performance.now();
 
-      // 로컬 삭제 헬퍼 함수
-      const deleteLocally = async () => {
-        await ensureDatabase();
-        await deleteTodo(todo._id);
-        await addPendingChange({
+      const result = await withWriteTransaction(async (transaction) => {
+        await deleteTodoOnConnection(transaction, todo._id);
+        await addPendingChangeOnConnection(transaction, {
           type: 'deleteTodo',
           entityId: todo._id,
         });
         return { message: 'SQLite 삭제 완료', deletedTodo: todo };
-      };
-
-      // Offline-first: 항상 로컬 반영 + Pending에 추가하고, 서버 반영은 SyncService(Pending Push)에 맡긴다.
-      const result = await deleteLocally();
+      });
 
       // 온라인이면 백그라운드 동기화 트리거 (UI는 기다리지 않음)
       try {
@@ -107,8 +102,10 @@ export const useDeleteTodo = () => {
     onError: (error, todo, context) => {
       console.error('❌ [useDeleteTodo] 에러 발생 - 롤백 시작:', error.message);
       
-      if (context?.previousAll) {
-        queryClient.setQueryData(['todos', 'all'], context.previousAll);
+      if (Array.isArray(context?.previousAllQueries)) {
+        context.previousAllQueries.forEach(([queryKey, queryData]) => {
+          queryClient.setQueryData(queryKey, queryData);
+        });
       }
       
       if (context?.previousDate && todo.startDate) {

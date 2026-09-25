@@ -1,8 +1,8 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import NetInfo from '@react-native-community/netinfo';
-import { deleteCategoryCascade } from '../../services/db/categoryService';
-import { addPendingChange } from '../../services/db/pendingService';
-import { ensureDatabase } from '../../services/db/database';
+import { deleteCategoryCascadeOnConnection } from '../../services/db/categoryService';
+import { addPendingChangeOnConnection } from '../../services/db/pendingService';
+import { withWriteTransaction } from '../../services/db/database';
 import { invalidateAllScreenCaches } from '../../services/query-aggregation/cache';
 import { useSyncContext } from '../../providers/SyncProvider';
 
@@ -14,15 +14,14 @@ export const useDeleteCategory = () => {
         mutationFn: async (id) => {
             console.log('🚀 [useDeleteCategory] 카테고리 삭제:', id);
 
-            await ensureDatabase();
-
-            await deleteCategoryCascade(id);
-            console.log('✅ [useDeleteCategory] SQLite cascade 삭제 완료:', id);
-
-            await addPendingChange({
-                type: 'deleteCategory',
-                entityId: id,
+            await withWriteTransaction(async (transaction) => {
+                await deleteCategoryCascadeOnConnection(transaction, id);
+                await addPendingChangeOnConnection(transaction, {
+                    type: 'deleteCategory',
+                    entityId: id,
+                });
             });
+            console.log('✅ [useDeleteCategory] SQLite cascade 삭제 완료:', id);
 
             try {
                 const netInfo = await NetInfo.fetch();

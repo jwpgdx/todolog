@@ -31,46 +31,52 @@ function getOrderValue(todo, lane, { nullable = false, fallback = 0 } = {}) {
   return toFiniteNumber(rawValue, fallback);
 }
 
-async function getMaxOrderValue(sql, params = []) {
-  const db = getDatabase();
+async function getMaxOrderValue(sql, params = [], connection = null) {
+  const db = connection || getDatabase();
   const result = await db.getFirstAsync(sql, params);
   return toFiniteNumber(result?.max_order, 0);
 }
 
-export async function getNextCustomOrder() {
+export async function getNextCustomOrder(connection = null) {
   const maxOrder = await getMaxOrderValue(
     `SELECT MAX(custom_order) as max_order
      FROM todos
-     WHERE deleted_at IS NULL`
+     WHERE deleted_at IS NULL`,
+    [],
+    connection
   );
   return maxOrder + ORDER_STEP;
 }
 
-export async function getNextCategoryOrder(categoryId) {
+export async function getNextCategoryOrder(categoryId, connection = null) {
   const maxOrder = await getMaxOrderValue(
     `SELECT MAX(category_order) as max_order
      FROM todos
      WHERE deleted_at IS NULL AND category_id = ?`,
-    [categoryId]
+    [categoryId],
+    connection
   );
   return maxOrder + ORDER_STEP;
 }
 
-export async function getNextFavoriteOrder() {
+export async function getNextFavoriteOrder(connection = null) {
   const maxOrder = await getMaxOrderValue(
     `SELECT MAX(favorite_order) as max_order
      FROM todos
-     WHERE deleted_at IS NULL AND favorite_order IS NOT NULL`
+     WHERE deleted_at IS NULL AND favorite_order IS NOT NULL`,
+    [],
+    connection
   );
   return maxOrder + ORDER_STEP;
 }
 
-export async function buildNewTodoOrders({ categoryId, isFavorite = false }) {
-  const [custom, category, favorite] = await Promise.all([
-    getNextCustomOrder(),
-    getNextCategoryOrder(categoryId),
-    isFavorite ? getNextFavoriteOrder() : Promise.resolve(null),
-  ]);
+export async function buildNewTodoOrders(
+  { categoryId, isFavorite = false },
+  connection = null
+) {
+  const custom = await getNextCustomOrder(connection);
+  const category = await getNextCategoryOrder(categoryId, connection);
+  const favorite = isFavorite ? await getNextFavoriteOrder(connection) : null;
 
   return { custom, category, favorite };
 }
@@ -158,8 +164,8 @@ export async function getTodosByMonth(year, month) {
  * @param {string} id
  * @returns {Promise<Object|null>}
  */
-export async function getTodoById(id) {
-  const db = getDatabase();
+export async function getTodoById(id, connection = null) {
+  const db = connection || getDatabase();
 
   const result = await db.getFirstAsync(`
     SELECT 
@@ -229,8 +235,8 @@ export async function getTodosByCategory(categoryId) {
  * @param {Object} todo
  * @returns {Promise<void>}
  */
-export async function upsertTodo(todo) {
-  const db = getDatabase();
+export async function upsertTodo(todo, connection = null) {
+  const db = connection || getDatabase();
 
   // ⚠️ INSERT OR REPLACE는 내부적으로 DELETE + INSERT로 동작하여
   // FOREIGN KEY ON DELETE CASCADE가 트리거되어 completions가 삭제됨
@@ -316,16 +322,26 @@ export async function deleteTodo(id) {
   const now = new Date().toISOString();
 
   await db.withTransactionAsync(async () => {
-    await db.runAsync(
-      'UPDATE todos SET deleted_at = ?, updated_at = ? WHERE _id = ?',
-      [now, now, id]
-    );
-
-    await db.runAsync(
-      'UPDATE completions SET deleted_at = ? WHERE todo_id = ? AND deleted_at IS NULL',
-      [now, id]
-    );
+    await deleteTodoOnConnection(db, id, now);
   });
+}
+
+export async function deleteTodoOnConnection(
+  connection,
+  id,
+  deletedAt = new Date().toISOString()
+) {
+  if (!connection || !id) return;
+
+  await connection.runAsync(
+    'UPDATE todos SET deleted_at = ?, updated_at = ? WHERE _id = ?',
+    [deletedAt, deletedAt, id]
+  );
+
+  await connection.runAsync(
+    'UPDATE completions SET deleted_at = ? WHERE todo_id = ? AND deleted_at IS NULL',
+    [deletedAt, id]
+  );
 }
 
 /**

@@ -1,10 +1,10 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import NetInfo from '@react-native-community/netinfo';
 import {
-  toggleCompletion as sqliteToggleCompletion,
+  toggleCompletionOnConnection as sqliteToggleCompletion,
 } from '../../services/db/completionService';
-import { addPendingChange } from '../../services/db/pendingService';
-import { ensureDatabase } from '../../services/db/database';
+import { addPendingChangeOnConnection } from '../../services/db/pendingService';
+import { withWriteTransaction } from '../../services/db/database';
 import { generateId } from '../../utils/idGenerator';
 import { invalidateCompletionDependentCaches } from '../../services/query-aggregation/cache';
 import { useSyncContext } from '../../providers/SyncProvider';
@@ -35,11 +35,29 @@ export const useToggleCompletion = () => {
       // UUID 생성 (완료 생성 시 사용)
       const completionId = generateId();
 
-      // 1. SQLite 초기화 보장 후 토글 (Optimistic)
       let toggleResult;
       try {
-        await ensureDatabase();
-        toggleResult = await sqliteToggleCompletion(todoId, completionDate, completionId);
+        toggleResult = await withWriteTransaction(async (transaction) => {
+          const nextToggleResult = await sqliteToggleCompletion(
+            transaction,
+            todoId,
+            completionDate,
+            completionId
+          );
+          const optimisticState = nextToggleResult.completed;
+          const effectiveCompletionId = nextToggleResult.effectiveCompletionId;
+          const pendingData = optimisticState
+            ? { _id: effectiveCompletionId, todoId, date: completionDate, isRecurring }
+            : { todoId, date: completionDate, isRecurring };
+
+          await addPendingChangeOnConnection(transaction, {
+            type: optimisticState ? 'createCompletion' : 'deleteCompletion',
+            entityId: completionKey,
+            data: pendingData,
+          });
+
+          return nextToggleResult;
+        });
       } catch (error) {
         console.error('❌ [useToggleCompletion] SQLite 토글 실패:', error.message);
         throw error;
@@ -47,16 +65,6 @@ export const useToggleCompletion = () => {
 
       const optimisticState = toggleResult.completed;
       const effectiveCompletionId = toggleResult.effectiveCompletionId;
-
-      const pendingData = optimisticState
-        ? { _id: effectiveCompletionId, todoId, date: completionDate, isRecurring }
-        : { todoId, date: completionDate, isRecurring };
-
-      await addPendingChange({
-        type: optimisticState ? 'createCompletion' : 'deleteCompletion',
-        entityId: completionKey,
-        data: pendingData,
-      });
 
       try {
         const netInfo = await NetInfo.fetch();

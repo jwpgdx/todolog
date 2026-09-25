@@ -6,8 +6,8 @@ import {
   getNextCategoryOrder,
   getNextFavoriteOrder,
 } from '../../services/db/todoService';
-import { addPendingChange } from '../../services/db/pendingService';
-import { ensureDatabase } from '../../services/db/database';
+import { addPendingChangeOnConnection } from '../../services/db/pendingService';
+import { ensureDatabase, withWriteTransaction } from '../../services/db/database';
 import { invalidateTodoSummary as invalidateDaySummariesTodo } from '../../features/calendar-day-summaries';
 import { invalidateTodoCalendarV2Layouts } from '../../features/todo-calendar-v2/services/todoCalendarV2InvalidationService';
 import { useSyncContext } from '../../providers/SyncProvider';
@@ -20,19 +20,23 @@ export const useUpdateTodo = () => {
     onMutate: async ({ id, data }) => {
       const mutateStartTime = performance.now();
 
-      // 1. 진행 중인 refetch 취소
-      await queryClient.cancelQueries({ queryKey: ['todos', 'all'] });
-      await queryClient.cancelQueries({ queryKey: ['todos', data.startDate] });
-
-      // 2. 이전 데이터 백업
-      const previousAll = queryClient.getQueryData(['todos', 'all']);
-      const previousDate = queryClient.getQueryData(['todos', data.startDate]);
-
-      // 기존 Todo 찾기
-      const oldTodo = previousAll?.find(t => t._id === id);
+      // 1. 진행 중인 todo refetch 취소 + 실제 all-query family snapshot
+      await queryClient.cancelQueries({ queryKey: ['todos'] });
+      const previousAllQueries = queryClient.getQueriesData({ queryKey: ['todos', 'all'] });
+      let oldTodo = previousAllQueries
+        .flatMap(([, queryData]) => (Array.isArray(queryData) ? queryData : []))
+        .find((todo) => todo?._id === id);
+      if (!oldTodo) {
+        await ensureDatabase();
+        oldTodo = await getTodoById(id);
+      }
+      const previousDateKey = data.startDate || oldTodo?.startDate || oldTodo?.date || null;
+      const previousDate = previousDateKey
+        ? queryClient.getQueryData(['todos', previousDateKey])
+        : undefined;
 
       // 3. 캐시 직접 업데이트
-      queryClient.setQueryData(['todos', 'all'], (old) => {
+      queryClient.setQueriesData({ queryKey: ['todos', 'all'] }, (old) => {
         if (!old) return old;
         return old.map(todo =>
           todo._id === id
@@ -42,34 +46,40 @@ export const useUpdateTodo = () => {
       });
 
       // 날짜 처리: 반복 일정 또는 기간 일정 관련 여부 확인
+      const startDateProvided = Object.prototype.hasOwnProperty.call(data, 'startDate');
+      const endDateProvided = Object.prototype.hasOwnProperty.call(data, 'endDate');
+      const recurrenceProvided = Object.prototype.hasOwnProperty.call(data, 'recurrence');
+      const previousStartDate = oldTodo?.startDate || oldTodo?.date || null;
+      const nextStartDate = startDateProvided ? data.startDate : previousStartDate;
+      const nextEndDate = endDateProvided ? data.endDate : oldTodo?.endDate;
       const wasRecurrence = oldTodo && oldTodo.recurrence;
-      const nowRecurrence = data.recurrence;
+      const nowRecurrence = recurrenceProvided ? data.recurrence : oldTodo?.recurrence;
       const wasMultiDay = oldTodo && oldTodo.startDate !== oldTodo.endDate;
-      const nowMultiDay = data.startDate !== data.endDate;
+      const nowMultiDay = Boolean(nextStartDate) && nextStartDate !== (nextEndDate || nextStartDate);
 
       if (wasRecurrence || nowRecurrence || wasMultiDay || nowMultiDay) {
         // 반복/기간 일정 관련: onSuccess에서 처리
       } else {
         // 단일 → 단일: Optimistic Update
-        if (oldTodo && oldTodo.startDate !== data.startDate) {
+        if (oldTodo && startDateProvided && previousStartDate !== nextStartDate) {
           // 이전 날짜 캐시에서 제거
-          if (oldTodo.startDate) {
-            queryClient.setQueryData(['todos', oldTodo.startDate], (old) => {
+          if (previousStartDate) {
+            queryClient.setQueryData(['todos', previousStartDate], (old) => {
               if (!old) return old;
               return old.filter(t => t._id !== id);
             });
           }
 
           // 새 날짜 캐시에 추가
-          if (data.startDate) {
-            queryClient.setQueryData(['todos', data.startDate], (old) => {
+          if (nextStartDate) {
+            queryClient.setQueryData(['todos', nextStartDate], (old) => {
               const updatedTodo = { ...oldTodo, ...data, updatedAt: new Date().toISOString() };
               return old ? [...old, updatedTodo] : [updatedTodo];
             });
           }
-        } else if (data.startDate) {
+        } else if (previousStartDate) {
           // 날짜 변경 없음 - 기존 날짜 캐시 업데이트
-          queryClient.setQueryData(['todos', data.startDate], (old) => {
+          queryClient.setQueryData(['todos', previousStartDate], (old) => {
             if (!old) return old;
             return old.map(todo =>
               todo._id === id
@@ -80,11 +90,12 @@ export const useUpdateTodo = () => {
         }
       }
 
-      // 카테고리 변경 처리
-      if (oldTodo && oldTodo.categoryId !== data.categoryId) {
+      // 카테고리 변경 처리: partial update에서 categoryId가 없으면 건드리지 않는다.
+      const categoryIdProvided = Object.prototype.hasOwnProperty.call(data, 'categoryId');
+      if (oldTodo && categoryIdProvided && oldTodo.categoryId !== data.categoryId) {
         // 이전 카테고리 캐시에서 제거
         if (oldTodo.categoryId) {
-          queryClient.setQueryData(['todos', 'category', oldTodo.categoryId], (old) => {
+          queryClient.setQueriesData({ queryKey: ['todos', 'category', oldTodo.categoryId] }, (old) => {
             if (!old) return old;
             return old.filter(t => t._id !== id);
           });
@@ -92,14 +103,14 @@ export const useUpdateTodo = () => {
 
         // 새 카테고리 캐시에 추가
         if (data.categoryId) {
-          queryClient.setQueryData(['todos', 'category', data.categoryId], (old) => {
+          queryClient.setQueriesData({ queryKey: ['todos', 'category', data.categoryId] }, (old) => {
             const updatedTodo = { ...oldTodo, ...data, updatedAt: new Date().toISOString() };
-            return old ? [...old, updatedTodo] : [updatedTodo];
+            return old ? [...old, updatedTodo] : old;
           });
         }
-      } else if (data.categoryId) {
-        // 카테고리 변경 없음 - 기존 카테고리 캐시 업데이트
-        queryClient.setQueryData(['todos', 'category', data.categoryId], (old) => {
+      } else if (oldTodo?.categoryId) {
+        // 카테고리 변경 없음(또는 categoryId가 없는 partial update) - 기존 family 업데이트
+        queryClient.setQueriesData({ queryKey: ['todos', 'category', oldTodo.categoryId] }, (old) => {
           if (!old) return old;
           return old.map(todo =>
             todo._id === id
@@ -112,17 +123,13 @@ export const useUpdateTodo = () => {
       const mutateEndTime = performance.now();
       console.log(`⚡ [useUpdateTodo] onMutate 완료: ${(mutateEndTime - mutateStartTime).toFixed(2)}ms`);
 
-      return { previousAll, previousDate, oldTodo };
+      return { previousAllQueries, previousDate, previousDateKey, oldTodo };
     },
     mutationFn: async ({ id, data }) => {
       const fnStartTime = performance.now();
 
-      // 로컬 저장 헬퍼 함수
-      const updateLocally = async () => {
-        await ensureDatabase();
-
-        // 기존 SQLite 데이터 업데이트
-        const existingTodo = await getTodoById(id);
+      const result = await withWriteTransaction(async (transaction) => {
+        const existingTodo = await getTodoById(id, transaction);
 
         if (existingTodo) {
           const categoryChanged =
@@ -140,11 +147,11 @@ export const useUpdateTodo = () => {
           };
 
           if (categoryChanged && data.order?.category === undefined) {
-            nextOrder.category = await getNextCategoryOrder(data.categoryId);
+            nextOrder.category = await getNextCategoryOrder(data.categoryId, transaction);
           }
 
           if (toggledFavoriteOn && data.order?.favorite === undefined) {
-            nextOrder.favorite = await getNextFavoriteOrder();
+            nextOrder.favorite = await getNextFavoriteOrder(transaction);
           }
 
           if (toggledFavoriteOff) {
@@ -159,7 +166,7 @@ export const useUpdateTodo = () => {
             syncStatus: 'pending',
           };
 
-          await upsertTodo(updatedTodo);
+          await upsertTodo(updatedTodo, transaction);
 
           const pendingData = {
             ...data,
@@ -167,7 +174,7 @@ export const useUpdateTodo = () => {
           };
 
           // Pending changes에 추가
-          await addPendingChange({
+          await addPendingChangeOnConnection(transaction, {
             type: 'updateTodo',
             entityId: id,
             data: pendingData,
@@ -177,10 +184,7 @@ export const useUpdateTodo = () => {
         }
 
         throw new Error('SQLite에서 할일을 찾을 수 없습니다');
-      };
-
-      // Offline-first: 항상 로컬 반영 + Pending에 추가하고, 서버 반영은 SyncService(Pending Push)에 맡긴다.
-      const result = await updateLocally();
+      });
 
       // 온라인이면 백그라운드 동기화 트리거 (UI는 기다리지 않음)
       try {
@@ -219,12 +223,14 @@ export const useUpdateTodo = () => {
     onError: (error, { id, data }, context) => {
       console.error('❌ [useUpdateTodo] 에러 발생 - 롤백 시작:', error.message);
 
-      if (context?.previousAll) {
-        queryClient.setQueryData(['todos', 'all'], context.previousAll);
+      if (Array.isArray(context?.previousAllQueries)) {
+        context.previousAllQueries.forEach(([queryKey, queryData]) => {
+          queryClient.setQueryData(queryKey, queryData);
+        });
       }
 
-      if (context?.previousDate && data.startDate) {
-        queryClient.setQueryData(['todos', data.startDate], context.previousDate);
+      if (context?.previousDate && context?.previousDateKey) {
+        queryClient.setQueryData(['todos', context.previousDateKey], context.previousDate);
       }
 
       // 날짜 변경 시 추가된 캐시 롤백
@@ -238,7 +244,12 @@ export const useUpdateTodo = () => {
       }
 
       // 카테고리 변경 시 추가된 캐시 롤백
-      if (context?.oldTodo && context.oldTodo.categoryId !== data.categoryId) {
+      const categoryIdProvided = Object.prototype.hasOwnProperty.call(data, 'categoryId');
+      if (
+        context?.oldTodo &&
+        categoryIdProvided &&
+        context.oldTodo.categoryId !== data.categoryId
+      ) {
         if (context.oldTodo.categoryId) {
           queryClient.invalidateQueries({ queryKey: ['todos', 'category', context.oldTodo.categoryId] });
         }
@@ -246,6 +257,7 @@ export const useUpdateTodo = () => {
           queryClient.invalidateQueries({ queryKey: ['todos', 'category', data.categoryId] });
         }
       }
+      queryClient.invalidateQueries({ queryKey: ['todos', 'category'] });
 
       console.error('❌ [useUpdateTodo] 할일 수정 실패:', error.message);
     },

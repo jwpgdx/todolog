@@ -2,8 +2,8 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import NetInfo from '@react-native-community/netinfo';
 import { buildNewTodoOrders, upsertTodo } from '../../services/db/todoService';
-import { addPendingChange } from '../../services/db/pendingService';
-import { ensureDatabase } from '../../services/db/database';
+import { addPendingChangeOnConnection } from '../../services/db/pendingService';
+import { ensureDatabase, withWriteTransaction } from '../../services/db/database';
 import { generateId } from '../../utils/idGenerator';
 import { invalidateTodoSummary as invalidateDaySummariesTodo } from '../../features/calendar-day-summaries';
 import { invalidateTodoCalendarV2Layouts } from '../../features/todo-calendar-v2/services/todoCalendarV2InvalidationService';
@@ -24,24 +24,23 @@ export const useCreateTodo = () => {
 
       await ensureDatabase();
 
-      if (!variables.order) {
-        variables.order = await buildNewTodoOrders({
+      const optimisticOrder = variables.order || await buildNewTodoOrders({
           categoryId: variables.categoryId,
           isFavorite: Boolean(variables.isFavorite),
         });
-      }
       
       // 1. 진행 중인 refetch 취소
       await queryClient.cancelQueries({ queryKey: ['todos', 'all'] });
       await queryClient.cancelQueries({ queryKey: ['todos', variables.startDate] });
       
       // 2. 이전 데이터 백업
-      const previousAll = queryClient.getQueryData(['todos', 'all']);
+      const previousAllQueries = queryClient.getQueriesData({ queryKey: ['todos', 'all'] });
       const previousDate = queryClient.getQueryData(['todos', variables.startDate]);
       
       // 3. Optimistic Todo 생성
       const optimisticTodo = {
         ...variables,
+        order: optimisticOrder,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
         completed: false,
@@ -49,7 +48,7 @@ export const useCreateTodo = () => {
       };
       
       // 4. 캐시 직접 업데이트
-      queryClient.setQueryData(['todos', 'all'], (old) => {
+      queryClient.setQueriesData({ queryKey: ['todos', 'all'] }, (old) => {
         return old ? [...old, optimisticTodo] : [optimisticTodo];
       });
       
@@ -61,38 +60,45 @@ export const useCreateTodo = () => {
           return old ? [...old, optimisticTodo] : [optimisticTodo];
         });
       }
+
+      if (variables.categoryId) {
+        queryClient.setQueriesData(
+          { queryKey: ['todos', 'category', variables.categoryId] },
+          (old) => (old ? [...old, optimisticTodo] : old)
+        );
+      }
       
       const mutateEndTime = performance.now();
       console.log(`⚡ [useCreateTodo] onMutate 완료: ${(mutateEndTime - mutateStartTime).toFixed(2)}ms`);
       
       // 5. 백업 데이터 반환 (롤백용)
-      return { previousAll, previousDate, optimisticTodo };
+      return { previousAllQueries, previousDate, optimisticTodo };
     },
     mutationFn: async (data) => {
       const fnStartTime = performance.now();
 
-      await ensureDatabase();
-
-      // variables에서 전달된 _id 사용 (새로 생성하지 않음)
-      const todo = {
-        ...data,
-        order: data.order || await buildNewTodoOrders({
+      const todo = await withWriteTransaction(async (transaction) => {
+        const order = data.order || await buildNewTodoOrders({
           categoryId: data.categoryId,
           isFavorite: Boolean(data.isFavorite),
-        }),
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-        syncStatus: 'pending',
-      };
+        }, transaction);
+        const now = new Date().toISOString();
+        const nextTodo = {
+          ...data,
+          order,
+          createdAt: now,
+          updatedAt: now,
+          syncStatus: 'pending',
+        };
 
-      // SQLite에 즉시 저장
-      await upsertTodo(todo);
+        await upsertTodo(nextTodo, transaction);
+        await addPendingChangeOnConnection(transaction, {
+          type: 'createTodo',
+          entityId: data._id,
+          data: nextTodo,
+        });
 
-      // Offline-first: 항상 Pending에 추가하고, 서버 반영은 SyncService(Pending Push)에 맡긴다.
-      await addPendingChange({
-        type: 'createTodo',
-        entityId: data._id,
-        data: todo,
+        return nextTodo;
       });
 
       // 온라인이면 백그라운드 동기화 트리거 (UI는 기다리지 않음)
@@ -138,8 +144,10 @@ export const useCreateTodo = () => {
       console.error('❌ [useCreateTodo] 에러 발생 - 롤백 시작:', error.message);
       
       // 백업 데이터로 복구
-      if (context?.previousAll) {
-        queryClient.setQueryData(['todos', 'all'], context.previousAll);
+      if (Array.isArray(context?.previousAllQueries)) {
+        context.previousAllQueries.forEach(([queryKey, data]) => {
+          queryClient.setQueryData(queryKey, data);
+        });
       }
       
       if (context?.previousDate && variables.startDate) {
@@ -147,7 +155,7 @@ export const useCreateTodo = () => {
       }
       
       if (context?.optimisticTodo && variables.categoryId) {
-        queryClient.setQueryData(['todos', 'category', variables.categoryId], (old) => {
+        queryClient.setQueriesData({ queryKey: ['todos', 'category', variables.categoryId] }, (old) => {
           if (!old) return old;
           return old.filter(todo => todo._id !== context.optimisticTodo._id);
         });

@@ -233,6 +233,11 @@ export async function hasCompletion(todoId, date) {
  */
 export async function toggleCompletion(todoId, date, completionId) {
     const db = getDatabase();
+    return toggleCompletionOnConnection(db, todoId, date, completionId);
+}
+
+export async function toggleCompletionOnConnection(connection, todoId, date, completionId) {
+    const db = connection || getDatabase();
     const key = buildCompletionKey(todoId, date);
 
     console.log(`🔄 [toggleCompletion] 시작: key=${key}, date=${JSON.stringify(date)}`);

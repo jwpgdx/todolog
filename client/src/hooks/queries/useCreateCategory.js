@@ -1,8 +1,8 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import NetInfo from '@react-native-community/netinfo';
 import { getNextUserCategoryOrder, upsertCategory } from '../../services/db/categoryService';
-import { addPendingChange } from '../../services/db/pendingService';
-import { ensureDatabase } from '../../services/db/database';
+import { addPendingChangeOnConnection } from '../../services/db/pendingService';
+import { withWriteTransaction } from '../../services/db/database';
 import { generateId } from '../../utils/idGenerator';
 import { invalidateAllScreenCaches } from '../../services/query-aggregation/cache';
 import { useSyncContext } from '../../providers/SyncProvider';
@@ -15,27 +15,28 @@ export const useCreateCategory = () => {
     mutationFn: async (data) => {
       console.log('🚀 [useCreateCategory] 카테고리 생성 요청:', data);
 
-      await ensureDatabase();
+      const category = await withWriteTransaction(async (transaction) => {
+        const categoryId = generateId();
+        const now = new Date().toISOString();
+        const order = await getNextUserCategoryOrder(transaction);
+        const nextCategory = {
+          _id: categoryId,
+          ...data,
+          order,
+          createdAt: now,
+          updatedAt: now,
+        };
 
-      const categoryId = generateId();
-      const now = new Date().toISOString();
-      const order = await getNextUserCategoryOrder();
-      const category = {
-        _id: categoryId,
-        ...data,
-        order,
-        createdAt: now,
-        updatedAt: now,
-      };
+        await upsertCategory(nextCategory, transaction);
+        await addPendingChangeOnConnection(transaction, {
+          type: 'createCategory',
+          entityId: categoryId,
+          data: { _id: categoryId, ...data, order },
+        });
 
-      await upsertCategory(category);
-      console.log('✅ [useCreateCategory] SQLite 저장 완료:', categoryId);
-
-      await addPendingChange({
-        type: 'createCategory',
-        entityId: categoryId,
-        data: { _id: categoryId, ...data, order },
+        return nextCategory;
       });
+      console.log('✅ [useCreateCategory] SQLite 저장 완료:', category._id);
 
       try {
         const netInfo = await NetInfo.fetch();

@@ -1,8 +1,8 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import NetInfo from '@react-native-community/netinfo';
 import { upsertCategory, getCategoryById } from '../../services/db/categoryService';
-import { addPendingChange } from '../../services/db/pendingService';
-import { ensureDatabase } from '../../services/db/database';
+import { addPendingChangeOnConnection } from '../../services/db/pendingService';
+import { withWriteTransaction } from '../../services/db/database';
 import { invalidateAllScreenCaches } from '../../services/query-aggregation/cache';
 import { useSyncContext } from '../../providers/SyncProvider';
 
@@ -14,27 +14,26 @@ export const useUpdateCategory = () => {
         mutationFn: async ({ id, data }) => {
             console.log('🚀 [useUpdateCategory] 카테고리 수정:', id, data);
 
-            await ensureDatabase();
-
-            // SQLite 즉시 업데이트
-            const existing = await getCategoryById(id);
+            const updated = await withWriteTransaction(async (transaction) => {
+                const existing = await getCategoryById(id, transaction);
             if (!existing) {
                 throw new Error(`Category not found: ${id}`);
             }
 
-            const updated = {
-                ...existing,
-                ...data,
-                updatedAt: new Date().toISOString(),
-            };
-            await upsertCategory(updated);
-            console.log('✅ [useUpdateCategory] SQLite 업데이트 완료:', id);
-
-            await addPendingChange({
-                type: 'updateCategory',
-                entityId: id,
-                data,
+                const nextCategory = {
+                    ...existing,
+                    ...data,
+                    updatedAt: new Date().toISOString(),
+                };
+                await upsertCategory(nextCategory, transaction);
+                await addPendingChangeOnConnection(transaction, {
+                    type: 'updateCategory',
+                    entityId: id,
+                    data,
+                });
+                return nextCategory;
             });
+            console.log('✅ [useUpdateCategory] SQLite 업데이트 완료:', id);
 
             try {
                 const netInfo = await NetInfo.fetch();

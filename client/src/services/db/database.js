@@ -11,6 +11,7 @@
 
 import * as SQLite from 'expo-sqlite';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Platform } from 'react-native';
 
 // 싱글톤 DB 인스턴스
 let db = null;
@@ -376,6 +377,37 @@ export function getDatabase() {
  */
 export async function ensureDatabase() {
     return initDatabase();
+}
+
+/**
+ * Offline-first local mutation boundary.
+ * - Native: use an exclusive transaction so validation/order reads cannot race
+ *   with another async write on the shared database.
+ * - Web: Expo SQLite does not support exclusive transactions, so fall back to
+ *   the regular transaction API while preserving the same connection contract.
+ *
+ * @param {(connection: any) => Promise<any>} task
+ * @returns {Promise<any>}
+ */
+export async function withWriteTransaction(task) {
+    await ensureDatabase();
+    const database = getDatabase();
+    let result;
+
+    if (
+        Platform.OS !== 'web' &&
+        typeof database.withExclusiveTransactionAsync === 'function'
+    ) {
+        await database.withExclusiveTransactionAsync(async (transaction) => {
+            result = await task(transaction);
+        });
+        return result;
+    }
+
+    await database.withTransactionAsync(async () => {
+        result = await task(database);
+    });
+    return result;
 }
 
 export function getDatabaseInitDebugState() {
