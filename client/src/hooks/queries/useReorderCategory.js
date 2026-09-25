@@ -1,9 +1,9 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import NetInfo from '@react-native-community/netinfo';
 import { invalidateAllScreenCaches } from '../../services/query-aggregation/cache';
-import { updateCategoryOrders } from '../../services/db/categoryService';
-import { addPendingChange } from '../../services/db/pendingService';
-import { ensureDatabase } from '../../services/db/database';
+import { updateCategoryOrdersOnConnection } from '../../services/db/categoryService';
+import { addPendingChangeOnConnection } from '../../services/db/pendingService';
+import { withWriteTransaction } from '../../services/db/database';
 import { useSyncContext } from '../../providers/SyncProvider';
 
 export const useReorderCategory = () => {
@@ -16,15 +16,20 @@ export const useReorderCategory = () => {
         ? variables.orders
         : [{ _id: variables.id, order: variables.order }];
 
-      await ensureDatabase();
-      await updateCategoryOrders(orders);
+      const appliedOrders = await withWriteTransaction(async (transaction) => {
+        const nextOrders = await updateCategoryOrdersOnConnection(transaction, orders);
+        for (const { _id, order } of nextOrders) {
+          await addPendingChangeOnConnection(transaction, {
+            type: 'updateCategory',
+            entityId: _id,
+            data: { order },
+          });
+        }
+        return nextOrders;
+      });
 
-      for (const { _id, order } of orders) {
-        await addPendingChange({
-          type: 'updateCategory',
-          entityId: _id,
-          data: { order },
-        });
+      if (appliedOrders.length === 0) {
+        return { orders: [] };
       }
 
       try {
@@ -34,7 +39,7 @@ export const useReorderCategory = () => {
         }
       } catch { }
 
-      return { orders };
+      return { orders: appliedOrders };
     },
     onMutate: async (variables) => {
       const orders = Array.isArray(variables?.orders)

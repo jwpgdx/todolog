@@ -4,7 +4,7 @@
  * Category 데이터 관리
  */
 
-import { getDatabase, ensureDatabase } from './database';
+import { getDatabase, ensureDatabase, withWriteTransaction } from './database';
 import { generateId } from '../../utils/idGenerator';
 
 const INBOX_SYSTEM_KEY = 'inbox';
@@ -314,26 +314,54 @@ export async function hardDeleteCategory(id) {
  * @returns {Promise<void>}
  */
 export async function updateCategoryOrders(orders) {
-    const db = getDatabase();
+    return withWriteTransaction((transaction) =>
+        updateCategoryOrdersOnConnection(transaction, orders)
+    );
+}
+
+export async function updateCategoryOrdersOnConnection(connection, orders) {
+    if (!connection || !Array.isArray(orders) || orders.length === 0) {
+        return [];
+    }
+
+    const seenIds = new Set();
+    const appliedOrders = [];
     const now = new Date().toISOString();
 
-    await db.withTransactionAsync(async () => {
-        for (const { _id, order } of orders) {
-            const category = await db.getFirstAsync(
-                'SELECT system_key FROM categories WHERE _id = ?',
-                [_id]
-            );
-
-            if (category?.system_key === INBOX_SYSTEM_KEY) {
-                continue;
-            }
-
-            await db.runAsync(
-                'UPDATE categories SET order_index = ?, updated_at = ? WHERE _id = ?',
-                [order, now, _id]
-            );
+    for (const entry of orders) {
+        const categoryId = entry?._id;
+        const order = Number(entry?.order);
+        if (!categoryId || entry?.order == null || !Number.isFinite(order)) {
+            throw new Error('Invalid category reorder entry');
         }
-    });
+        if (seenIds.has(categoryId)) {
+            throw new Error('Duplicate category reorder id: ' + categoryId);
+        }
+        seenIds.add(categoryId);
+
+        const category = await connection.getFirstAsync(
+            'SELECT system_key, deleted_at FROM categories WHERE _id = ?',
+            [categoryId]
+        );
+        if (!category || category.deleted_at != null) {
+            throw new Error('Active category not found: ' + categoryId);
+        }
+        if (category.system_key === INBOX_SYSTEM_KEY) {
+            continue;
+        }
+
+        const updateResult = await connection.runAsync(
+            'UPDATE categories SET order_index = ?, updated_at = ? WHERE _id = ? AND deleted_at IS NULL',
+            [order, now, categoryId]
+        );
+        if (typeof updateResult?.changes === 'number' && updateResult.changes !== 1) {
+            throw new Error('Category reorder lost row: ' + categoryId);
+        }
+
+        appliedOrders.push({ _id: categoryId, order });
+    }
+
+    return appliedOrders;
 }
 
 // ============================================================

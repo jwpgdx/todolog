@@ -1,27 +1,65 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import NetInfo from '@react-native-community/netinfo';
-import { ensureDatabase, getDatabase } from '../../services/db/database';
+import { withWriteTransaction } from '../../services/db/database';
 import { getTodoById, upsertTodo } from '../../services/db/todoService';
-import { addPendingChange } from '../../services/db/pendingService';
+import { addPendingChangeOnConnection } from '../../services/db/pendingService';
 import { useSyncContext } from '../../providers/SyncProvider';
 
-export const updateTodoOrder = async ({ id, order, categoryId }) => {
-  await ensureDatabase();
+async function applyTodoOrderUpdateOnConnection(connection, update) {
+  const id = update?.id;
+  if (!id) {
+    throw new Error('Todo reorder entry is missing id');
+  }
 
-  const existingTodo = await getTodoById(id);
+  const existingTodo = await getTodoById(id, connection);
   if (!existingTodo) {
     throw new Error('SQLite에서 할일을 찾을 수 없습니다');
+  }
+  if (existingTodo.deletedAt != null) {
+    throw new Error('삭제된 일정은 재정렬할 수 없습니다');
+  }
+
+  const categoryIdProvided = Object.prototype.hasOwnProperty.call(update, 'categoryId');
+  const categoryId = categoryIdProvided ? update.categoryId : existingTodo.categoryId;
+  if (categoryIdProvided) {
+    if (!categoryId) {
+      throw new Error('Todo reorder target category is missing');
+    }
+    const activeCategory = await connection.getFirstAsync(
+      'SELECT _id FROM categories WHERE _id = ? AND deleted_at IS NULL LIMIT 1',
+      [categoryId]
+    );
+    if (!activeCategory) {
+      throw new Error('Todo reorder target category is not active');
+    }
+  }
+
+  const providedOrder = update?.order || {};
+  for (const lane of ['custom', 'category']) {
+    if (
+      Object.prototype.hasOwnProperty.call(providedOrder, lane) &&
+      (providedOrder[lane] == null || !Number.isFinite(Number(providedOrder[lane])))
+    ) {
+      throw new Error('Invalid todo reorder value for ' + lane);
+    }
+  }
+  if (
+    Object.prototype.hasOwnProperty.call(providedOrder, 'favorite') &&
+    providedOrder.favorite != null &&
+    !Number.isFinite(Number(providedOrder.favorite))
+  ) {
+    throw new Error('Invalid todo reorder value for favorite');
   }
 
   const nextOrder = {
     custom: existingTodo.order?.custom ?? existingTodo.customOrder ?? 0,
     category: existingTodo.order?.category ?? existingTodo.categoryOrder ?? 0,
     favorite: existingTodo.order?.favorite ?? existingTodo.favoriteOrder ?? null,
-    ...(order || {}),
+    ...providedOrder,
   };
   const updatedTodo = {
     ...existingTodo,
-    categoryId: categoryId || existingTodo.categoryId,
+    categoryId,
     favoriteOrder: nextOrder.favorite,
     isFavorite: nextOrder.favorite != null,
     order: nextOrder,
@@ -29,67 +67,46 @@ export const updateTodoOrder = async ({ id, order, categoryId }) => {
     syncStatus: 'pending',
   };
 
-  await upsertTodo(updatedTodo);
-  await addPendingChange({
+  await upsertTodo(updatedTodo, connection);
+  await addPendingChangeOnConnection(connection, {
     type: 'updateTodo',
     entityId: id,
     data: {
-      ...(categoryId ? { categoryId } : {}),
+      ...(categoryIdProvided ? { categoryId } : {}),
       order: updatedTodo.order,
     },
   });
 
   return updatedTodo;
+}
+
+export const updateTodoOrder = async (update) => {
+  return withWriteTransaction((transaction) =>
+    applyTodoOrderUpdateOnConnection(transaction, update)
+  );
 };
 
 export const updateTodoOrdersBatch = async (updates = []) => {
-  await ensureDatabase();
+  if (!Array.isArray(updates) || updates.length === 0) {
+    return [];
+  }
 
-  const db = getDatabase();
-  const updatedTodos = [];
-
-  await db.withTransactionAsync(async () => {
+  return withWriteTransaction(async (transaction) => {
+    const seenIds = new Set();
+    const updatedTodos = [];
     for (const update of updates) {
       if (!update?.id) {
-        continue;
+        throw new Error('Todo reorder batch contains an entry without id');
       }
-
-      const existingTodo = await getTodoById(update.id);
-      if (!existingTodo) {
-        continue;
+      if (seenIds.has(update.id)) {
+        throw new Error('Todo reorder batch contains duplicate id: ' + update.id);
       }
-
-      const nextOrder = {
-        custom: existingTodo.order?.custom ?? existingTodo.customOrder ?? 0,
-        category: existingTodo.order?.category ?? existingTodo.categoryOrder ?? 0,
-        favorite: existingTodo.order?.favorite ?? existingTodo.favoriteOrder ?? null,
-        ...(update.order || {}),
-      };
-      const updatedTodo = {
-        ...existingTodo,
-        categoryId: update.categoryId || existingTodo.categoryId,
-        favoriteOrder: nextOrder.favorite,
-        isFavorite: nextOrder.favorite != null,
-        order: nextOrder,
-        updatedAt: new Date().toISOString(),
-        syncStatus: 'pending',
-      };
-
-      await upsertTodo(updatedTodo);
-      await addPendingChange({
-        type: 'updateTodo',
-        entityId: update.id,
-        data: {
-          ...(update.categoryId ? { categoryId: update.categoryId } : {}),
-          order: updatedTodo.order,
-        },
-      });
-
+      seenIds.add(update.id);
+      const updatedTodo = await applyTodoOrderUpdateOnConnection(transaction, update);
       updatedTodos.push(updatedTodo);
     }
+    return updatedTodos;
   });
-
-  return updatedTodos;
 };
 
 function buildOptimisticTodo(todo, update) {
