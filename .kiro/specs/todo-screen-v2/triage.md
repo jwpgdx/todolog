@@ -1,7 +1,7 @@
 # Todo Screen V2 Triage
 
-Last Updated: 2026-09-24
-Status: Layout/selection/D02 stale-data/D03 TodoScreen selection chrome decisions frozen; calendar-free selection mode and category picker partially implemented; formal requirements/design/tasks promotion pending
+Last Updated: 2026-09-25
+Status: Layout/selection/D02 stale-data/D03 TodoScreen selection chrome/D04 platform-native interaction decisions frozen; calendar-free selection mode and category picker partially implemented; formal requirements/design/tasks promotion pending
 
 현재 인수인계는 [WEB_GPT_HANDOFF.md](../../../WEB_GPT_HANDOFF.md)에서 시작한다. 상단 freeze와 하단 과거 후보/질문이 함께 남아 있으므로, [결정 목록](../../../docs/handoff/DECISIONS.md)으로 확정 여부를 확인한다. 이번 감사는 코드 정적 확인이며 runtime 재검증이 아니다.
 
@@ -82,7 +82,7 @@ TodoScreen header menu는 아래 방식으로 고정한다.
 - TodoScreen header는 Expo Router native Stack header를 사용한다.
 - header 오른쪽에는 `...` 버튼을 둔다.
 - iOS에서 `...`는 pull-down menu로 연다.
-- Android에서 `...`는 Material modal bottom sheet/action sheet로 연다.
+- Android에서 app-bar `...`는 platform/native overflow menu를 기본으로 한다. 더 큰 task/selection surface가 필요할 때만 bottom sheet를 사용한다.
 - header menu의 항목/상태 로직은 `TodoScreenActionMenu` 같은 JS facade에 모은다.
 - iOS/Android의 표시 방식은 달라도 메뉴 항목 contract는 동일하게 유지한다.
 - Expo `Stack.Toolbar.Menu`는 iOS 후보로 둘 수 있지만, Android SDK 55 안정성 때문에 공통 전제로 삼지 않는다.
@@ -146,6 +146,21 @@ TodoScreen도 다른 일정 list 화면과 같은 **in-place selection mode**를
 - selection 종료 또는 성공 후 원래 TodoScreen으로 돌아오면 기존 `currentDate`, sort/section 상태와 calendar presentation 상태를 복원한다.
 - 이 결정은 calendar 자체 재구현, one-page-scroll, scroll bridge를 요구하지 않는다. 해당 항목은 기존 보류 범위를 유지한다.
 - 실제 전환 animation, 숨김 방식과 iOS/Android 세부 layout은 구현 후 기기에서 검증한다.
+
+### Platform-native list interaction (D04, 2026-09-25 freeze)
+
+- iOS와 Android는 동일한 기능 계약을 공유하지만 동일한 gesture나 presentation을 강제하지 않는다.
+- OS가 적절한 native primitive를 제공하면 그것을 우선하고, Todolog 고유 의미 때문에 필요한 부분만 custom native layer로 확장한다.
+- iOS todo row long-press는 UIKit system context menu를 기본으로 한다.
+- iOS reorder 가능 item은 `UICollectionView` native Drag & Drop으로 context-menu gesture에서 drag로 전환하는 경로를 우선한다. UIKit이 gesture, lift/preview, drag session, 일반적인 reorder/drop feedback과 drop animation을 소유하도록 한다.
+- iOS에서 Todolog는 허용 drop target, Favorites/category/order 의미, Inbox/timed constraints, collapsed hover-expand와 persistence 같은 제품 semantics를 소유한다.
+- flat/simple reorder는 UIKit system behavior를 우선한다. logical section-header drag나 UIKit으로 안정적으로 표현할 수 없는 경계에서만 custom engine을 유지한다.
+- 기존 iOS custom engine은 reference/fallback baseline으로 보존한다. native spike가 실제 기기에서 합격한 범위만 단계적으로 대체한다.
+- Android todo row long-press는 contextual multi-selection 진입에 사용하며 long-press한 row를 최초 선택한다.
+- Android reorder는 명시적인 native drag affordance에서 `ItemTouchHelper.startDrag()`로 시작한다. reorder 가능 여부에 따라 row long-press의 의미를 바꾸지 않는다.
+- Android row `⋮`는 anchored native/Material per-item menu, app-bar `⋮`는 platform overflow menu를 기본으로 한다. bottom sheet는 더 큰 task/selection surface가 필요할 때만 사용한다.
+- selection mode에서는 양 플랫폼 모두 row tap만 selection toggle로 사용하고 reorder/drag/swipe/item menu/collapse-expand를 비활성화한다.
+- 구현 전 iOS 첫 bounded spike는 system context menu → 같은 gesture의 native collection drag → simple same-section reorder만 검증한다. 전체 custom engine rewrite/delete를 한 번에 수행하지 않는다.
 
 ### Bulk action data layer
 
@@ -363,8 +378,8 @@ root에 `ActionSheetProvider`가 있으므로 `@expo/react-native-action-sheet`�
 - flat reorder는 기존 diffable `reorderingHandlers`를 포함한 UIKit 경로를 우선한다.
 - cross-section todo drag도 `UICollectionViewDragDelegate/DropDelegate`가 gesture/preview/drop을 소유하고 Todolog가 target/order semantics만 소유하는 방식의 bounded spike를 먼저 검증한다.
 - collapsed hover-expand, Favorites/Inbox/order 정책, category section-header reorder는 UIKit이 제품 의미를 자동 제공하지 않으므로 custom policy가 계속 필요하다.
-- 자세한 근거와 spike 경계는 `docs/handoff/IOS_NATIVE_INTERACTION_AUDIT.md`를 따른다. 이 감사 자체는 D04 freeze나 기존 engine 교체 승인이 아니다.
-- Android의 공식 selection/reorder/menu 근거와 두 long-press 후보의 충돌은 `docs/handoff/ANDROID_NATIVE_INTERACTION_AUDIT.md`를 따른다. 현재 Android category baseline의 long-press reorder를 todo/favorite 최종 UX로 자동 확장하지 않는다.
+- 자세한 기술 근거와 spike 경계는 `docs/handoff/IOS_NATIVE_INTERACTION_AUDIT.md`를 따른다. 이 감사 이후 D04 제품 계약은 2026-09-25 F26으로 freeze했지만, 감사 문서 자체는 구현 승인이 아니다.
+- Android의 공식 selection/reorder/menu 근거와 두 long-press 후보의 충돌은 `docs/handoff/ANDROID_NATIVE_INTERACTION_AUDIT.md`를 따른다. F26에 따라 Android category baseline의 long-press reorder를 todo/favorite 최종 UX로 자동 확장하지 않는다.
 
 ## 코드 확인 필요 / 구현 전 점검
 

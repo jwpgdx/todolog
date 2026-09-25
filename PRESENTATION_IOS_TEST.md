@@ -99,7 +99,7 @@ Documentation audit: 2026-09-21. Test environment/results below are historical; 
 
 ## Frozen Selection Mode
 
-- Entry points: header `...` menu > `일정 선택`, and row long-press menu > `선택`.
+- Entry points: header `...` menu > `일정 선택`, and the todo row's UIKit system context menu > `선택`.
 - Selection mode does not navigate to a separate screen; the current list screen transforms in place.
 - Header left area preserves the original page back context.
 - Example: `My Page -> 즐겨찾기` shows `My Page` on the left, and selection mode on `즐겨찾기` should still show `My Page` on the left.
@@ -116,6 +116,17 @@ Documentation audit: 2026-09-21. Test environment/results below are historical; 
 - All actions are disabled when 0 items are selected.
 - Bulk delete uses the frozen delete confirmation policy.
 - Bulk move opens the category selection flow.
+
+## Frozen Platform-Native Todo Interaction (2026-09-25 D04)
+
+- Todo row tap opens the todo in normal mode.
+- Todo row long-press uses the UIKit system context menu by default.
+- For reorderable items, prefer the UIKit path where the same context-menu gesture transitions into `UICollectionView` native Drag & Drop without lifting.
+- UIKit should own gesture recognition, lift/preview, drag session, ordinary reorder/drop feedback and drop animation where it can satisfy the requirement.
+- Todolog owns allowed drop targets and the semantic rules for Favorites/category/order, Inbox/timed constraints, hover expansion and persistence.
+- Flat/simple reorder stays system-first. Logical section-header drag and other requirements that UIKit cannot express reliably may retain a custom native engine.
+- Existing custom drag/menu implementation remains a reference/fallback baseline until a bounded native spike is device-verified. Replace only the scope that passes.
+- While selection mode is active, reorder/drag/swipe/context menu/collapse-expand interactions are disabled.
 
 ## Frozen Bulk Action Semantics
 

@@ -39,11 +39,11 @@ Documentation audit: 2026-09-21. Test environment/results below are historical; 
 - Simple destructive confirmation can use `Alert.alert` through a shared wrapper; React Native maps it to platform-native dialog styles.
 - Android delete confirmations should generally use AlertDialog when the action is destructive or needs explanation.
 - Android can use Snackbar + Undo for low-risk single-item deletion once undo support exists.
-- Android has no built-in `ActionSheetAndroid`; action lists should use AlertDialog, a custom bottom sheet, or a native Material bottom sheet wrapper.
+- Android has no built-in `ActionSheetAndroid`; this does not mean ordinary overflow actions should default to a bottom sheet.
 - Category delete should use an alert/dialog because it deletes the category and its todos.
 - Single todo delete can eventually use immediate delete + undo; until undo exists, use a confirmation wrapper where needed.
 - Bulk todo delete should ask for confirmation before deleting multiple items.
-- Multi-action menus are not the same as delete confirmation: Android should use bottom sheet or platform-appropriate menu for multiple actions.
+- Multi-action menus are not the same as delete confirmation: app-bar `⋮` uses platform overflow, row `⋮` uses an anchored native/Material menu by default. Use a bottom sheet only when the task needs a larger action/selection surface.
 
 ## Frozen Category Flow
 
@@ -99,7 +99,7 @@ Documentation audit: 2026-09-21. Test environment/results below are historical; 
 
 ## Frozen Selection Mode
 
-- Entry points: header `...` menu > `일정 선택`, and row long-press menu > `선택`.
+- Entry points: app-bar `...` > `일정 선택`, and todo-row long-press which enters selection mode with that row selected. A row `⋮ > 선택` action may remain as a secondary entry point.
 - Selection mode does not navigate to a separate screen; the current list screen transforms in place.
 - Header left area preserves the original page back context.
 - Example: `My Page -> 즐겨찾기` shows `My Page` on the left, and selection mode on `즐겨찾기` should still show `My Page` on the left.
@@ -116,6 +116,18 @@ Documentation audit: 2026-09-21. Test environment/results below are historical; 
 - All actions are disabled when 0 items are selected.
 - Bulk delete uses the frozen delete confirmation policy.
 - Bulk move opens the category selection flow.
+
+## Frozen Platform-Native Todo Interaction (2026-09-25 D04)
+
+- Todo row tap opens the todo in normal mode.
+- Todo row long-press is reserved for contextual multi-selection entry and selects that row first.
+- Reorder does not reuse row long-press. Reorderable rows expose an explicit native drag affordance that calls `ItemTouchHelper.startDrag()`.
+- Long-press meaning must not change between reorderable and non-reorderable todo rows.
+- Row `⋮` uses an anchored native/Material menu for compact item actions.
+- App-bar `⋮` uses the platform overflow menu.
+- Bottom sheets are reserved for larger task/selection surfaces and are not the default replacement for overflow menus.
+- While selection mode is active, drag affordances, reorder, swipe, item overflow and collapse/expand interactions are disabled.
+- Category-header interaction is a separate contract; existing category-header long-press reorder is not automatically changed by this todo-row policy.
 
 ## Frozen Bulk Action Semantics
 
