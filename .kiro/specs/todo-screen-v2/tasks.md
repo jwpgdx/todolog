@@ -121,7 +121,7 @@ Target screens:
 
 ### 3.4 Selection Action Bar
 
-- [ ] remove permanent hard-coded bottom inset assumptions where they fail actual action-bar/safe-area size
+- [x] replace hard-coded `96` selection inset with shared action-bar metrics + safe-area derived inset
 - [ ] ensure list last item remains visible above the action bar
 - [x] keep Move as the only required working bulk mutation for this milestone
 - [x] do not wire API-first bulk delete as a shortcut

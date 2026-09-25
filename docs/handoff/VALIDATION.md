@@ -85,3 +85,12 @@ H0 산출물은 인수인계 문서, 구현 감사표, 결정 목록, 실행 가
 - Two independent CoS read-only reviews passed the final dirty tree with no remaining concrete issue in the bounded data/lifecycle audit.
 - Full `npx tsc --noEmit` is **not** a usable project gate in this checkout: it fails on pre-existing vendored sources under `client/docs/` (Expo SQLite, keyboard-controller/safe-area examples, missing their test/example dependencies) and existing native-module type-resolution issues. These errors were not introduced by this package.
 - No actual app SQLite mutation, pending replay, Android device UI, iOS build/simulator, or iPhone interaction test was run for this package. Gate 8 database/device evidence remains required before runtime completion is claimed.
+
+### Selection action-bar inset follow-up
+
+- Code commit: `871b338c8a02c772688522e7c8929d1474ce6cbd` (`fix: derive selection action bar inset`).
+- Removed the calendar-free selection screens' hard-coded `contentInsetBottom=96`.
+- `TodoSelectionActionBar` now exposes a shared safe-area-based occupied-inset hook derived from the same vertical metrics used by the rendered bar, plus an 8px content clearance.
+- AllTodos, Favorites, and Category detail use the derived inset only in selection mode; normal floating-tab insets remain unchanged.
+- `node --check`, `git diff --check`, Android Expo export (2,306 modules), and an independent read-only layout audit passed.
+- iOS device/simulator validation is still required to prove the final row remains comfortably visible above the bar across device sizes and safe-area values.

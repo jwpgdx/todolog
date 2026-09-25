@@ -66,7 +66,7 @@ iOS 엔진 선택은 `NativeListInteractionsSections.swift::shouldUseCustomTodoC
 | A07 | 선택 hook은 ID만 저장; occurrenceDate snapshot 없음 | bulk complete 구현 전 화면 occurrence context를 보존하는 계약 필요 |
 | A08 | `d2d39ac`: bottom-tab hide를 owner별 map으로 관리하고 selection hook마다 독립 owner ID를 사용. 한 hook cleanup이 다른 owner를 풀지 않도록 보정 | 정적 경쟁 조건 보정 완료. focus/blur/back/runtime 검증은 남음 |
 | A09 | 화면 header는 `선택` 직접 버튼. bottom bar action 목록/라벨 고정 | freeze는 `... > 일정 선택`, Favorites 해제 override, 확장 가능한 action contract |
-| A10 | 선택모드 list bottom inset이 화면에서 96 고정 | safe area / 실제 action bar 높이와 맞는지 작은·큰 기기 검증 |
+| A10 | `871b338`: 선택모드 고정 `96` inset을 제거하고 `TodoSelectionActionBar` 자체 metrics + safe-area 기반 occupied inset hook을 세 화면에서 공유 | 정적/Android bundle/독립 리뷰 PASS. 작은·큰 iOS 기기에서 마지막 row 실제 가시성은 Gate 8에서 검증 |
 | A11 | `useBulkDeleteTodos.js`가 `/todos/bulk-delete` 서버 API 직접 호출 | 새 선택 UI에 그대로 연결 금지. SQLite/pending transaction 기반 bulk hook 필요 |
 | A12 | picker `headerActionText` 색상을 common constant로 지정 | iOS header 색상을 시스템에 맡긴 정책이 custom RN header button까지 완전히 적용된 것은 아님 |
 | A13 | `d2d39ac`: picker에서 todo query/order 계산을 제거. service가 `withExclusiveTransactionAsync` 안에서 active target과 최신 `MAX(category_order)`를 읽고 write + 기존 `updateTodo` pending까지 같은 txn connection에서 처리 | 정적 구현/Expo SQLite API 확인 완료. 실제 동시성/SQLite E2E는 Gate 8에서 필요 |
