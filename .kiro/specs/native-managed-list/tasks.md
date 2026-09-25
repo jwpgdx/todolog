@@ -132,7 +132,7 @@
 - [x] Android category overflow menu smoke 확인
 - [x] Android category long press reorder manual smoke 재확인
 - [x] Android category swipe delete manual smoke 재확인
-- [ ] Android todo/favorite native drag parity 범위 결정
+- [x] Android todo/favorite interaction 방향은 F26으로 결정: row long-press=selection, explicit native drag affordance=`ItemTouchHelper.startDrag()`, anchored overflow menu. 실제 native parity 구현은 후속 milestone.
 
 ## Phase 9: Favorite Follow-up
 
@@ -156,7 +156,7 @@
 - 손을 떼도 menu/preview가 유지된다.
 - preview를 다시 잡고 움직이면 reorder가 시작된다.
 - swipe action이 열린다.
-- handle이 보이지 않는다.
+- iOS category baseline에서는 handle이 보이지 않는다. Android todo/favorite의 후속 구현은 F26의 explicit native drag affordance 예외를 따른다.
 - reorder 결과가 section-aware payload로 emit된다.
 
 ### MyPage V2 Checkpoints

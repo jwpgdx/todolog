@@ -89,13 +89,13 @@ root, client, server 각각의 lockfile에 맞춰 `npm ci`를 실행한다. nati
 | 단계 | 범위 | 종료 조건 |
 |---|---|---|
 | H0: 이번 인수인계 | 정적 감사, 문서 정리, GitHub 보존, 시작 프롬프트 | 문서 diff/경로 검사, 코드 변경 없음, remote commit 일치 |
-| H1: 웹 GPT 문서 검토 | 이해 확인, D02부터 필요한 정책 질문, spec 초안 | 사용자 검토와 결정 기록. 다음 Gate 자동 시작 안 함 |
+| H1: 웹 GPT 문서 검토 | D02-D06 정책 freeze, `requirements/design/tasks` formalization | 사용자 검토와 결정 기록. 다음 Gate 자동 시작 안 함 |
 | H2: 환경/기기 확인 | CoS workspace + 휴대폰 + dev build + 로그 | 플랫폼별 실제 결과 기록. 먼저 한 플랫폼만 |
-| H3: 선택/bulk 이동 안정화 | 감사 A01~A13 중 이동·selection 관련 결함 및 검증 | 아래 최소 검증 통과 |
-| H4: bulk 액션 구현 | offline-first delete/complete/favorite와 화면 override | transaction/rollback/pending/recurrence별 검증 |
-| H5: 후속 범위 선정 | TodoScreen v2, Android parity 등의 순서 재확인 | 승인된 단일 작업으로 분해 |
+| H3: iOS calendar-free 선택/bulk 이동 안정화 | AllTodos/Favorites/Category detail의 selection lifecycle, F27 summary, A01-A06/A08-A10/A12-A13 중 해당 결함 및 bulk move 검증 | 아래 최소 검증 통과 |
+| H4: 후속 bulk 액션 | offline-first delete/complete/favorite, occurrence snapshot과 화면 override | transaction/rollback/pending/recurrence별 검증 |
+| H5: 후속 범위 선정 | TodoScreen selection, Android todo/favorite native parity 등의 순서 재확인 | 승인된 단일 작업으로 분해 |
 
-H3/H4는 제안된 재개 순서다. 지금 문서 인수인계 승인만으로 기능 구현까지 시작하지 않는다.
+F28에 따라 H3는 첫 production milestone로 freeze했다. H2 환경/기기 확인과 formal spec 사용자 검토가 끝나기 전 기능 구현을 시작하지 않는다. H4/H5는 별도 후속 Gate다.
 
 최소 선택/이동 검증:
 

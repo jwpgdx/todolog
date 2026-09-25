@@ -95,8 +95,8 @@
 4. 모든 item identity는 stable string ID를 사용한다.
 5. public event에 native IndexPath / adapter position을 노출하지 않는다.
 6. `NativeSettingsList`에 reorder/menu/swipe managed-list 기능을 추가하지 않는다.
-7. iOS / Android 구현은 같은 JS contract 뒤에 두되, UX는 플랫폼별로 다르게 허용한다.
-8. handle 기반 reorder는 기본 UX로 사용하지 않는다.
+7. iOS / Android 구현은 같은 JS contract 뒤에 두되, UX는 플랫폼별로 다르게 허용한다. 2026-09-25 F26에 따라 OS native primitive를 우선하며 gesture/presentation parity를 요구하지 않는다.
+8. iOS에서는 handle 기반 reorder를 기본 UX로 사용하지 않는다. Android todo/favorite row는 2026-09-25 F26이 우선하며, long-press를 selection에 사용하고 명시적 native drag affordance에서 `ItemTouchHelper.startDrag()`를 시작한다. 기존 Android category baseline의 long-press reorder는 별도 category contract로 유지될 수 있다.
 9. v0 production path는 category부터 시작한다.
 10. Favorite 기능은 contract에서 막지 않되, 실제 데이터 모델 구현은 별도 feature로 미룬다.
 11. 현재 rollout에서는 iOS category path를 기준본으로 삼고, iOS todo category-grouped path는 같은 contract의 pilot 검증 경로로 둔다. Android는 같은 contract를 따르는 후속 구현으로 둔다.

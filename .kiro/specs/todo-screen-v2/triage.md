@@ -1,7 +1,7 @@
 # Todo Screen V2 Triage
 
 Last Updated: 2026-09-25
-Status: Layout/selection/D02 stale-data/D03 TodoScreen selection chrome/D04 platform-native interaction/D05 summary decisions frozen; calendar-free selection mode and category picker partially implemented; formal requirements/design/tasks promotion pending
+Status: D02-D06 frozen through F24-F28; calendar-free selection mode and category picker partially implemented; formal requirements/design/tasks promotion is the next gate
 
 현재 인수인계는 [WEB_GPT_HANDOFF.md](../../../WEB_GPT_HANDOFF.md)에서 시작한다. 상단 freeze와 하단 과거 후보/질문이 함께 남아 있으므로, [결정 목록](../../../docs/handoff/DECISIONS.md)으로 확정 여부를 확인한다. 이번 감사는 코드 정적 확인이며 runtime 재검증이 아니다.
 
@@ -299,6 +299,17 @@ AllTodos, Favorites, Category detail, Completed처럼 RN calendar가 없는 nati
 - Completed의 과거 예시 `지우기`는 무엇을 지우는지 의미가 아직 정의되지 않았으므로 D05에서 승인된 action이 아니다. 별도 freeze 전에는 구현하지 않는다.
 - iOS는 native list/content configuration을 우선하고 Android는 같은 summary contract를 Material/native list 표현으로 렌더한다.
 
+
+### First implementation milestone (D06, 2026-09-25 freeze)
+
+- 첫 production 구현 범위는 iOS `AllTodos`, `Favorites`, `Category detail`의 calendar-free selection mode + bulk move 안정화로 제한한다.
+- `TodoScreen` selection, bulk delete/complete/favorite, Android todo/favorite native parity, settings/theme/account, todo-form redesign은 이 milestone에 포함하지 않는다.
+- production 코드 변경 전에 이 spec의 frozen contract를 `requirements.md`, `design.md`, `tasks.md`로 승격하고 사용자 검토를 받는다.
+- iOS interaction production 변경 전에 system context menu → same-gesture native collection drag → simple same-section reorder bounded spike를 먼저 실제 iOS 환경에서 검증한다.
+- 기존 iOS custom engine은 spike 성공 범위가 확인되기 전 삭제/전면 교체하지 않는다.
+- production milestone의 필수 완료 범위는 selection lifecycle/chrome, summary item migration, bulk-move screen-visible order, target-category no-op, commit-time SQLite target/category-order validation, F24 stale-set all-or-nothing, 성공 후 selection 종료/tab restore, cancel/back/reentry 회귀다.
+- bulk delete/complete/favorite와 occurrence snapshot(A07)은 다음 milestone으로 분리한다.
+- Android todo/favorite native parity는 iOS에서 공유 selection/data contract가 안정된 뒤 별도 milestone으로 진행한다.
 
 ## 확정 후보
 
