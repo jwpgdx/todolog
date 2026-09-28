@@ -184,6 +184,7 @@ Behavior policy:
 5. Idempotent delete handling follows endpoint policy table; success-equivalent outcomes must remove pending items.
 6. If a pending item depends on an earlier unprocessed create for the same entity, defer it instead of dead-lettering.
 7. Execute `deleteCategory` replay only after server contract check confirms tombstone cascade for todo/completion.
+8. Delta Pull SHALL NOT mutate local SQLite while any non-dead-letter pending intent remains. `pending` and `failed` rows (including future-backoff rows) block pull; `dead_letter` rows do not permanently block queue progress.
 
 ## 3) Delta Pull Processor (`client/src/services/sync/deltaPull.js`)
 
@@ -206,19 +207,24 @@ Output:
 
 Execution order:
 
-1. Category full pull (`/categories`) - temporary fallback until category delta API is available
-2. Todo delta pull (`/todos/delta-sync`)
-3. Completion delta pull (`/completions/delta-sync`)
-4. Local apply to SQLite
+1. Verify no active (`pending|failed`) local intent remains before network pull.
+2. Fetch Category full snapshot (`/categories`) - temporary fallback until category delta API is available.
+3. Fetch Todo delta (`/todos/delta-sync`).
+4. Fetch Completion delta (`/completions/delta-sync`).
+5. Validate response collection shapes and server sync timestamps before any local mutation.
+6. Enter one native exclusive write transaction, re-check active pending rows on that same connection, then apply Category/Todo/Completion changes atomically.
 
 Local apply rules:
 
 1. `updated` -> upsert
 2. `deleted` -> local soft-delete/delete apply rule
-3. Apply per-entity transactional boundaries
-4. Normalize deleted payload shape before apply:
+3. Category/Todo/Completion apply for one pull shares a single transaction boundary; any apply failure rolls back the whole local pull.
+4. A local mutation that arrives during remote reads blocks apply at the in-transaction pending re-check. A mutation that starts after the exclusive transaction begins waits until the pull apply finishes.
+5. Category upsert uses `ON CONFLICT DO UPDATE`, never delete-and-reinsert `REPLACE`, so a server snapshot refresh cannot trigger SQLite foreign-key cascade deletion through replacement semantics.
+6. Normalize deleted payload shape before apply:
    - todo delta deleted payload: array of todo IDs
    - completion delta deleted payload: array of objects (`_id`, `todoId`, `date`)
+7. Non-array Category snapshots or missing/non-array Todo/Completion `updated`/`deleted` collections are terminal for that pull attempt and are not interpreted as authoritative empty data.
 
 ## 4) Cursor Store (`metadata`)
 
@@ -234,6 +240,10 @@ Commit policy:
 
 1. Commit only after successful Push + Pull + Local Apply.
 2. Keep previous value on any partial failure.
+3. Todo/Completion endpoints capture their upper watermark **before** any async DB read and query `updatedAt` / `deletedAt` in the inclusive range `[lastSyncTime, endpointWatermark]`.
+4. Endpoint watermark is clamped to at least `lastSyncTime`; a backwards server clock cannot move the cursor backwards.
+5. The inclusive lower bound intentionally permits overlap at the cursor millisecond. Local upsert/tombstone apply is idempotent, so overlap is safer than dropping a write that commits in the same millisecond after a prior query.
+6. Because Todo and Completion requests execute sequentially, the client commits the **earliest** valid endpoint watermark. The later endpoint is replayed over the overlapping interval on the next sync; selecting the later watermark would create a permanent gap for the earlier endpoint.
 
 ## 5) Cache Refresh Policy
 

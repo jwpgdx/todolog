@@ -94,3 +94,80 @@ H0 산출물은 인수인계 문서, 구현 감사표, 결정 목록, 실행 가
 - AllTodos, Favorites, and Category detail use the derived inset only in selection mode; normal floating-tab insets remain unchanged.
 - `node --check`, `git diff --check`, Android Expo export (2,306 modules), and an independent read-only layout audit passed.
 - iOS device/simulator validation is still required to prove the final row remains comfortably visible above the bar across device sizes and safe-area values.
+
+## 2026-09-28 Windows settings/timezone/form continuation
+
+See [the current continuation checkpoint](CONTINUATION_2026-09-28.md) for the exact starting commit, fail-first history, source-executing mock regression scope, final verification, local-only status and remaining sync/native boundaries. Earlier records above remain historical evidence, not fresh device validation of this patch.
+
+### Sync local-intent follow-up
+
+- Source-executing fail-first suite `client/scripts/audit-sync-local-intent.test.cjs`: original implementation **0/9 PASS**; after remediation original cases **9/9 PASS**; final focused suite with dead-letter progress **10/10 PASS**.
+- Covered active and future-backoff pending fences, local intent arriving during remote fetch, no partial apply on fetch failure, malformed-response rejection, one shared apply transaction/rollback, and non-REPLACE Category upsert.
+- Existing settings/form regression remained **27/27 PASS** after the sync changes.
+- These are mocked source regressions, not live API/SQLite/device evidence. At this checkpoint cursor watermark/read-window correctness remained separate; the following continuation addresses its source contract.
+
+### Sync cursor watermark follow-up
+
+- Source-executing fail-first suite `client/scripts/audit-sync-cursor-watermark.test.cjs`: original implementation **0/6 PASS**; after remediation **6/6 PASS**.
+- Server Todo/Completion delta handlers now capture monotonic watermarks before reads and query inclusive bounded windows; Todo invalid cursor handling matches Completion.
+- Client commits the earliest of sequential Todo/Completion endpoint watermarks and rejects cursor rollback.
+- Same-millisecond overlap is deliberate and relies on the existing idempotent upsert/tombstone apply path.
+- Local-intent regression stayed **10/10 PASS** and settings/form regression stayed **27/27 PASS** after the cursor changes.
+- Evidence remains mocked source execution rather than live Mongo/API/device race reproduction.
+- Android offline Expo export after the final client cursor change passed with **2,306 modules** (`client/dist/audit-20260928-sync-cursor-watermark`, ignored artifact); final `git diff --check` also passed.
+- Final local state for this continuation: HEAD `775f40a`, **24 modified tracked + 4 new**, no commit/push and no live API/DB/device/deploy action.
+
+### Todo detail input lifecycle follow-up
+
+- Source-executing fail-first suite `client/scripts/audit-form-input-lifecycle.test.cjs`: original implementation **0/2 PASS**; after remediation **2/2 PASS**.
+- Covered immediate title/memo propagation with no delayed timer and submit consumption of the latest draft before any rerender.
+- Existing settings/form regression remained **27/27 PASS**.
+- Android offline Expo export after the input-lifecycle runtime change passed with **2,306 modules** (`client/dist/audit-20260928-form-input-lifecycle`, ignored artifact).
+- This remains mocked/source and bundle evidence; no iOS/Android device IME or native interaction validation was performed.
+
+### Nullable schedule / recurrence round-trip follow-up
+
+- Source-executing fail-first suite `client/scripts/audit-form-recurrence-compat.test.cjs`: original implementation **1/5 PASS**; after remediation **5/5 PASS**.
+- Covered legacy/null `startDate` preservation + explicit repair-before-save, nullable `endDate` preservation, exact rich-RRULE round-trip on unrelated edits, embedded `UNTIL` display compatibility, and intentional supported-subset rebuild after an actual recurrence-control edit.
+- Input-lifecycle regression remained **2/2 PASS** and the broader settings/form regression remained **27/27 PASS**.
+- Android offline Expo export after the final form runtime change passed with **2,306 modules** (`client/dist/audit-20260928-form-recurrence-compat`, ignored artifact).
+- At this checkpoint a separate engine gap remained: multi-value monthly `BYMONTHDAY` could be authored by the form but the recurrence engine parsed only one positive integer. The following bounded follow-up addresses that engine contract.
+
+### Recurrence engine multi-value BYMONTHDAY follow-up
+
+- Source-executing fail-first suite `client/scripts/audit-recurrence-multi-bymonthday.test.cjs`: original six cases **0/6 PASS**; after remediation those six **6/6 PASS**; final suite with a postpatch yearly single-value compatibility case **7/7 PASS**.
+- Covered RRULE `BYMONTHDAY=1,15,31`, JSON `dayOfMonth` arrays, multi-day occurrence/expansion, short-month skip behavior, single-value compatibility, and the active `occurrenceDecisionService` path.
+- Form recurrence compatibility stayed **5/5 PASS**, input lifecycle **2/2 PASS**, and broader settings/form **27/27 PASS**.
+- Android offline Expo export after the engine change passed with **2,306 modules** (`client/dist/audit-20260928-recurrence-multi-bymonthday`, ignored artifact).
+- Server recurrence calculation already uses the `rrule` package and was unchanged. At this checkpoint a separate label-only/persisted-array display gap remained; the following bounded follow-up addresses it.
+
+### Recurrence description / persisted-array follow-up
+
+- Source-executing fail-first suite `client/scripts/audit-recurrence-description.test.cjs`: original implementation **1/5 PASS**; after remediation **5/5 PASS**.
+- Covered monthly multi-value label output, persisted recurrence-array normalization, fail-soft empty/malformed input, single-value wording compatibility, and the active `managedTodoItemAdapter` path.
+- Recurrence-engine multi-BYMONTHDAY regression remained **7/7 PASS** and form recurrence compatibility remained **5/5 PASS**.
+- Android offline Expo export after the display-helper runtime change passed with **2,306 modules** (`client/dist/audit-20260928-recurrence-description`, ignored artifact).
+
+### Windows native-runtime availability boundary
+
+- `adb devices` found **0 attached devices/emulators**.
+- No Android `emulator` executable/AVD environment was available; `ANDROID_HOME` and `ANDROID_SDK_ROOT` are unset and `client/android` is absent.
+- No SDK/AVD installation, native prebuild, APK build/install, emulator launch, or device interaction was attempted. Those are not claimed by the source/bundle validations above.
+
+### Windows Android bootstrap follow-up
+
+- Nonstandard existing toolchain was found: Android Studio `D:\\DevTools\\AndroidStudio`; Android SDK `D:\\Android\\Sdk` with platform-tools/emulator, `android-36.1`, and build-tools `36.0.0`.
+- No `cmdline-tools`, system images, or AVDs are installed; `adb devices` has zero targets.
+- `expo prebuild --platform android --no-install` completed successfully and generated ignored `client/android`; package manifests/locks did not change.
+- Generated Gradle wrapper targets `gradle-9.0.0-bin.zip`, but no wrapper distribution cache exists and no reusable Gradle distribution was found inside Android Studio. Android compile was therefore not started because it would require a new external download.
+- No APK build/install/emulator launch/device smoke is claimed.
+
+### Android compile attempt / storage cleanup
+
+- User authorized Gradle download and Android compile. Gradle 9.0.0 downloaded successfully.
+- First `:app:assembleDebug` failed after ~19m 40s due Gradle cache/transform directory creation failures under `C:\\Users\\park\\.gradle`; no APK was produced.
+- A D:-cache retry progressed further but was explicitly stopped by the user because C: disk pressure was too high; no successful compile is claimed.
+- All TODOLOG Gradle/Kotlin/Expo build processes were later confirmed stopped.
+- C:-resident build artifacts from this attempt were cleaned: `.gradle` (~4.34 GB), generated `client/android` (~1.18 GB), and generated Android build outputs under node_modules/modules.
+- C: free space increased from ~5.11 GB to ~12.58 GB. Package manifests/locks and repository source were not deleted.
+- Future Android compile must keep Gradle caches off C: and requires regenerating the ignored native Android tree first.

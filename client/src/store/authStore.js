@@ -20,6 +20,29 @@ let queryClientInstance = null;
 const LOCAL_GUEST_USER_ID = 'guest_local';
 const DEFAULT_GUEST_NAME = 'Guest User';
 
+// Serialize writes to the single AsyncStorage user record. Auth transitions use
+// the same lane so an older settings write cannot restore a previous session.
+let userWriteQueue = Promise.resolve();
+let settingsSyncQueue = Promise.resolve();
+let authEpoch = 0;
+let pendingAuthTransitions = 0;
+
+const enqueueUserWrite = (operation) => {
+  const result = userWriteQueue.then(operation);
+  userWriteQueue = result.catch(() => {});
+  return result;
+};
+
+const runAuthTransition = (operation) => {
+  authEpoch += 1;
+  pendingAuthTransitions += 1;
+  return enqueueUserWrite(operation).finally(() => {
+    pendingAuthTransitions -= 1;
+  });
+};
+
+const getUserId = (user) => user?._id || user?.id || null;
+
 export const setQueryClient = (client) => {
   queryClientInstance = client;
 };
@@ -158,7 +181,7 @@ export const useAuthStore = create((set, get) => ({
     set({ shouldShowLogin: false });
   },
 
-  setAuth: async (token, user, options = {}) => {
+  setAuth: (token, user, options = {}) => runAuthTransition(async () => {
     const { clearLocalData = false } = options;
     const normalizedUser = normalizeAuthUser(user);
 
@@ -191,79 +214,75 @@ export const useAuthStore = create((set, get) => ({
       isLoggedIn,
       shouldShowLogin: false,
     });
-  },
+  }),
 
-  setUser: async (user) => {
+  setUser: (user) => runAuthTransition(async () => {
     const normalizedUser = normalizeAuthUser(user);
     await AsyncStorage.setItem('user', JSON.stringify(normalizedUser));
     set({ user: normalizedUser });
-  },
+  }),
 
   // ✅ Settings 업데이트 (Offline-First)
   updateSettings: async (key, value) => {
-    const { user, isLoggedIn } = get();
-    if (!user) {
-      console.warn('⚠️ [updateSettings] No user found');
-      return;
+    const session = get();
+    const epoch = authEpoch;
+    if (!session.user || pendingAuthTransitions > 0) {
+      return null;
     }
-    
-    // Phase 1: Local Update (즉시)
-    const updatedUser = {
-      ...user,
-      settings: {
-        ...user.settings,
-        [key]: value,
-      },
-    };
-    
-    await AsyncStorage.setItem('user', JSON.stringify(updatedUser));
-    set({ user: updatedUser });
-    console.log(`✅ [updateSettings] Local update: ${key} = ${value}`);
-    
-    // Phase 2: Server Sync (백그라운드, 로그인 사용자만)
-    if (isLoggedIn) {
-      try {
-        const response = await api.patch('/auth/settings', { [key]: value });
-        const serverSettings = response.data.settings; // ✅ settings만 받음
-        
-        if (!serverSettings) {
-          console.warn('⚠️ [updateSettings] Server response missing settings');
-          return;
-        }
-        
-        // ⚠️ 서버 응답 반영 시 변경된 key만 확인 (깜빡임 방지)
-        const currentUser = get().user;
-        if (currentUser.settings[key] === value) {
-          // 로컬과 서버가 동일하면 서버 settings 병합
-          const updatedUser = {
-            ...currentUser,
-            settings: serverSettings,
-          };
-          await AsyncStorage.setItem('user', JSON.stringify(updatedUser));
-          set({ user: updatedUser });
-          console.log(`✅ [updateSettings] Server sync: ${key} = ${value}`);
-        } else {
-          // 로컬이 변경되었으면 서버 응답 무시 (사용자가 다시 변경한 경우)
-          console.log(`⚠️ [updateSettings] Local changed during sync, keeping local`);
-        }
-      } catch (error) {
-        console.log(`⚠️ [updateSettings] Server sync failed (offline?): ${error.message}`);
-        // 오프라인이면 무시 (로컬 설정 유지)
+
+    const isCurrentSession = () =>
+      epoch === authEpoch &&
+      getUserId(get().user) === getUserId(session.user) &&
+      get().token === session.token;
+
+    return enqueueUserWrite(async () => {
+      if (!isCurrentSession()) return null;
+
+      // Read after preceding local commits, not before awaiting the write lane.
+      const user = get().user;
+      const updatedUser = {
+        ...user,
+        settings: { ...user.settings, [key]: value },
+      };
+      await AsyncStorage.setItem('user', JSON.stringify(updatedUser));
+      if (!isCurrentSession()) return null;
+      set({ user: updatedUser });
+
+      // Local persistence is the success boundary. Remote patches remain best
+      // effort (no new durable settings retry policy), ordered and session-bound.
+      if (session.isLoggedIn && session.token) {
+        settingsSyncQueue = settingsSyncQueue.then(async () => {
+          if (!isCurrentSession()) return;
+          await api.patch('/auth/settings', { [key]: value }, {
+            headers: { Authorization: `Bearer ${session.token}` },
+            skipAuthRecovery: true,
+          });
+          // Do not merge a full settings snapshot over newer local intent.
+        }).catch((error) => {
+          console.warn('⚠️ [updateSettings] Remote sync failed; local settings retained:', error?.message);
+        });
       }
-    } else {
-      console.log('📱 [updateSettings] Guest mode - local only');
-    }
+
+      return updatedUser;
+    });
   },
 
   // updateSetting은 useSettings 훅으로 이관됨 (deprecated)
 
   updateProfile: async (data) => {
+    const epoch = authEpoch;
+    const session = get();
     try {
       const response = await api.post('/auth/profile', data);
       const updatedUser = normalizeAuthUser(response.data.user);
-      await AsyncStorage.setItem('user', JSON.stringify(updatedUser));
-      set({ user: updatedUser });
-      return updatedUser;
+      return enqueueUserWrite(async () => {
+        if (epoch !== authEpoch || getUserId(get().user) !== getUserId(session.user)) return null;
+        const nextUser = { ...updatedUser, settings: get().user.settings };
+        await AsyncStorage.setItem('user', JSON.stringify(nextUser));
+        if (epoch !== authEpoch) return null;
+        set({ user: nextUser });
+        return nextUser;
+      });
     } catch (error) {
       throw error;
     }
@@ -286,7 +305,7 @@ export const useAuthStore = create((set, get) => ({
     }
   },
 
-  loadAuth: async () => {
+  loadAuth: () => runAuthTransition(async () => {
     try {
       const token = await AsyncStorage.getItem('token');
       const userStr = await AsyncStorage.getItem('user');
@@ -335,9 +354,9 @@ export const useAuthStore = create((set, get) => ({
       console.error('❌ [loadAuth] Failed:', error);
       set({ isLoading: false });
     }
-  },
+  }),
 
-  logout: async (options = {}) => {
+  logout: (options = {}) => runAuthTransition(async () => {
     const { skipDataClear = false, showLogin = false } = options;
     
     // AsyncStorage 초기화
@@ -370,7 +389,7 @@ export const useAuthStore = create((set, get) => ({
       shouldShowLogin: false,
       isLoading: false,
     });
-  },
+  }),
 
   // 게스트 데이터 확인
   checkGuestData: async () => {
@@ -431,7 +450,7 @@ export const useAuthStore = create((set, get) => ({
   },
 
   // 게스트 데이터 버리기
-  discardGuestData: async () => {
+  discardGuestData: () => runAuthTransition(async () => {
     try {
       await clearAllData();
       const guestUser = await bootstrapLocalGuestSession(get().user);
@@ -448,7 +467,7 @@ export const useAuthStore = create((set, get) => ({
       console.error('❌ [Discard] Failed to discard guest data:', error);
       throw error;
     }
-  },
+  }),
 }));
 
 // Inject logout handler to avoid circular dependency

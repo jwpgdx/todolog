@@ -1,30 +1,30 @@
-import { useState, useEffect } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import { AppState } from 'react-native';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import Toast from 'react-native-toast-message';
 import * as Localization from 'expo-localization';
-import api from '../api/axios';
 import { useAuthStore } from '../store/authStore';
-import { useSettings, useUpdateSetting } from './queries/useSettings';
+import { useSettings } from './queries/useSettings';
 
 /**
  * 시간대 설정 Hook
  * 앱 실행 및 포그라운드 진입 시 시간대 자동 감지 및 업데이트
  */
-export const useTimeZone = () => {
-  const [isLoading, setIsLoading] = useState(false);
+export const useTimeZone = ({ autoDetect = false } = {}) => {
   const { user } = useAuthStore();
   const { data: settings = {} } = useSettings();
-  const { mutate: updateSetting } = useUpdateSetting();
+  const updateSettings = useAuthStore(state => state.updateSettings);
+  const autoUpdateRef = useRef(null);
   const queryClient = useQueryClient();
 
   const updateTimeZoneMutation = useMutation({
-    mutationFn: async ({ timeZone, silent }) => {
-      const response = await api.post('/auth/timezone', { timeZone });
-      return response.data;
+    mutationFn: async ({ timeZone }) => {
+      const updatedUser = await updateSettings('timeZone', timeZone);
+      return updatedUser ? { timeZone: updatedUser.settings.timeZone } : null;
     },
     onSuccess: (data, variables) => {
-      // settings 업데이트 (useSettings 훅이 자동으로 처리)
+      // authStore publishes only after local persistence succeeds.
+      if (!data) return;
 
       // 할일 목록 새로고침 (시간대 변경으로 인한 표시 변경)
       queryClient.invalidateQueries({ queryKey: ['todos'] });
@@ -40,34 +40,36 @@ export const useTimeZone = () => {
     },
     onError: (error) => {
       console.error('TimeZone update error:', error);
+      Toast.show({ type: 'error', text1: '시간대를 저장하지 못했습니다' });
     },
   });
 
-  const updateTimeZone = async (timeZone, options = { silent: false }) => {
-    setIsLoading(true);
-    try {
-      await updateTimeZoneMutation.mutateAsync({ timeZone, silent: options.silent });
-    } finally {
-      setIsLoading(false);
-    }
-  };
+  const { mutateAsync } = updateTimeZoneMutation;
+  const updateTimeZone = useCallback((timeZone, options = {}) =>
+    mutateAsync({ timeZone, silent: options.silent ?? false }), [mutateAsync]);
 
   // 자동 감지 로직
   useEffect(() => {
-    if (!user) return;
+    // Only the root observer owns startup/foreground detection. Picker screens
+    // use this hook for writes without registering competing auto-detect loops.
+    if (!autoDetect || !user) return;
 
     const checkTimeZone = () => {
       // 자동 설정이 꺼져있으면 감지 중단
-      const isAuto = settings.timeZoneAuto ?? true;
+      const currentUser = useAuthStore.getState().user;
+      if (!currentUser || autoUpdateRef.current) return;
+      const isAuto = currentUser.settings?.timeZoneAuto ?? true;
       if (!isAuto) return;
 
       const deviceTimeZone = Localization.getCalendars()[0]?.timeZone || 'Asia/Seoul';
-      const userTimeZone = settings.timeZone || 'Asia/Seoul';
+      const userTimeZone = currentUser.settings?.timeZone || 'Asia/Seoul';
 
       // 다르면 업데이트 시도
       if (deviceTimeZone && userTimeZone && deviceTimeZone !== userTimeZone) {
         console.log(`🌍 TimeZone mismatch detected (Auto: ON). Device: ${deviceTimeZone}, User: ${userTimeZone}`);
-        updateTimeZone(deviceTimeZone);
+        autoUpdateRef.current = updateTimeZone(deviceTimeZone)
+          .catch(() => {}) // onError reports local failure; no automatic retry loop
+          .finally(() => { autoUpdateRef.current = null; });
       }
     };
 
@@ -84,11 +86,11 @@ export const useTimeZone = () => {
     return () => {
       subscription.remove();
     };
-  }, [user, settings.timeZone, settings.timeZoneAuto]); // timeZoneAuto 변경 시에도 체크
+  }, [autoDetect, user, settings.timeZone, settings.timeZoneAuto, updateTimeZone]);
 
   return {
     updateTimeZone,
-    isLoading: isLoading || updateTimeZoneMutation.isPending,
+    isLoading: updateTimeZoneMutation.isPending,
   };
 };
 

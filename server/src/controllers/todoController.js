@@ -716,21 +716,30 @@ exports.getDeltaSync = async (req, res) => {
 
     const syncTime = new Date(lastSyncTime);
 
+    if (isNaN(syncTime.getTime())) {
+      return res.status(400).json({ message: '유효하지 않은 lastSyncTime 형식입니다' });
+    }
+
+    // Capture the upper watermark before any async read. Reuse the previous
+    // cursor if the server clock moved backwards so the client cursor is
+    // monotonic. The lower bound is inclusive to replay same-millisecond writes
+    // that may have committed just after the previous bounded query.
+    const requestStartedAt = new Date();
+    const serverSyncBoundary =
+      requestStartedAt.getTime() < syncTime.getTime() ? syncTime : requestStartedAt;
+
     // 업데이트된 일정 조회 (삭제 안된 것만)
     const updated = await Todo.find({
       userId,
-      updatedAt: { $gt: syncTime },
+      updatedAt: { $gte: syncTime, $lte: serverSyncBoundary },
       deletedAt: null
     }).populate('categoryId', 'color name');
 
     // 삭제된 일정 조회 (lastSyncTime 이후 삭제된 것)
     const deleted = await Todo.find({
       userId,
-      deletedAt: { $gt: syncTime }
+      deletedAt: { $gte: syncTime, $lte: serverSyncBoundary }
     }).select('_id deletedAt');
-
-    // 응답 시간을 서버 기준으로 반환 (다음 동기화 시 사용)
-    const serverSyncTime = new Date().toISOString();
 
     res.json({
       updated: updated.map(todo => ({
@@ -753,7 +762,7 @@ exports.getDeltaSync = async (req, res) => {
         updatedAt: todo.updatedAt,
       })),
       deleted: deleted.map(t => t._id),
-      syncTime: serverSyncTime
+      syncTime: serverSyncBoundary.toISOString()
     });
   } catch (error) {
     console.error('Delta sync error:', error);

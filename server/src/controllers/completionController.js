@@ -265,6 +265,13 @@ exports.getDeltaSync = async (req, res) => {
       return res.status(400).json({ message: '유효하지 않은 lastSyncTime 형식입니다' });
     }
 
+    // Bound this response to a watermark captured before any async query. Keep
+    // the cursor monotonic under clock rollback and use an inclusive lower
+    // bound so writes sharing the previous cursor millisecond are replayed.
+    const requestStartedAt = new Date();
+    const serverSyncBoundary =
+      requestStartedAt.getTime() < syncTime.getTime() ? syncTime : requestStartedAt;
+
     console.log('🔄 [getDeltaSync] 델타 동기화 시작:', {
       userId,
       lastSyncTime: syncTime.toISOString(),
@@ -273,22 +280,20 @@ exports.getDeltaSync = async (req, res) => {
     // 업데이트된 완료 기록 (삭제 안된 것만)
     const updated = await Completion.find({
       userId,
-      updatedAt: { $gt: syncTime },
+      updatedAt: { $gte: syncTime, $lte: serverSyncBoundary },
       deletedAt: null,
     }).select('_id todoId date completedAt updatedAt');
 
     // 삭제된 완료 기록
     const deleted = await Completion.find({
       userId,
-      deletedAt: { $gt: syncTime },
+      deletedAt: { $gte: syncTime, $lte: serverSyncBoundary },
     }).select('_id todoId date deletedAt');
-
-    const serverSyncTime = new Date().toISOString();
 
     console.log('✅ [getDeltaSync] 델타 동기화 완료:', {
       updated: updated.length,
       deleted: deleted.length,
-      syncTime: serverSyncTime,
+      syncTime: serverSyncBoundary.toISOString(),
     });
 
     res.json({
@@ -304,7 +309,7 @@ exports.getDeltaSync = async (req, res) => {
         todoId: c.todoId,
         date: c.date,
       })),
-      syncTime: serverSyncTime,
+      syncTime: serverSyncBoundary.toISOString(),
     });
   } catch (error) {
     console.error('❌ [getDeltaSync] 델타 동기화 실패:', error);

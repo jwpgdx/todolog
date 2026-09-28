@@ -372,19 +372,23 @@ export async function deleteCompletionsByTodoId(todoId) {
  * @param {Array<string>} keys
  * @returns {Promise<void>}
  */
-export async function deleteCompletionsByKeys(keys) {
+export async function deleteCompletionsByKeys(keys, connection = null) {
     if (!Array.isArray(keys) || keys.length === 0) return;
 
-    const db = getDatabase();
     const deletedAt = new Date().toISOString();
-    await db.withTransactionAsync(async () => {
+    const apply = async (db) => {
         for (const key of keys) {
-            await db.runAsync(
-                'UPDATE completions SET deleted_at = ? WHERE key = ? AND deleted_at IS NULL',
-                [deletedAt, key]
-            );
+            await softDeleteCompletionByKey(db, key, deletedAt);
         }
-    });
+    };
+
+    if (connection) {
+        await apply(connection);
+        return;
+    }
+
+    const db = getDatabase();
+    await db.withTransactionAsync(async () => apply(db));
 }
 
 /**
@@ -393,10 +397,10 @@ export async function deleteCompletionsByKeys(keys) {
  * @param {Array} completions - [{ _id, todoId, date, completedAt }]
  * @returns {Promise<void>}
  */
-export async function upsertCompletions(completions) {
-    const db = getDatabase();
+export async function upsertCompletions(completions, connection = null) {
+    if (!Array.isArray(completions) || completions.length === 0) return;
 
-    await db.withTransactionAsync(async () => {
+    const apply = async (db) => {
         for (const comp of completions) {
             const key = buildCompletionKey(comp.todoId, comp.date);
             const updateResult = await db.runAsync(
@@ -420,7 +424,15 @@ export async function upsertCompletions(completions) {
                 });
             }
         }
-    });
+    };
+
+    if (connection) {
+        await apply(connection);
+        return;
+    }
+
+    const db = getDatabase();
+    await db.withTransactionAsync(async () => apply(db));
 }
 
 /**

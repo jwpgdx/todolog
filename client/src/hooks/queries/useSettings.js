@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import Toast from 'react-native-toast-message';
 import { useAuthStore } from '../../store/authStore';
 
 /**
@@ -44,7 +45,9 @@ export const useUpdateSetting = () => {
   return {
     mutate: ({ key, value }) => {
       setIsPending(true);
-      updateSettings(key, value).finally(() => setIsPending(false));
+      updateSettings(key, value)
+        .catch(() => Toast.show({ type: 'error', text1: '설정을 저장하지 못했습니다' }))
+        .finally(() => setIsPending(false));
     },
     mutateAsync: async ({ key, value }) => {
       setIsPending(true);

@@ -1,5 +1,8 @@
 # Todolog 웹 GPT / CoS 인수인계
 
+> **2026-09-28 현재 실행 체크포인트:** [Windows settings/timezone/form continuation](docs/handoff/CONTINUATION_2026-09-28.md).
+> 아래 2026-09-25 인수인계는 보존된 이력이다. 최신 작업 상태·검증·남은 sync 위험은 위 체크포인트와 실제 worktree를 먼저 확인한다. 제품 freeze는 변경하지 않았다.
+
 기준일: 2026-09-25
 코드 기준 커밋: `79cbc8d667019e99799bc4ade545c8085b8cba35`
 인수인계 브랜치: `codex/web-gpt-handoff-2026-09-21`

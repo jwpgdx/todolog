@@ -254,15 +254,41 @@ function parseRRuleString(rrule) {
   return result;
 }
 
+function getPrimaryRRuleText(recurrence) {
+  if (Array.isArray(recurrence)) {
+    const rule = recurrence.find(item => typeof item === 'string' && item.trim().length > 0);
+    return rule ? rule.trim() : null;
+  }
+
+  if (typeof recurrence === 'string') {
+    const trimmed = recurrence.trim();
+    return trimmed || null;
+  }
+
+  return null;
+}
+
+function isEmptyRecurrenceInput(recurrence) {
+  if (recurrence == null) return true;
+  if (typeof recurrence === 'string') return recurrence.trim().length === 0;
+  if (Array.isArray(recurrence)) {
+    return !recurrence.some(item => typeof item === 'string' && item.trim().length > 0);
+  }
+  return false;
+}
+
 /**
  * 반복 규칙 설명 생성
  * @param {string} recurrence - RRULE 문자열
  * @returns {string} 사용자 친화적 설명
  */
 export function getRecurrenceDescription(recurrence) {
-  if (!recurrence) return '반복 없음';
+  const rule = getPrimaryRRuleText(recurrence);
+  if (!rule) {
+    return isEmptyRecurrenceInput(recurrence) ? '반복 없음' : '반복 규칙 오류';
+  }
 
-  const freqMatch = recurrence.match(/FREQ=(\w+)/);
+  const freqMatch = rule.match(/FREQ=(\w+)/);
   if (!freqMatch) return '반복 규칙 오류';
 
   const frequency = freqMatch[1].toLowerCase();
@@ -272,7 +298,7 @@ export function getRecurrenceDescription(recurrence) {
       return '매일 반복';
 
     case 'weekly':
-      const bydayMatch = recurrence.match(/BYDAY=([^;]+)/);
+      const bydayMatch = rule.match(/BYDAY=([^;]+)/);
       if (bydayMatch) {
         const dayNames = ['일', '월', '화', '수', '목', '금', '토'];
         const days = ['SU', 'MO', 'TU', 'WE', 'TH', 'FR', 'SA'];
@@ -286,15 +312,22 @@ export function getRecurrenceDescription(recurrence) {
       return '매주 반복';
 
     case 'monthly':
-      const bymonthdayMatch = recurrence.match(/BYMONTHDAY=(\d+)/);
+      const bymonthdayMatch = rule.match(/BYMONTHDAY=([^;]+)/);
       if (bymonthdayMatch) {
-        return `매월 ${bymonthdayMatch[1]}일`;
+        const monthDays = bymonthdayMatch[1]
+          .split(',')
+          .map(value => value.trim())
+          .filter(value => /^\d+$/.test(value) && Number(value) > 0)
+          .map(value => Number(value));
+        if (monthDays.length > 0) {
+          return `매월 ${monthDays.map(day => `${day}일`).join(', ')}`;
+        }
       }
       return '매월 반복';
 
     case 'yearly':
-      const bymonthMatch = recurrence.match(/BYMONTH=(\d+)/);
-      const yearlyBymonthdayMatch = recurrence.match(/BYMONTHDAY=(\d+)/);
+      const bymonthMatch = rule.match(/BYMONTH=(\d+)/);
+      const yearlyBymonthdayMatch = rule.match(/BYMONTHDAY=(\d+)/);
       if (bymonthMatch && yearlyBymonthdayMatch) {
         return `매년 ${bymonthMatch[1]}월 ${yearlyBymonthdayMatch[1]}일`;
       }

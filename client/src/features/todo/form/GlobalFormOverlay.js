@@ -62,11 +62,6 @@ export default function GlobalFormOverlay() {
         }, 100);
     }, [activeTodo, close, logic.formState, setDetailV2Draft]);
 
-    // Detail Mode 닫기 후 추가 액션 (submit 후 호출됨)
-    const handleDetailSubmit = useCallback(() => {
-        close();
-    }, [close]);
-
     const showQuickMode = mode === 'QUICK';
     const showDetailMode = mode === 'DETAIL';
 
@@ -109,7 +104,6 @@ export default function GlobalFormOverlay() {
                 <DetailContent
                     logic={logic}
                     onClose={close}
-                    onSubmit={handleDetailSubmit}
                     initialFocusTarget={initialFocusTarget}
                 />
             </DetailContainer>

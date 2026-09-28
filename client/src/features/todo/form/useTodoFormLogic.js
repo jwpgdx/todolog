@@ -72,6 +72,32 @@ const parseYearlyDateFromRRule = (recurrence) => {
     return null;
 };
 
+const getPrimaryRecurrenceRule = (recurrence) => {
+    if (Array.isArray(recurrence)) {
+        return recurrence.find(item => typeof item === 'string' && item.trim()) || null;
+    }
+    return typeof recurrence === 'string' && recurrence.trim() ? recurrence : null;
+};
+
+const parseUntilDateFromRRule = (recurrence) => {
+    const rrule = getPrimaryRecurrenceRule(recurrence);
+    if (!rrule) return null;
+
+    const match = rrule.match(/(?:^|;)UNTIL=(\d{4})(\d{2})(\d{2})(?:T\d{6}Z?)?(?:;|$)/i);
+    if (!match) return null;
+
+    const candidate = `${match[1]}-${match[2]}-${match[3]}`;
+    return dayjs(candidate).format('YYYY-MM-DD') === candidate ? candidate : null;
+};
+
+const RECURRENCE_FORM_KEYS = new Set([
+    'frequency',
+    'weekdays',
+    'dayOfMonth',
+    'yearlyDate',
+    'recurrenceEndDate',
+]);
+
 export const useTodoFormLogic = (initialTodo, onClose, visible, initialDraft = null) => {
     const { currentDate } = useDateStore();
     const { user } = useAuthStore();
@@ -79,6 +105,7 @@ export const useTodoFormLogic = (initialTodo, onClose, visible, initialDraft = n
     const { mutate: updateSetting } = useUpdateSetting();
     const { data: categories } = useCategories();
     const hasInitializedRef = useRef(false);
+    const recurrenceDirtyRef = useRef(false);
 
     // 사용자 타임존
     const userTimeZone = settings.timeZone || 'Asia/Seoul';
@@ -95,15 +122,16 @@ export const useTodoFormLogic = (initialTodo, onClose, visible, initialDraft = n
     // 전체 폼 상태
     const [formState, setFormState] = useState(() => {
         const { startTime, endTime } = getDefaultTimes();
+        const isAllDay = settings.defaultIsAllDay ?? true;
         return {
             title: '',
             memo: '',
             categoryId: '',
 
             // 날짜/시간 (TECH_SPEC 기준)
-            isAllDay: settings.defaultIsAllDay ?? true,  // 유저 설정값 사용
+            isAllDay,
             startDate: currentDate,   // "YYYY-MM-DD"
-            endDate: currentDate,     // "YYYY-MM-DD"
+            endDate: !isAllDay && endTime <= startTime ? addDaysToYmd(currentDate, 1) : currentDate,
             startTime,                // "HH:MM"
             endTime,                  // "HH:MM"
             timeZone: userTimeZone,   // 사용자 설정에서 가져옴
@@ -116,6 +144,19 @@ export const useTodoFormLogic = (initialTodo, onClose, visible, initialDraft = n
             recurrenceEndDate: null,  // "YYYY-MM-DD" 또는 null (무한 반복)
         };
     });
+    const formStateRef = useRef(formState);
+
+    // Keep the latest draft synchronously addressable. React state still drives
+    // rendering, but submit/buildPayload must not depend on a rerender having
+    // happened between the final native text event and a save tap.
+    const commitFormState = useCallback((nextOrUpdater) => {
+        const nextState = typeof nextOrUpdater === 'function'
+            ? nextOrUpdater(formStateRef.current)
+            : nextOrUpdater;
+        formStateRef.current = nextState;
+        setFormState(nextState);
+        return nextState;
+    }, []);
 
     // 뷰 모드
     const [viewMode, setViewMode] = useState('default'); // 'default' | 'category_create'
@@ -131,17 +172,18 @@ export const useTodoFormLogic = (initialTodo, onClose, visible, initialDraft = n
     const applyInitialDraft = useCallback((draft) => {
         if (!draft) return;
 
-        setFormState(prev => ({
+        commitFormState(prev => ({
             ...prev,
             ...draft,
         }));
         setViewMode('default');
-    }, []);
+    }, [commitFormState]);
 
     // 초기화 로직
     useEffect(() => {
         if (!visible) {
             hasInitializedRef.current = false;
+            recurrenceDirtyRef.current = false;
             return;
         }
 
@@ -151,24 +193,33 @@ export const useTodoFormLogic = (initialTodo, onClose, visible, initialDraft = n
 
         hasInitializedRef.current = true;
 
+        // A quick-to-detail handoff is newer than the original persisted todo.
+        if (initialDraft) {
+            recurrenceDirtyRef.current = false;
+            applyInitialDraft(initialDraft);
+            return;
+        }
+
         if (initialTodo) {
+            recurrenceDirtyRef.current = false;
+            const embeddedRecurrenceEndDate = parseUntilDateFromRRule(initialTodo.recurrence);
             // 수정 모드: 기존 데이터 로드
-            setFormState(prev => ({
+            commitFormState(prev => ({
                 ...prev,
                 title: initialTodo.title || '',
                 memo: initialTodo.memo || '',
                 categoryId: initialTodo.categoryId || '',
                 isAllDay: initialTodo.isAllDay ?? true,
-                startDate: initialTodo.startDate || currentDate,
-                endDate: initialTodo.endDate || initialTodo.startDate || currentDate,
-                timeZone: initialTodo.timeZone || userTimeZone,
-                // startDateTime이 있으면 시간 추출
-                startTime: initialTodo.startDateTime
-                    ? dayjs(initialTodo.startDateTime).format('HH:mm')
-                    : prev.startTime,
-                endTime: initialTodo.endDateTime
-                    ? dayjs(initialTodo.endDateTime).format('HH:mm')
-                    : prev.endTime,
+                // Preserve legacy/null schedule data exactly instead of silently
+                // assigning today's date during an unrelated edit. Server
+                // writes still require startDate, so submit validates it below.
+                startDate: initialTodo.startDate ?? null,
+                endDate: initialTodo.endDate ?? null,
+                timeZone: userTimeZone,
+                // Canonical floating times are not Date/UTC values. Preserve
+                // explicit null, including a timed todo with no end time.
+                startTime: initialTodo.startTime ?? null,
+                endTime: initialTodo.endTime ?? null,
                 // ✅ 반복 설정 로드
                 frequency: initialTodo.recurrence ? parseFrequencyFromRRule(initialTodo.recurrence) : 'none',
                 weekdays: initialTodo.recurrence ? parseWeekdaysFromRRule(initialTodo.recurrence) : [],
@@ -176,13 +227,8 @@ export const useTodoFormLogic = (initialTodo, onClose, visible, initialDraft = n
                 yearlyDate: initialTodo.recurrence ? parseYearlyDateFromRRule(initialTodo.recurrence) : null,
                 recurrenceEndDate: initialTodo.recurrenceEndDate
                     ? dayjs(initialTodo.recurrenceEndDate).format('YYYY-MM-DD')
-                    : null,
+                    : embeddedRecurrenceEndDate,
             }));
-            return;
-        }
-
-        if (initialDraft) {
-            applyInitialDraft(initialDraft);
             return;
         }
 
@@ -217,13 +263,14 @@ export const useTodoFormLogic = (initialTodo, onClose, visible, initialDraft = n
         const defaultIsAllDay = user?.settings?.defaultIsAllDay ?? true;
         console.log('🔄 [resetForm] 폼 초기화 - defaultIsAllDay:', defaultIsAllDay);
 
-        setFormState({
+        recurrenceDirtyRef.current = false;
+        commitFormState({
             title: '',
             memo: '',
             categoryId: '',
             isAllDay: defaultIsAllDay,
             startDate: currentDate,
-            endDate: currentDate,
+            endDate: !defaultIsAllDay && endTime <= startTime ? addDaysToYmd(currentDate, 1) : currentDate,
             startTime,
             endTime,
             timeZone: userTimeZone,
@@ -234,75 +281,89 @@ export const useTodoFormLogic = (initialTodo, onClose, visible, initialDraft = n
             recurrenceEndDate: null,
         });
         setViewMode('default');
-    }, [currentDate, getDefaultTimes, user?.settings?.defaultIsAllDay, userTimeZone]);
+    }, [commitFormState, currentDate, getDefaultTimes, user?.settings?.defaultIsAllDay, userTimeZone]);
 
     // 상태 변경 핸들러 (시간 자동 조정 로직 포함)
     const handleChange = useCallback((key, value) => {
-        setFormState(prev => {
+        if (RECURRENCE_FORM_KEYS.has(key)) {
+            recurrenceDirtyRef.current = true;
+        }
+
+        // I/O must not run inside a React state updater (which may be replayed).
+        if (key === 'isAllDay') {
+            updateSetting({ key: 'defaultIsAllDay', value });
+        }
+        const defaultTimes = key === 'isAllDay' && !value ? getDefaultTimes() : null;
+        commitFormState(prev => {
             const newState = { ...prev, [key]: value };
 
             // ⚡️ 시간 자동 조정 로직 (TECH_SPEC 5번줄, 6번줄)
-            if (key === 'startTime' && !prev.isAllDay) {
+            if (key === 'startTime' && !prev.isAllDay && typeof value === 'string' && /^(?:[01]\d|2[0-3]):[0-5]\d$/.test(value)) {
                 // 시작 시간 변경 시 → 종료 시간 +1시간
                 const [h, m] = value.split(':').map(Number);
                 const newEndHour = (h + 1) % 24;
                 newState.endTime = `${String(newEndHour).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
 
                 // 자정 넘어가면 종료일도 +1일
-                if (newEndHour < h) {
-                    newState.endDate = dayjs(prev.endDate).add(1, 'day').format('YYYY-MM-DD');
+                if (newEndHour < h && prev.startDate) {
+                    const minimumEndDate = addDaysToYmd(prev.startDate, 1);
+                    // Do not repeatedly extend an already overnight/multiday todo.
+                    if (!prev.endDate || prev.endDate < minimumEndDate) {
+                        newState.endDate = minimumEndDate;
+                    }
                 }
             }
 
             // 종료 시간이 시작 시간보다 이전이고 같은 날짜면 → 종료일 +1일
-            if (key === 'endTime' && prev.startDate === prev.endDate && !prev.isAllDay) {
-                const [startH] = prev.startTime.split(':').map(Number);
-                const [endH] = value.split(':').map(Number);
-                if (endH <= startH) {
-                    newState.endDate = dayjs(prev.startDate).add(1, 'day').format('YYYY-MM-DD');
+            if (key === 'endTime' && prev.startDate && prev.startDate === prev.endDate && !prev.isAllDay) {
+                if (typeof value === 'string' && typeof prev.startTime === 'string' && value <= prev.startTime) {
+                    newState.endDate = addDaysToYmd(prev.startDate, 1);
                 }
             }
 
-            // ⚡️ isAllDay 변경 시 유저 설정으로 자동 저장
-            if (key === 'isAllDay') {
-                console.log('🔄 [useTodoFormLogic] isAllDay 변경 → settings 저장:', value);
-                updateSetting({ key: 'defaultIsAllDay', value });
+            if (defaultTimes) {
+                newState.startTime = prev.startTime || defaultTimes.startTime;
+                newState.endTime = prev.endTime || defaultTimes.endTime;
+                if (prev.startDate && prev.startDate === prev.endDate && newState.endTime <= newState.startTime) {
+                    newState.endDate = addDaysToYmd(prev.startDate, 1);
+                }
             }
 
             return newState;
         });
-    }, [updateSetting]);
+    }, [commitFormState, updateSetting, getDefaultTimes]);
 
     // API 전송용 Payload 생성
     const buildPayload = useCallback(() => {
         const {
             title, memo, categoryId, isAllDay,
-            startDate, endDate, startTime, endTime, timeZone,
+            startDate, endDate, startTime, endTime,
             frequency, weekdays, dayOfMonth, yearlyDate, recurrenceEndDate
-        } = formState;
+        } = formStateRef.current;
 
         // 서버 스키마에 맞는 payload 구성
-        // 서버는 startTime, endTime을 "HH:MM" 문자열로 받아서 내부에서 startDateTime 생성
+        // Persist floating date/time strings; timezone belongs to user.settings.
         const payload = {
             title: title?.trim() || '',
             memo: memo?.trim() || '',
             categoryId,
             isAllDay,
             startDate,  // "YYYY-MM-DD" - 항상 필수
-            endDate: endDate || startDate, // "YYYY-MM-DD"
-            userTimeZone: timeZone,
+            endDate: endDate ?? null,
+            startTime: isAllDay ? null : (startTime || null),
+            endTime: isAllDay ? null : (endTime || null),
         };
 
-        // ⚡️ isAllDay에 따른 데이터 분기
-        if (!isAllDay) {
-            // 시간 지정: startTime, endTime을 "HH:MM" 형식으로 전송
-            payload.startTime = startTime; // "HH:MM"
-            payload.endTime = endTime;     // "HH:MM"
-        }
-        // isAllDay가 true면 서버가 startTime, endTime 없이 처리함
-
-        // 반복 설정
-        if (frequency !== 'none') {
+        // Existing recurrence can contain grammar the current form does not
+        // expose (INTERVAL/COUNT/WKST/etc). An unrelated edit must round-trip
+        // it exactly. Once a recurrence control is edited, rebuild only the
+        // supported form subset intentionally.
+        if (initialTodo && !recurrenceDirtyRef.current) {
+            payload.recurrence = Array.isArray(initialTodo.recurrence)
+                ? [...initialTodo.recurrence]
+                : (initialTodo.recurrence ?? null);
+            payload.recurrenceEndDate = initialTodo.recurrenceEndDate ?? null;
+        } else if (frequency !== 'none') {
             const recurrenceRule = buildRecurrenceRule({
                 frequency,
                 weekdays,
@@ -318,7 +379,7 @@ export const useTodoFormLogic = (initialTodo, onClose, visible, initialDraft = n
         }
 
         return payload;
-    }, [formState]);
+    }, [initialTodo]);
 
     // RRULE 문자열 생성
     const buildRecurrenceRule = ({ frequency, weekdays, dayOfMonth, yearlyDate, recurrenceEndDate }) => {
@@ -363,14 +424,19 @@ export const useTodoFormLogic = (initialTodo, onClose, visible, initialDraft = n
     // @param {object} options - { quickMode: boolean } - Quick Mode에서 isAllDay 강제 true
     const handleSubmit = useCallback((options = {}) => {
         const { quickMode = false } = options;
+        const currentFormState = formStateRef.current;
 
         // 유효성 검사
-        if (!formState.title.trim()) {
+        if (!currentFormState.title.trim()) {
             Toast.show({ type: 'error', text1: '제목을 입력해주세요' });
             return;
         }
-        if (!formState.categoryId) {
+        if (!currentFormState.categoryId) {
             Toast.show({ type: 'error', text1: '카테고리를 선택해주세요' });
+            return;
+        }
+        if (!currentFormState.startDate) {
+            Toast.show({ type: 'error', text1: '시작 날짜를 선택해주세요' });
             return;
         }
 
@@ -379,12 +445,12 @@ export const useTodoFormLogic = (initialTodo, onClose, visible, initialDraft = n
         // ⚡️ Quick Mode에서는 항상 하루종일
         if (quickMode) {
             payload.isAllDay = true;
-            delete payload.startTime;
-            delete payload.endTime;
+            payload.startTime = null;
+            payload.endTime = null;
         }
 
         // 마지막 사용 카테고리 저장
-        AsyncStorage.setItem('lastUsedCategoryId', formState.categoryId).catch(() => { });
+        AsyncStorage.setItem('lastUsedCategoryId', currentFormState.categoryId).catch(() => { });
 
         if (initialTodo) {
             updateTodo.mutate(
@@ -413,7 +479,7 @@ export const useTodoFormLogic = (initialTodo, onClose, visible, initialDraft = n
                 }
             );
         }
-    }, [formState, buildPayload, initialTodo, onClose, createTodo, updateTodo]);
+    }, [buildPayload, initialTodo, onClose, createTodo, updateTodo]);
 
     // Quick Mode용 라벨 계산
     const quickModeLabels = useMemo(() => {
@@ -430,10 +496,10 @@ export const useTodoFormLogic = (initialTodo, onClose, visible, initialDraft = n
         // 날짜 라벨
         const today = getCurrentDateInTimeZone(userTimeZone);
         const tomorrow = addDaysToYmd(today, 1);
-        let dateLabel = '오늘';
+        let dateLabel = formState.startDate ? '오늘' : '날짜 선택';
         if (formState.startDate === tomorrow) {
             dateLabel = '내일';
-        } else if (formState.startDate !== today) {
+        } else if (formState.startDate && formState.startDate !== today) {
             dateLabel = dayjs(formState.startDate).format('M.D');
         }
 

@@ -11,12 +11,15 @@ export default function TimeZoneSelectionScreen({ navigation }) {
     const { updateTimeZone } = useTimeZone();
     const bottomInset = useFloatingTabBarScrollPadding(16);
 
-    // settings.timeZone이 우선, 없으면 root level timeZone, 없으면 기본값
-    const currentTimeZone = user?.settings?.timeZone || user?.timeZone || 'Asia/Seoul';
+    const currentTimeZone = user?.settings?.timeZone || 'Asia/Seoul';
 
     const handleSelect = async (timeZone) => {
         // iOS 스타일: 토스트 없이 업데이트하고 화면 유지 (체크 표시만 바뀜)
-        await updateTimeZone(timeZone, { silent: true });
+        try {
+            await updateTimeZone(timeZone, { silent: true });
+        } catch {
+            // The hook reports persistence failures; keep the previous selection.
+        }
     };
 
     return (

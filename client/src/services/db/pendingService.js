@@ -21,8 +21,8 @@ import { generateId } from '../../utils/idGenerator';
  * 
  * @returns {Promise<Array>}
  */
-export async function getPendingChanges() {
-    const db = getDatabase();
+export async function getPendingChanges(connection = null) {
+    const db = connection || getDatabase();
 
     const result = await db.getAllAsync(
         'SELECT * FROM pending_changes ORDER BY created_at ASC'

@@ -21,6 +21,7 @@ import { Slot, useRouter, useSegments } from 'expo-router';
 import { useAuthStore, setQueryClient } from '../src/store/authStore';
 import { useDateStore } from '../src/store/dateStore';
 import { useTodoFormStore } from '../src/store/todoFormStore';
+import { useTodoFormV2Store } from '../src/store/todoFormV2Store';
 import { toastConfig } from '../src/config/toastConfig';
 import GlobalFormOverlay from '../src/features/todo/form/GlobalFormOverlay';
 import { SyncProvider } from '../src/providers/SyncProvider';
@@ -87,6 +88,7 @@ export default function RootLayout() {
   const { user, isLoading, isLoggedIn, loadAuth, shouldShowLogin } = useAuthStore();
   const { currentDate, setCurrentDate } = useDateStore();
   const { mode } = useTodoFormStore();
+  const detailDraft = useTodoFormV2Store(state => state.draft);
   const { setColorScheme } = useColorScheme();
   const hasInitializedCurrentDateRef = useRef(false);
   const previousTimeZoneRef = useRef(null);
@@ -129,7 +131,7 @@ export default function RootLayout() {
 
             const prewarmStart = performance.now();
             const traceId = `app-prewarm-${Date.now().toString(36)}`;
-            const anchorDate = getCurrentDateInTimeZone();
+            const anchorDate = getCurrentDateInTimeZone(useAuthStore.getState().user?.settings?.timeZone);
             const { startDate, endDate } = buildPrewarmRange(anchorDate);
             console.log(
               `[RootLayout] Common range prewarm start: ${startDate} ~ ${endDate} ` +
@@ -239,7 +241,7 @@ export default function RootLayout() {
       return;
     }
 
-    if (mode !== 'CLOSED') {
+    if (mode !== 'CLOSED' || detailDraft || segments.includes('todo-form')) {
       return;
     }
 
@@ -251,7 +253,7 @@ export default function RootLayout() {
     }
 
     previousTimeZoneRef.current = nextTimeZone;
-  }, [isLoading, user?.settings?.timeZone, currentDate, mode, setCurrentDate]);
+  }, [isLoading, user?.settings?.timeZone, currentDate, mode, detailDraft, segments, setCurrentDate]);
 
   useEffect(() => {
     const theme = user?.settings?.theme || 'system';

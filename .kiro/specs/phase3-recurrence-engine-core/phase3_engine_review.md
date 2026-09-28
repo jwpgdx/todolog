@@ -52,6 +52,8 @@ R7 mentions short-month + 31st and leap-year 2/29 but the policy is **"skip"** a
 - Yearly BYMONTH=2;BYMONTHDAY=29 on non-leap year → **skip**
 - Yearly BYMONTH=2;BYMONTHDAY=29 on 2028 (leap) → **occurs**
 
+2026-09-28 follow-up: the form can author comma-separated monthly `BYMONTHDAY` values. The client engine now normalizes `byMonthDay` to the documented list shape and evaluates every listed positive day; source regression covers `1,15,31`, short-month skipping, JSON `dayOfMonth` arrays, single-value compatibility, and the active occurrence-decision path.
+
 ### Note 2: `dayjs` Dependency Check
 
 The spec says `dayjs + YYYY-MM-DD`. Verify `dayjs` is in [client/package.json](file:///Users/admin/Documents/github/todo/client/package.json/Users/admin/Documents/github/todo/client/package.json). If not, it needs adding — or the engine should use pure string arithmetic (which is feasible for date-only operations and avoids a new dependency).

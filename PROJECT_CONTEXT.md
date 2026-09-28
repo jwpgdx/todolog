@@ -1,6 +1,6 @@
 # Todolog Project Context
 
-Last Updated: 2026-09-25
+Last Updated: 2026-09-28
 Status: Feature development remains paused. D02-D06 are frozen as F24-F28 and Todo Screen V2 formal requirements/design/tasks have been drafted for user review. Native-list foundations have historical validation; selection mode and bulk category move remain partial and unimplemented against the latest freezes.
 
 Start with [WEB_GPT_HANDOFF.md](WEB_GPT_HANDOFF.md). The September audit did not rebuild or run the app. Historical "validated" statements below describe prior checks, not a fresh full regression pass.
@@ -38,7 +38,7 @@ Server:
 
 - Phase 1-2 calendar integration: complete
 - Phase 2.5 data normalization: complete
-- Sync hardening (`Pending Push -> Delta Pull`): complete
+- Sync hardening (`Pending Push -> Delta Pull`): base pipeline complete; 2026-09-28 local-intent fence/atomic pull apply and bounded cursor watermark/read-window hardening are implemented and source-regression validated. Live Mongo/device integration remains separate evidence.
 - Phase 3 recurrence engine core (Step 1): complete and validated
 - Phase 3 common query/aggregation layer (Step 2): complete and validated
 - Phase 3 screen-adapter layer (Step 3): complete and validated
@@ -121,6 +121,10 @@ Pending Push failure behavior (important):
 - Pending items live in SQLite `pending_changes` and are pushed FIFO.
 - If a push fails with retryable errors (network/timeout/5xx), the item is marked `failed` with `next_retry_at`, and the sync run stops before `Delta Pull` to avoid inconsistent merges.
 - Default retry backoff: 30s -> 2m -> 10m. After 3 retries, the item becomes `dead_letter` and is no longer retried automatically.
+- Delta Pull also refuses local apply while any non-dead-letter `pending`/`failed` intent remains, including future-backoff/unprocessed rows. It checks before network work and again on the exclusive write connection immediately before local apply.
+- Category full snapshot, Todo delta, and Completion delta are fetched/validated before mutation and applied in one write transaction. A later fetch/apply failure no longer leaves an earlier surface partially applied.
+- Category sync upsert uses conflict-update rather than SQLite `REPLACE`, preserving related rows from replacement-triggered FK cascades.
+- Todo/Completion delta endpoints capture a monotonic upper watermark before reads, query inclusive `[cursor, watermark]` windows, and return that boundary. The client commits the earlier of the sequential endpoint watermarks; later endpoint overlap is intentionally replayed on the next run.
 
 ## 4. Phase 2.5 Date/Time Contract (Canonical)
 
@@ -220,8 +224,8 @@ File: `server/src/models/Todo.js`
 
 Schedule fields:
 
-- `startDate: String`
-- `endDate: String`
+- `startDate: String` (server create/update currently requires a valid `YYYY-MM-DD`)
+- `endDate: String | null`
 - `startTime: String | null`
 - `endTime: String | null`
 - `recurrenceEndDate: String | null`
@@ -260,6 +264,9 @@ Behavior:
 
 1. UI form creates normalized payload.
    - category preselect policy: `lastUsedCategoryId` (if valid) -> first category
+   - title/memo native inputs are uncontrolled for composition stability but update the form draft immediately; submit reads a synchronous latest-draft ref so the final text event is not dependent on a rerender/debounce completing
+   - edit compatibility: a legacy/local null `startDate` is preserved rather than silently replaced with today, but submit is blocked until the required start date is explicitly repaired; nullable `endDate` stays nullable
+   - recurrence compatibility: untouched existing RRULE payloads round-trip exactly so unsupported UI grammar is not lost; editing a recurrence control opts into rebuilding the form-supported subset
 2. Data persists to SQLite.
 3. Pending change queued (offline-first; UI does not wait for server).
 4. Sync service sends normalized payload to server (background).
@@ -416,11 +423,13 @@ Shared range cache implementation:
    - date-only normalization (`YYYY-MM-DD`) for recurrence-critical paths
    - fail-soft behavior for invalid recurrence inputs
    - bounded expansion guard (`MAX_EXPANSION_DAYS = 366`)
+   - normalized `byMonthDay` list semantics: RRULE/JSON multi-value monthly rules such as `BYMONTHDAY=1,15` are evaluated on every listed day; impossible short-month days are skipped without remapping, while single-value rules remain compatible as one-item lists
 4. DB contract alignment for recurrence:
    - `todos.recurrence_end_date` column
    - `idx_todos_recurrence_window(start_date, recurrence_end_date)` index
 5. Runtime integration status:
    - `recurrenceUtils` delegates recurrence predicate to engine core
+   - recurrence display helpers accept persisted string-array rules and render every authored monthly `BYMONTHDAY` value instead of assuming a single scalar; malformed display inputs fail soft rather than throwing in native managed-list adapters
    - common query/aggregation path-level unification (TodoScreen/TodoCalendarV2/WeekFlowCalendar) is complete
    - screen adapters / calendar read paths for TodoScreen, TC2, and week-flow are wired to runtime read paths
 

@@ -24,7 +24,7 @@ function getTabTitleFromRoute(route) {
 export default function AppLayout() {
   const { user, isLoading } = useAuthStore();
 
-  useTimeZone();
+  useTimeZone({ autoDetect: true });
 
   if (isLoading) {
     return null;

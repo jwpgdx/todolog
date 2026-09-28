@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useRef, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { ScrollView, View, Text, TouchableOpacity, TextInput } from 'react-native';
 import { LayoutAnimation } from 'react-native';
 import { BottomSheetInput } from '../../../../components/ui/bottom-sheet';
@@ -55,12 +55,10 @@ export default function DetailedForm({
     const [activeInput, setActiveInput] = useState(null);
 
 
-    // ⚡️ 입력 핸들러 최적화 (Uncontrolled Pattern)
-    // value prop을 제거하고 defaultValue만 사용하여 네이티브 입력기의 조합 상태를 유지합니다.
-
-    // 디바운스 타이머 Refs
-    const titleTimerRef = useRef(null);
-    const memoTimerRef = useRef(null);
+    // Uncontrolled Pattern: value prop 대신 defaultValue를 유지해 네이티브
+    // 조합 입력 상태는 보존하되, form logic에는 매 입력을 즉시 전달한다.
+    // 지연 타이머를 두면 사용자가 300ms 안에 저장/닫기 했을 때 마지막
+    // 입력이 저장에서 빠지거나 다음 폼 세션에 늦게 반영될 수 있다.
 
     useEffect(() => {
         if (initialFocusTarget !== 'DATE') {
@@ -70,21 +68,8 @@ export default function DetailedForm({
         setActiveInput((current) => current || 'startDate');
     }, [initialFocusTarget]);
 
-    // Title 핸들러 (Debounce only)
-    const handleChangeTitle = useCallback((text) => {
-        if (titleTimerRef.current) clearTimeout(titleTimerRef.current);
-        titleTimerRef.current = setTimeout(() => {
-            handleChange('title', text);
-        }, 300); // 300ms 디바운스
-    }, [handleChange]);
-
-    // Memo 핸들러 (Debounce only)
-    const handleChangeMemo = useCallback((text) => {
-        if (memoTimerRef.current) clearTimeout(memoTimerRef.current);
-        memoTimerRef.current = setTimeout(() => {
-            handleChange('memo', text);
-        }, 300);
-    }, [handleChange]);
+    const handleChangeTitle = (text) => handleChange('title', text);
+    const handleChangeMemo = (text) => handleChange('memo', text);
 
     const selectedCategory = categories.find(c => c._id === formState.categoryId);
     const hasRecurrence = formState.frequency && formState.frequency !== 'none';

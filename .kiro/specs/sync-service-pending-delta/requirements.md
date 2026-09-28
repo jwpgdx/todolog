@@ -147,6 +147,9 @@ Summary:
 3. The sync cursor SHALL be committed only when both push and pull succeed.
 4. On partial failure, the sync cursor SHALL remain unchanged.
 5. The delta pull implementation SHALL normalize per-entity deleted payload shapes before local apply.
+6. Each Todo/Completion delta endpoint SHALL capture an upper sync watermark before its async reads and SHALL query an inclusive bounded window from the supplied cursor through that watermark.
+7. The client SHALL commit a cursor no later than the earliest successful endpoint watermark so sequential endpoint requests cannot skip writes between their read windows.
+8. The cursor protocol SHALL remain monotonic under server clock rollback and SHALL safely replay same-millisecond boundary rows rather than relying on an exclusive lower bound.
 
 ### Requirement 9: Category Sync Strategy
 

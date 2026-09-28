@@ -53,7 +53,7 @@ export const setLogoutHandler = (handler) => {
 api.interceptors.request.use(
   async (config) => {
     const token = await AsyncStorage.getItem('token');
-    if (token) {
+    if (token && !config.headers.Authorization) {
       config.headers.Authorization = `Bearer ${token}`;
     }
     return config;
@@ -66,6 +66,12 @@ api.interceptors.response.use(
   (response) => response,
   async (error) => {
     const originalRequest = error.config;
+
+    // Best-effort settings sync is bound to its initiating session. A late 401
+    // must not log out (and clear local data for) a replacement session.
+    if (originalRequest?.skipAuthRecovery) {
+      return Promise.reject(error);
+    }
 
     // 401 에러이고, 재시도하지 않은 요청인 경우
     if (error.response?.status === 401 && !originalRequest._retry) {

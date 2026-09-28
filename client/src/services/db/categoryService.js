@@ -21,8 +21,8 @@ const INBOX_ORDER = 0;
  * 
  * @returns {Promise<Array>}
  */
-export async function getAllCategories() {
-    const db = getDatabase();
+export async function getAllCategories(connection = null) {
+    const db = connection || getDatabase();
 
     const result = await db.getAllAsync(`
     SELECT
@@ -186,9 +186,17 @@ export async function upsertCategory(category, connection = null) {
     const db = connection || getDatabase();
 
     await db.runAsync(`
-    INSERT OR REPLACE INTO categories 
+    INSERT INTO categories
     (_id, name, color, icon, order_index, system_key, created_at, updated_at, deleted_at)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(_id) DO UPDATE SET
+      name = excluded.name,
+      color = excluded.color,
+      icon = excluded.icon,
+      order_index = excluded.order_index,
+      system_key = excluded.system_key,
+      updated_at = excluded.updated_at,
+      deleted_at = excluded.deleted_at
   `, [
         category._id,
         category.name,
@@ -208,28 +216,22 @@ export async function upsertCategory(category, connection = null) {
  * @param {Array} categories
  * @returns {Promise<void>}
  */
-export async function upsertCategories(categories) {
-    const db = getDatabase();
+export async function upsertCategories(categories, connection = null) {
+    if (!Array.isArray(categories) || categories.length === 0) return;
 
-    await db.withTransactionAsync(async () => {
+    const apply = async (db) => {
         for (const cat of categories) {
-            await db.runAsync(`
-        INSERT OR REPLACE INTO categories 
-        (_id, name, color, icon, order_index, system_key, created_at, updated_at, deleted_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `, [
-                cat._id,
-                cat.name,
-                cat.color || null,
-                cat.icon || null,
-                cat.order ?? cat.order_index ?? 0,
-                cat.systemKey || cat.system_key || null,
-                cat.createdAt || cat.created_at || new Date().toISOString(),
-                cat.updatedAt || cat.updated_at || new Date().toISOString(),
-                cat.deletedAt || cat.deleted_at || null,
-            ]);
+            await upsertCategory(cat, db);
         }
-    });
+    };
+
+    if (connection) {
+        await apply(connection);
+        return;
+    }
+
+    const db = getDatabase();
+    await db.withTransactionAsync(async () => apply(db));
 }
 
 /**
@@ -238,8 +240,8 @@ export async function upsertCategories(categories) {
  * @param {string} id
  * @returns {Promise<void>}
  */
-export async function deleteCategory(id) {
-    const db = getDatabase();
+export async function deleteCategory(id, connection = null) {
+    const db = connection || getDatabase();
     const now = new Date().toISOString();
 
     await db.runAsync(

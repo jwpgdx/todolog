@@ -506,3 +506,45 @@
 1. 동일 시점에 다중 트리거가 발생해도 디바운스로 병합됨 (`이전 타이머 취소` 반복).
 2. 동기화 실행 중 재진입은 run-guard로 차단됨 (`이미 동기화 중 - 스킵`).
 3. Task14-4 PASS.
+
+## 2026-09-28 Windows local-intent / pull atomicity hardening
+
+Scope: local source/test work only. No live API replay, application SQLite mutation, schema migration, deployment, or device run.
+
+Fail-first source harness: `client/scripts/audit-sync-local-intent.test.cjs` Babel-loads the actual sync/DB modules with network/SQLite adapters mocked.
+
+- Before runtime edits: **0 PASS / 9 FAIL**. Reproduced active/future-backoff pending not blocking pull, an in-flight local write not fencing apply, partial Category apply before later fetch failure, malformed snapshots treated as empty, no shared apply transaction/rollback, and Category `INSERT OR REPLACE`.
+- After remediation: original 9 cases **9 PASS / 0 FAIL**.
+- Added dead-letter progress coverage: final focused suite **10 PASS / 0 FAIL**.
+
+Implemented behavior:
+
+1. Delta Pull preflights active pending intent before network work and re-checks it inside the same native exclusive write transaction used for local apply.
+2. `pending` and `failed` (including future-backoff) rows block pull; `dead_letter` does not.
+3. Category/Todo/Completion remote reads and shape validation complete before local mutation.
+4. Category full snapshot + Todo delta + Completion delta apply under one write transaction; apply failure rolls back the local pull.
+5. DB batch helpers accept an existing transaction connection so Delta Pull does not open nested per-service transactions.
+6. Category upsert now uses `ON CONFLICT(_id) DO UPDATE` rather than `INSERT OR REPLACE`, avoiding replacement-triggered FK cascade behavior.
+
+At this local-intent checkpoint, the cursor read-window gap remained intentionally separate. It was handled in the following bounded continuation.
+
+## 2026-09-28 Windows cursor watermark / read-window hardening
+
+Scope: bounded Todo/Completion delta cursor protocol only, continuing from the completed local-intent package. No live API request, Mongo/SQLite mutation, schema migration, dependency update, deployment, or device run.
+
+Fail-first harness: `client/scripts/audit-sync-cursor-watermark.test.cjs`. It executes the actual server controllers with mocked Mongo query chains/clock and the actual client `deltaPull.js` with mocked adapters.
+
+- Before cursor runtime edits: **0 PASS / 6 FAIL**.
+- Reproduced: endpoint `syncTime` captured after reads, unbounded `$gt` queries, same-millisecond boundary loss, server-clock cursor rollback, Todo invalid cursor acceptance, and client selection of the later sequential endpoint watermark.
+- After remediation: **6 PASS / 0 FAIL**.
+- Existing local-intent regression remained **10/10 PASS** and settings/form regression remained **27/27 PASS**.
+
+Implemented protocol:
+
+1. Todo and Completion endpoints validate the input cursor, capture an upper boundary before any async query, and clamp it to at least the supplied cursor.
+2. `updatedAt` and `deletedAt` query ranges are inclusive: `$gte cursor` + `$lte boundary`. The overlap deliberately replays cursor-millisecond rows so a write that commits just after the previous read is not lost.
+3. Each endpoint returns that pre-read boundary rather than a timestamp captured after its reads.
+4. The client commits the earliest of the Todo/Completion endpoint boundaries. Since calls are sequential, this preserves the earlier endpoint's unread interval while the later endpoint safely replays overlap on the next run.
+5. Client rejects any combined server cursor that would move behind the current cursor.
+
+Validation here is deterministic source execution with mocked DB/network timing. It proves the bounded-window contract in source but is not evidence of a live multi-request Mongo race or production clock behavior.

@@ -1,9 +1,32 @@
 import { todoAPI, completionAPI } from '../../api/todos';
 import { getCategories } from '../../api/categories';
-import { ensureDatabase } from '../db/database';
+import { ensureDatabase, withWriteTransaction } from '../db/database';
 import { getAllCategories, upsertCategories, deleteCategory } from '../db/categoryService';
 import { upsertTodos, deleteTodos } from '../db/todoService';
 import { upsertCompletions, deleteCompletionsByKeys } from '../db/completionService';
+import { getPendingChanges } from '../db/pendingService';
+
+function isActivePending(change) {
+  return change?.status === 'pending' || change?.status === 'failed';
+}
+
+function buildPendingBlockedError(count) {
+  const error = new Error(`Delta pull blocked by ${count} active pending change(s)`);
+  error.code = 'DELTA_PULL_PENDING_NOT_DRAINED';
+  return error;
+}
+
+function validateDeltaPayload(name, payload) {
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+    throw new Error(`${name} delta payload is invalid`);
+  }
+  if (!Array.isArray(payload.updated) || !Array.isArray(payload.deleted)) {
+    throw new Error(`${name} delta payload must include updated/deleted arrays`);
+  }
+  if (!payload.syncTime || Number.isNaN(Date.parse(payload.syncTime))) {
+    throw new Error(`${name} delta payload has invalid syncTime`);
+  }
+}
 
 function normalizeTodoDeleted(deleted) {
   const source = Array.isArray(deleted) ? deleted : [];
@@ -88,19 +111,19 @@ function normalizeCompletionDeletedKeys(deleted) {
   return result;
 }
 
-function pickLatestSyncTime(values) {
-  let maxTs = null;
+function pickSafeSyncTime(values) {
+  let minTs = null;
 
   for (const value of values) {
     if (!value) continue;
     const ts = Date.parse(value);
     if (Number.isNaN(ts)) continue;
-    if (maxTs == null || ts > maxTs) {
-      maxTs = ts;
+    if (minTs == null || ts < minTs) {
+      minTs = ts;
     }
   }
 
-  return maxTs != null ? new Date(maxTs).toISOString() : null;
+  return minTs != null ? new Date(minTs).toISOString() : null;
 }
 
 function normalizeCategoryComparable(category) {
@@ -116,9 +139,9 @@ function normalizeCategoryComparable(category) {
   };
 }
 
-async function applyCategoryFullSnapshot(serverCategories) {
-  const categories = Array.isArray(serverCategories) ? serverCategories : [];
-  const localActive = await getAllCategories();
+async function applyCategoryFullSnapshot(serverCategories, connection) {
+  const categories = serverCategories;
+  const localActive = await getAllCategories(connection);
   const localMap = new Map(
     localActive
       .map(normalizeCategoryComparable)
@@ -151,7 +174,7 @@ async function applyCategoryFullSnapshot(serverCategories) {
   }
 
   if (categories.length > 0) {
-    await upsertCategories(categories);
+    await upsertCategories(categories, connection);
   }
 
   const serverIds = new Set(categories.map(cat => String(cat?._id)).filter(Boolean));
@@ -160,7 +183,7 @@ async function applyCategoryFullSnapshot(serverCategories) {
     .map(cat => cat._id);
 
   for (const categoryId of toDelete) {
-    await deleteCategory(categoryId);
+    await deleteCategory(categoryId, connection);
   }
 
   return {
@@ -208,50 +231,72 @@ export async function runDeltaPull(options = {}) {
     await ensureDatabase();
     console.log('🔄 [runDeltaPull] 시작:', { cursor });
 
-    // 1) Category full pull
-    const serverCategories = await getCategories();
-    const categoryResult = await applyCategoryFullSnapshot(serverCategories);
-    console.log('📥 [runDeltaPull] category full pull:', categoryResult);
+    // A backoff/deferred/unprocessed local intent must never be overwritten by pull.
+    const pendingBeforeNetwork = (await getPendingChanges()).filter(isActivePending);
+    if (pendingBeforeNetwork.length > 0) {
+      throw buildPendingBlockedError(pendingBeforeNetwork.length);
+    }
 
-    // 2) Todo delta pull
+    // Fetch every remote surface before mutating local SQLite. This prevents a
+    // later request failure from leaving a partially-applied pull behind.
+    const serverCategories = await getCategories();
+    if (!Array.isArray(serverCategories)) {
+      throw new Error('Category full snapshot must be an array');
+    }
+
     const todoResponse = await todoAPI.getDeltaSync(cursor);
     const todoPayload = todoResponse?.data || {};
+    validateDeltaPayload('Todo', todoPayload);
     const todoUpdated = normalizeTodoUpdated(todoPayload.updated);
     const todoDeleted = normalizeTodoDeleted(todoPayload.deleted);
 
-    if (todoUpdated.length > 0) {
-      await upsertTodos(todoUpdated);
+    const completionResponse = await completionAPI.getDeltaSync(cursor);
+    const completionPayload = completionResponse?.data || {};
+    validateDeltaPayload('Completion', completionPayload);
+    const completionUpdated = normalizeCompletionUpdated(completionPayload.updated);
+    const completionDeletedKeys = normalizeCompletionDeletedKeys(completionPayload.deleted);
+
+    // Requests are sequential, so a later endpoint can have a later bounded
+    // watermark. Commit the earliest one; later endpoints safely replay their
+    // overlap on the next sync instead of making earlier-endpoint changes fall
+    // into an unqueryable gap.
+    const serverSyncTime = pickSafeSyncTime([todoPayload.syncTime, completionPayload.syncTime]);
+    if (!serverSyncTime) {
+      throw new Error('Delta pull did not produce a valid server sync time');
     }
-    if (todoDeleted.length > 0) {
-      await deleteTodos(todoDeleted);
+    if (Date.parse(serverSyncTime) < cursorTs) {
+      throw new Error(`Delta pull server sync time moved backwards: ${serverSyncTime}`);
     }
 
+    const applyResult = await withWriteTransaction(async (transaction) => {
+      // Re-check on the same exclusive native write connection used by apply.
+      // A local mutation that appeared during the network window blocks the
+      // pull; a mutation that starts after this transaction waits until apply
+      // is complete and therefore cannot be overwritten by this response.
+      const pendingBeforeApply = (await getPendingChanges(transaction)).filter(isActivePending);
+      if (pendingBeforeApply.length > 0) {
+        throw buildPendingBlockedError(pendingBeforeApply.length);
+      }
+
+      const categoryResult = await applyCategoryFullSnapshot(serverCategories, transaction);
+      await upsertTodos(todoUpdated, transaction);
+      await deleteTodos(todoDeleted, transaction);
+      await upsertCompletions(completionUpdated, transaction);
+      await deleteCompletionsByKeys(completionDeletedKeys, transaction);
+
+      return { categoryResult };
+    });
+
+    const categoryResult = applyResult.categoryResult;
+    console.log('📥 [runDeltaPull] category full pull:', categoryResult);
     console.log('📥 [runDeltaPull] todo delta:', {
       updated: todoUpdated.length,
       deleted: todoDeleted.length,
     });
-
-    // 3) Completion delta pull
-    const completionResponse = await completionAPI.getDeltaSync(cursor);
-    const completionPayload = completionResponse?.data || {};
-    const completionUpdated = normalizeCompletionUpdated(completionPayload.updated);
-    const completionDeletedKeys = normalizeCompletionDeletedKeys(completionPayload.deleted);
-
-    if (completionUpdated.length > 0) {
-      await upsertCompletions(completionUpdated);
-    }
-    if (completionDeletedKeys.length > 0) {
-      await deleteCompletionsByKeys(completionDeletedKeys);
-    }
-
     console.log('📥 [runDeltaPull] completion delta:', {
       updated: completionUpdated.length,
       deleted: completionDeletedKeys.length,
     });
-
-    const serverSyncTime =
-      pickLatestSyncTime([todoPayload.syncTime, completionPayload.syncTime]) ||
-      new Date().toISOString();
 
     return {
       ok: true,

@@ -275,40 +275,22 @@ export async function upsertTodo(todo, connection = null) {
  * @param {Array} todos
  * @returns {Promise<void>}
  */
-export async function upsertTodos(todos) {
-  const db = getDatabase();
+export async function upsertTodos(todos, connection = null) {
+  if (!Array.isArray(todos) || todos.length === 0) return;
 
-  await db.withTransactionAsync(async () => {
+  const apply = async (db) => {
     for (const todo of todos) {
-      // ⚠️ INSERT OR REPLACE 대신 ON CONFLICT DO UPDATE 사용 (CASCADE DELETE 방지)
-      await db.runAsync(`
-        INSERT INTO todos 
-        (_id, title, date, start_date, end_date, recurrence, recurrence_end_date,
-         category_id, custom_order, category_order, favorite_order,
-         is_all_day, start_time, end_time, color, memo,
-         created_at, updated_at, deleted_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ON CONFLICT(_id) DO UPDATE SET
-          title = excluded.title,
-          date = excluded.date,
-          start_date = excluded.start_date,
-          end_date = excluded.end_date,
-          recurrence = excluded.recurrence,
-          recurrence_end_date = excluded.recurrence_end_date,
-          category_id = excluded.category_id,
-          custom_order = excluded.custom_order,
-          category_order = excluded.category_order,
-          favorite_order = excluded.favorite_order,
-          is_all_day = excluded.is_all_day,
-          start_time = excluded.start_time,
-          end_time = excluded.end_time,
-          color = excluded.color,
-          memo = excluded.memo,
-          updated_at = excluded.updated_at,
-          deleted_at = excluded.deleted_at
-      `, serializeTodoForInsert(todo));
+      await upsertTodo(todo, db);
     }
-  });
+  };
+
+  if (connection) {
+    await apply(connection);
+    return;
+  }
+
+  const db = getDatabase();
+  await db.withTransactionAsync(async () => apply(db));
 }
 
 /**
@@ -350,23 +332,23 @@ export async function deleteTodoOnConnection(
  * @param {Array<string>} ids
  * @returns {Promise<void>}
  */
-export async function deleteTodos(ids) {
-  const db = getDatabase();
+export async function deleteTodos(ids, connection = null) {
+  if (!Array.isArray(ids) || ids.length === 0) return;
   const now = new Date().toISOString();
 
-  await db.withTransactionAsync(async () => {
+  const apply = async (db) => {
     for (const id of ids) {
-      await db.runAsync(
-        'UPDATE todos SET deleted_at = ?, updated_at = ? WHERE _id = ?',
-        [now, now, id]
-      );
-
-      await db.runAsync(
-        'UPDATE completions SET deleted_at = ? WHERE todo_id = ? AND deleted_at IS NULL',
-        [now, id]
-      );
+      await deleteTodoOnConnection(db, id, now);
     }
-  });
+  };
+
+  if (connection) {
+    await apply(connection);
+    return;
+  }
+
+  const db = getDatabase();
+  await db.withTransactionAsync(async () => apply(db));
 }
 
 /**

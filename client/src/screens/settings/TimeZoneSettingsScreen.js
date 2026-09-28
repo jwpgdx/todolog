@@ -2,33 +2,22 @@ import React from 'react';
 import { View, Text, TouchableOpacity, ScrollView, Switch, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import * as Localization from 'expo-localization';
 import { useRouter } from 'expo-router';
 import { useSettings, useUpdateSetting } from '../../hooks/queries/useSettings';
-import { useTimeZone, getTimeZoneDisplayName } from '../../hooks/useTimeZone';
 import { useFloatingTabBarScrollPadding } from '../../navigation/useFloatingTabBarInset';
 
 export default function TimeZoneSettingsScreen() {
     const router = useRouter();
     const { data: settings = {} } = useSettings();
     const { mutate: updateSetting } = useUpdateSetting();
-    const { updateTimeZone } = useTimeZone();
     const bottomInset = useFloatingTabBarScrollPadding(16);
 
     const currentTimeZone = settings.timeZone || 'Asia/Seoul';
     const isAuto = settings.timeZoneAuto ?? true;
 
-    const toggleAuto = async (value) => {
-        // 1. UI 선반영 (Optimistic)
+    const toggleAuto = (value) => {
+        // The root timezone observer reacts after this local setting commits.
         updateSetting({ key: 'timeZoneAuto', value });
-
-        if (value) {
-            // Auto ON -> 현재 기기 타임존으로 즉시 변경
-            const deviceTimeZone = Localization.getCalendars()[0]?.timeZone || 'Asia/Seoul';
-            if (deviceTimeZone !== currentTimeZone) {
-                await updateTimeZone(deviceTimeZone);
-            }
-        }
     };
 
     return (

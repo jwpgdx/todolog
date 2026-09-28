@@ -175,17 +175,22 @@ export function occursOnDateNormalized(normalizedRule, targetDate) {
     }
 
     case 'MONTHLY': {
-      const monthDay = normalizedRule.byMonthDay || startParts.day;
-      if (!Number.isInteger(monthDay) || monthDay <= 0) return false;
-      return targetParts.day === monthDay;
+      const monthDays = parsePositiveIntegerList(normalizedRule.byMonthDay);
+      if (monthDays.length > 0) {
+        return monthDays.includes(targetParts.day);
+      }
+      return targetParts.day === startParts.day;
     }
 
     case 'YEARLY': {
       const month = normalizedRule.byMonth || startParts.month;
-      const monthDay = normalizedRule.byMonthDay || startParts.day;
-      if (!Number.isInteger(month) || !Number.isInteger(monthDay)) return false;
-      if (month < 1 || month > 12 || monthDay <= 0) return false;
-      return targetParts.month === month && targetParts.day === monthDay;
+      const monthDays = parsePositiveIntegerList(normalizedRule.byMonthDay);
+      if (!Number.isInteger(month) || month < 1 || month > 12) return false;
+      if (targetParts.month !== month) return false;
+      if (monthDays.length > 0) {
+        return monthDays.includes(targetParts.day);
+      }
+      return targetParts.day === startParts.day;
     }
 
     default:
@@ -334,7 +339,7 @@ function applyRulePartsFromRRule(targetRule, rruleText) {
 
   targetRule.frequency = (kv.FREQ || '').toUpperCase() || null;
   targetRule.byDay = parseByDay(kv.BYDAY);
-  targetRule.byMonthDay = parsePositiveInteger(kv.BYMONTHDAY);
+  targetRule.byMonthDay = parsePositiveIntegerList(kv.BYMONTHDAY);
   targetRule.byMonth = parsePositiveInteger(kv.BYMONTH);
   targetRule.untilDate = normalizeDateOnlyString(kv.UNTIL);
 }
@@ -350,7 +355,9 @@ function applyRulePartsFromObject(targetRule, rawObject) {
 
   targetRule.frequency = typeof frequency === 'string' ? frequency.trim().toUpperCase() : null;
   targetRule.byDay = parseByDay(rawObject.byDay || rawObject.byday || rawObject.BYDAY || rawObject.weekdays);
-  targetRule.byMonthDay = parsePositiveInteger(rawObject.byMonthDay ?? rawObject.bymonthday ?? rawObject.BYMONTHDAY ?? rawObject.dayOfMonth);
+  targetRule.byMonthDay = parsePositiveIntegerList(
+    rawObject.byMonthDay ?? rawObject.bymonthday ?? rawObject.BYMONTHDAY ?? rawObject.dayOfMonth
+  );
   targetRule.byMonth = parsePositiveInteger(rawObject.byMonth ?? rawObject.bymonth ?? rawObject.BYMONTH ?? rawObject.month);
   targetRule.untilDate = normalizeDateOnlyString(
     rawObject.until || rawObject.endDate || rawObject.recurrenceEndDate || rawObject.end_date
@@ -389,6 +396,23 @@ function parsePositiveInteger(value) {
   const parsed = Number(value);
   if (!Number.isInteger(parsed) || parsed <= 0) return null;
   return parsed;
+}
+
+function parsePositiveIntegerList(value) {
+  if (value == null || value === '') return [];
+
+  const values = Array.isArray(value)
+    ? value
+    : (typeof value === 'string' ? value.split(',') : [value]);
+  const normalized = [];
+
+  for (const item of values) {
+    const parsed = Number(typeof item === 'string' ? item.trim() : item);
+    if (!Number.isInteger(parsed) || parsed <= 0) continue;
+    if (!normalized.includes(parsed)) normalized.push(parsed);
+  }
+
+  return normalized;
 }
 
 function extractUntilFromRRule(rruleText) {

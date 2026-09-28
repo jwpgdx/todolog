@@ -12,14 +12,12 @@ import DetailedForm from '../components/DetailedForm';
  * 
  * @param {object} logic - useTodoFormLogic 훅에서 반환된 객체
  * @param {function} onClose - 닫기 핸들러
- * @param {function} onSubmit - 제출 후 추가 액션 (선택적)
  * @param {string} initialFocusTarget - 초기 포커스 타겟
  * @param {boolean} withScrollView - ScrollView 포함 여부 (기본: true)
  */
 export default function DetailContent({
     logic,
     onClose,
-    onSubmit,
     initialFocusTarget = null,
     withScrollView = true,
 }) {
@@ -43,10 +41,7 @@ export default function DetailContent({
     const handleSave =
         logic.viewMode === 'category_create' || logic.viewMode === 'category_color'
             ? logic.handleCategoryCreate
-            : () => {
-                handleSubmit();
-                onSubmit?.();
-            };
+            : () => handleSubmit(); // The form logic closes only on local success.
 
     // 저장 라벨
     const saveLabel =

@@ -153,7 +153,7 @@ Recurrence Engine(`recurrenceEngine.js`, `routineUtils.js` 강화 영역)에서�
 - `BYDAY`가 있으면 해당 요일만 발생
 - `BYDAY`가 없으면 시작일 요일 기준
 3. Monthly:
-- `BYMONTHDAY` 우선
+- `BYMONTHDAY` 우선; comma-separated 복수 값은 각각 독립 발생일로 평가 (`BYMONTHDAY=1,15,31` → 매월 1/15/31일, 존재하지 않는 월말은 skip)
 - 없으면 시작일 day-of-month 기준
 4. Yearly:
 - `BYMONTH` + `BYMONTHDAY` 우선
