@@ -1,46 +1,35 @@
 # 웹 GPT + CoS 시작 프롬프트
 
-아래 내용을 새 웹 GPT 대화의 첫 요청으로 사용한다. 로컬 경로가 다른 경우 실제 연결된 workspace를 사용한다.
+아래 내용을 새 웹 GPT/다른 운영자 대화의 첫 요청으로 사용한다. 로컬 경로·계정·기기 상태는 실제 연결된 환경에서 다시 확인한다.
 
 ---
 
-Todolog 프로젝트를 이어받아 줘. 기능 개발은 아직 멈춘 상태다. D02-D06은 이미 F24-F28로 freeze됐고 Todo Screen V2의 `requirements.md` / `design.md` / `tasks.md` formal draft까지 작성됐다. 지금은 이 formal spec을 검토·승인하는 문서 Gate이며, 승인 뒤에도 먼저 CoS/Mac/iOS 환경을 확인한 후에만 첫 production milestone을 시작한다.
+Todolog 프로젝트를 이어받아 줘.
 
 저장소: https://github.com/jwpgdx/todolog
-브랜치: `codex/web-gpt-handoff-2026-09-21`
-기능 코드 기준 commit: `79cbc8d667019e99799bc4ade545c8085b8cba35`
-브랜치 HEAD에는 이 기준 코드 위에 인수인계 문서 정리가 들어 있다. main을 대신 읽지 말아 줘.
+작업 브랜치: `codex/web-gpt-handoff-2026-09-21`
 
-먼저 `AGENTS.md`, `AI_COMMON_RULES.md`, `WEB_GPT_HANDOFF.md`를 읽고, 연결된 `docs/handoff/IMPLEMENTATION_AUDIT.md`, `DECISIONS.md`, `EXECUTION_GUIDE.md`를 확인해 줘. 이후 PROJECT_CONTEXT/메뉴 구조/triage 등 필요한 근거만 읽어 줘. 저장소에 접근할 수 없거나 지정 branch를 읽을 수 없으면 그 사실을 먼저 말하고 추측으로 현황을 만들지 말아 줘.
+먼저 `AGENTS.md`와 `AI_COMMON_RULES.md`, 그다음 `docs/handoff/CURRENT.md`를 읽어. CURRENT가 가리키는 관련 `DECISIONS.md`, `IMPLEMENTATION_AUDIT.md`, `VALIDATION.md`, `EXECUTION_GUIDE.md`, feature spec만 추가로 읽고, 실제 `git branch --show-current`, `git rev-parse HEAD`, `git status --short`, remote 상태를 대조해. `main`이나 문서 속 오래된 SHA를 현재 구현이라고 가정하지 마.
 
-핵심 상황:
+Slack에 START HERE가 있으면 navigation용으로 먼저 볼 수 있지만 Slack은 authority가 아니다. Slack만 보고 private repo, secrets, SQLite/pending, auth, device, provider/DB/deployment 상태를 재구성하지 말고 실제 Git/runtime에서 확인해.
 
-- Expo SDK 55 / RN 0.83.6 / iOS와 Android 앱이다. 웹 개발은 종료했다.
-- SQLite offline-first, 기존 pending sync와 recurrence 계약을 유지한다.
-- iOS native list 핵심 상호작용은 구현 및 과거 수동 검증 이력이 있다.
-- Android category native는 일부 완료지만 todo/favorite native parity는 미완성이다.
-- 마지막 작업은 Favorites / AllTodos / Category detail의 선택모드 및 bulk 이동이다. action bar는 이동만 연결되어 있다.
-- 최신 bulk 실제 저장 E2E는 남아 있고, target-category no-op, 화면 순서, stale selection atomicity, success selection 종료 등의 정책은 F24/F28로 확정됐지만 코드는 아직 미반영이다.
-- D04는 platform-native 우선으로 freeze됐다: iOS는 system context menu + native collection drag 경로를 먼저 bounded spike하고, Android todo/favorite는 long-press selection + explicit native drag affordance가 후속 계약이다.
-- D05는 summary를 native list 내부 non-interactive item으로 두고 selection 중 숨기기로 freeze됐다.
-- TodoScreen은 native header / RN title+calendar / native list scroll 및 selection 시 calendar chrome hide/state restore까지 freeze됐지만 첫 production milestone에서는 제외한다.
-- Settings 전체 native migration / Account Hub / Material 테마 rollout / Todo form redesign은 후순위다.
+역할은 다음처럼 운영해:
 
-진행 원칙:
+- Web GPT / Prime: 설계·정책·아키텍처 판단, 작업 분할, 모델/reasoning 선택, 승인 경계와 결과 검토.
+- CoS: 실제 로컬 runtime/UI, 연결 앱, 프로세스·기기·인증·provider 같은 외부 실행 경계 확인.
+- Codex CLI: repo-local 조사/검색, 구현, 리팩터링, 테스트/build/typecheck, diff, 문서 작업에서 효율적이면 적극 사용.
+- 한 작업의 mutation owner는 하나만 둬. CoS↔Codex 전환 전 기존 실행/미커밋 상태를 확인하고 안전한 경계에서 ownership을 넘겨.
 
-- freeze된 요구와 구현 완료를 구분한다. 코드 존재와 테스트 통과도 구분한다.
-- 내가 확정한 결정을 임의로 바꾸거나 과거 외부 AI 의견으로 대체하지 않는다.
-- D02-D06은 이미 freeze됐으므로 다시 선택하게 하지 않는다. 새 미결정이 구현 중 드러나면 그때만 STOP하고 별도 논의한다.
-- formal spec 검토 결과만 저장소에 반영하고, 자동으로 다음 구현 Gate를 시작하지 않는다.
-- 첫 단계에서 앱 코드 수정, dependency upgrade, Xcode/runtime 재설치, DB 초기화를 하지 않는다.
-- 로컬 비밀값, 인증서, 실제 데이터는 공개 문서나 프롬프트에 넣지 않는다.
-- CoS가 repo를 읽는 것과 Mac/휴대폰에서 실행·조작할 수 있는 것은 따로 확인한다.
+사용자가 이미 승인한 bounded work unit 안에서는 repo-local 조사→구현→검증→문서화를 반복 확인 없이 이어가되, 새 제품 결정/범위 확장, deployment, DB write/migration, secrets/signing/provider 변경, 파괴적 작업은 기존 승인 경계를 지켜.
 
-첫 응답은 다음만 부탁한다:
+F24-F28과 Todo Screen V2 formal spec 승인은 이미 완료된 결정이므로 다시 묻지 마. 현재 구현/검증 상태와 새 Mac에서의 NEXT는 `CURRENT.md`를 기준으로 하되 실제 source/runtime과 충돌하면 실제 상태를 확인하고 CURRENT를 바로잡아.
 
-1. 실제로 읽은 branch와 commit, 접근 가능 범위.
-2. `.kiro/specs/todo-screen-v2/requirements.md`, `design.md`, `tasks.md`가 F24-F28 및 구현 감사표와 모순되는지 검토한 결과.
-3. formal spec에서 사용자 결정을 새로 요구할 실제 미결정이 있는지. 없다면 "추가 freeze 불필요"라고 명확히 말해 줘.
-4. 구현은 시작하지 말고, formal spec 승인 뒤 H2 환경/기기 확인에서 첫 번째로 확인할 항목만 추천해 줘.
+첫 응답/작업 시작 시에는:
 
-D02-D06을 다시 토론하거나 코드 구현을 자동 시작하지 말아 줘.
+1. 실제 branch/full HEAD/worktree와 접근 가능한 runtime을 확인해.
+2. 완료/진행 중/미확인을 CURRENT와 실제 증거로 분리해.
+3. 실행 중이거나 결과가 모호한 외부 작업을 중복하지 마.
+4. 현재 승인 범위의 mutation owner와 다음 완료 조건을 정하고 진행해.
+5. 긴 세션/이관 전에는 안전한 경계에서 CURRENT/관련 handoff를 갱신하고 허용된 경우 GitHub checkpoint를 push한 뒤 새 대화로 넘겨.
+
+과거 대화 전체를 복원하거나 완료된 테스트를 관성적으로 반복하지 마.

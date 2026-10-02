@@ -1,14 +1,14 @@
 # 실행 환경과 재개 가이드
 
-기준일: 2026-09-21. 이번 세션은 문서 감사이며 아래 빌드/기기 절차를 새로 실행하지 않았다.
+기준일: 2026-10-02 운영 갱신. 역사 환경 수치는 보존하되 현재 상태·owner·NEXT는 먼저 [CURRENT.md](CURRENT.md)를 확인한다.
 
 ## 1. Git 기준점
 
 - 저장소: https://github.com/jwpgdx/todolog
-- 기능 코드 기준: `79cbc8d667019e99799bc4ade545c8085b8cba35`
+- 확인된 최신 구현 체크포인트: `b8d334a694b49060b838c41531ebc9a11e5fd359` (실제 checkout HEAD/worktree가 우선)
 - 기존 보존 브랜치: `codex/macbook-handoff-2026-07-12`
 - 이번 문서 브랜치: `codex/web-gpt-handoff-2026-09-21`
-- `main`을 최신 작업이라고 가정하지 않는다. 9월 감사 시작 당시 main과 인수인계 브랜치의 commit은 달랐다.
+- `main`을 최신 작업이라고 가정하지 않는다. 2026-10-02 감사에서 작업 브랜치는 `origin/main`보다 35 ahead / 0 behind였다.
 - 새 환경에서는 clone/checkout 뒤 `git branch --show-current`, `git rev-parse HEAD`, `git status --short`를 보고할 것.
 
 ```bash
@@ -18,7 +18,7 @@ git status --short --branch
 git rev-parse HEAD
 ```
 
-이미 작업 중인 clone이 있다면 새 clone 명령을 무조건 실행하지 말고 변경/branch부터 확인한다. main merge, force push, reset은 인수인계에 필요하지 않다.
+인수 순서는 `AI_COMMON_RULES.md` → `CURRENT.md` → 관련 결정/hand-off/incident → 실제 Git 상태 → runtime/auth/device/provider 확인이다. 이미 작업 중인 clone이 있다면 새 clone 명령을 무조건 실행하지 말고 변경/branch부터 확인한다. main merge, force push, reset은 인수인계에 필요하지 않다.
 
 ## 2. 재현 기준과 설치물
 
@@ -89,13 +89,13 @@ root, client, server 각각의 lockfile에 맞춰 `npm ci`를 실행한다. nati
 | 단계 | 범위 | 종료 조건 |
 |---|---|---|
 | H0: 이번 인수인계 | 정적 감사, 문서 정리, GitHub 보존, 시작 프롬프트 | 문서 diff/경로 검사, 코드 변경 없음, remote commit 일치 |
-| H1: 웹 GPT 문서 검토 | D02-D06 정책 freeze, `requirements/design/tasks` formalization | 사용자 검토와 결정 기록. 다음 Gate 자동 시작 안 함 |
+| H1: 웹 GPT 문서 검토 | D02-D06 정책 freeze, `requirements/design/tasks` formalization | **완료(2026-09-25 승인)**. 같은 승인 반복 금지 |
 | H2: 환경/기기 확인 | CoS workspace + 휴대폰 + dev build + 로그 | 플랫폼별 실제 결과 기록. 먼저 한 플랫폼만 |
 | H3: iOS calendar-free 선택/bulk 이동 안정화 | AllTodos/Favorites/Category detail의 selection lifecycle, F27 summary, A01-A06/A08-A10/A12-A13 중 해당 결함 및 bulk move 검증 | 아래 최소 검증 통과 |
 | H4: 후속 bulk 액션 | offline-first delete/complete/favorite, occurrence snapshot과 화면 override | transaction/rollback/pending/recurrence별 검증 |
 | H5: 후속 범위 선정 | TodoScreen selection, Android todo/favorite native parity 등의 순서 재확인 | 승인된 단일 작업으로 분해 |
 
-F28에 따라 H3는 첫 production milestone로 freeze했다. H2 환경/기기 확인과 formal spec 사용자 검토가 끝나기 전 기능 구현을 시작하지 않는다. H4/H5는 별도 후속 Gate다.
+F28에 따라 H3는 첫 production milestone로 freeze했다. formal spec 승인은 이미 끝났다. 새 Mac에서는 H2 실제 환경/기기 상태를 먼저 재현하고 **기존 H3/F28 정적 구현을 검증**한 뒤 부족한 부분만 보정한다. H4/H5는 별도 후속 Gate다.
 
 최소 선택/이동 검증:
 

@@ -1,7 +1,7 @@
 # Codex Entry Rules
 
-Last Updated: 2026-02-13
-Scope: Codex IDE startup instructions only.
+Last Updated: 2026-10-02
+Scope: Codex IDE/CLI startup instructions only.
 
 ## 1. Purpose
 
@@ -18,17 +18,17 @@ When working with Codex, read in this order:
 
 1. `AGENTS.md` (this file)
 2. `AI_COMMON_RULES.md`
-3. `PROJECT_CONTEXT.md`
-4. `README.md`
-5. `ROADMAP.md`
-6. Relevant `.kiro/specs/<feature>/...`
+3. `docs/handoff/CURRENT.md`
+4. `PROJECT_CONTEXT.md`
+5. Relevant handoffs/decisions/incidents and `.kiro/specs/<feature>/...`
+6. `README.md`, `ROADMAP.md` for onboarding and dated plans
 
-During the Web GPT / CoS handoff, read `WEB_GPT_HANDOFF.md` after the startup documents and before resuming implementation. It distinguishes frozen policy, partial implementation, and dated validation evidence.
+During the Web GPT / CoS handoff, follow `CURRENT.md` to the relevant evidence. `WEB_GPT_HANDOFF.md` is historical context, not the live operational entry.
 
 ## 3. Codex-Specific Rules
 
 - Default conversation language: Korean (unless user requests English).
-- Before substantial edits: restate scope, provide short plan, and get explicit user approval.
+- Codex CLI performs repo-local search, implementation, verification, diff and documentation within the bounded user-authorized scope; follow `AI_COMMON_RULES.md` for approval and mutation ownership.
 - For rule conflicts after startup, follow `AI_COMMON_RULES.md` for shared behavior.
 
 ## 4. Maintenance Rule

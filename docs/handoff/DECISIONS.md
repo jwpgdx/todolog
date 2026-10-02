@@ -43,22 +43,22 @@ F03은 AllTodos 과거 실험의 최종 결론이다. 초기에 pageTitle을 권
 | ID | 질문 | 현재 근거 / 처리 방향 |
 |---|---|---|
 
-D02~D06은 각각 F24~F28로 freeze했다. 사용자 요청 없이 같은 정책을 다시 결정받지 않는다. 다음 단계는 frozen contract를 formal `requirements.md` / `design.md` / `tasks.md`로 승격하고 사용자 검토를 받는 것이다.
+D02~D06은 각각 F24~F28로 freeze했고 formal `requirements.md` / `design.md` / `tasks.md`도 2026-09-25 사용자 승인 완료다. 사용자 요청 없이 같은 정책이나 formal spec 승인을 다시 받지 않는다. 현재 단계는 실제 환경에서 기존 구현을 검증하고 남은 contract gap만 보정하는 것이다.
 
 ## 3. 논의보다 구현·검증이 필요한 항목
 
 - R01: 단일 삭제는 초기 raw memo의 즉시 삭제 요청 이후 presentation 문서에서 undo 전 확인 유지로 freeze되었다. 최신 정책을 유지하며, 사용자가 변경을 요청하지 않는 한 다시 결정받지 않는다.
 - A03 같은 target-category no-op은 이미 F14로 확정됐다. 다시 사용자에게 같은 정책을 선택하게 하지 않는다.
-- A06의 missing/stale selection 처리와 A13의 필수 target 유효성은 F24로 확정됐다. 현재 코드는 아직 이 계약을 구현하지 않았으므로 구현·검증 대상으로 남긴다.
+- A06의 missing/stale selection 처리와 A13의 필수 target 유효성은 F24로 확정됐다. `d2d39ac`에서 정적 구현됐으며 실제 SQLite rollback/pending 0건 근거는 검증 대상으로 남긴다.
 - TodoScreen 선택모드 chrome은 F25로 확정됐다. 현재 TodoScreen에는 선택모드 자체가 미연결이므로 calendar hide/state restore와 공통 selection chrome은 구현·기기 검증 대상으로 남긴다.
 - 플랫폼 native interaction은 F26으로 확정됐다. iOS 기존 custom engine을 즉시 삭제하지 않으며 system context-menu → native collection drag → simple reorder bounded spike가 합격한 범위만 단계적으로 대체한다. Android todo/favorite native 구현은 long-press selection + explicit drag affordance 계약을 따른다.
-- Calendar-free summary item은 F27로 확정됐다. 현재 Favorites/Category의 RN `총 n개` header와 화면별 불일치는 구현·회귀 검증 대상으로 남긴다. Completed `지우기`는 의미가 별도 freeze되기 전 구현하지 않는다.
+- Calendar-free summary item은 F27로 확정됐다. native summary/header 통합의 잔여 task와 runtime 회귀 검증이 남아 있다. Completed `지우기`는 의미가 별도 freeze되기 전 구현하지 않는다.
 - 첫 production milestone은 F28로 확정됐다. iOS calendar-free selection/bulk move 이외의 기능을 같은 구현 Gate에 섞지 않는다.
-- bulk 순서 보존과 성공 후 selection 종료도 이미 확정됐다. 코드 수정과 테스트 대상이다.
+- bulk 순서 보존과 성공 후 selection 종료도 이미 확정됐고 정적 구현이 들어갔다. 실제 UI/SQLite acceptance 대상이다.
 - native header가 가능한지 다시 처음부터 실험하지 않는다. 현재 wrapper/layout 상태를 먼저 검증한다.
 - 색상 staged commit은 현재 코드와 최신 결정이 일치한다. 오래된 immediate-commit 문구는 폐기한다.
 - timezone/language 검색 고정은 이미 freeze다. 아직 구현되지 않은 점을 기록한다.
-- `requirements/design/tasks`로 승격하는 일은 기존 확정사항을 명확히 옮기는 작업이다. 새로운 기능 승인이 아니다.
+- `requirements/design/tasks` 승격과 사용자 승인은 완료됐다. 이후 구현·검증 중 새 미결정이 드러날 때만 별도 정책 논의를 연다.
 
 ## 4. 명시적으로 보류할 일
 
@@ -73,4 +73,4 @@ D02~D06은 각각 F24~F28로 freeze했다. 사용자 요청 없이 같은 정책
 
 웹 GPT와 결정할 때 ID, 질문, 기존 근거, 결정, 적용 화면/플랫폼, 제외 범위, 검증 조건을 해당 spec에 기록한다. 이 목록에서는 상태와 연결만 갱신한다. 원문 메모와 과거 검증 이력은 삭제하지 않는다.
 
-D02-D06 정책 확인 후 `.kiro/specs/todo-screen-v2/requirements.md`, `design.md`, `tasks.md` formal draft를 2026-09-25 작성했다. 사용자 검토/승인 전에는 H2/H3 구현 Gate를 자동 시작하지 않는다.
+D02-D06 정책 확인 후 `.kiro/specs/todo-screen-v2/requirements.md`, `design.md`, `tasks.md`를 2026-09-25 작성·승인했다. 현재는 `CURRENT.md`의 takeover/NEXT를 따라 새 환경의 H2와 기존 F28 구현 검증을 진행하며, 후속 milestone은 별도 선택 전 자동 시작하지 않는다.

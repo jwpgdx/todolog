@@ -1,5 +1,7 @@
 # 2026-09-28 Windows continuation — settings / timezone / active form
 
+> **Historical execution log.** 이 continuation의 source/test/doc 변경은 `b8d334a694b49060b838c41531ebc9a11e5fd359`에 커밋·push되었다. 현재 운영 상태와 다음 단계는 [CURRENT.md](CURRENT.md)를 사용하고, 아래 중간 dirty-worktree 기록은 당시 증거로만 읽는다.
+
 ## Authority and scope
 
 - User instruction: continue the prior Todolog work, inspecting current state before repeating anything.
@@ -253,4 +255,4 @@ Do not resume Android native compile automatically from this checkpoint. If Andr
 
 ## Resume safely
 
-Read this checkpoint, then inspect `git status`, HEAD and the current test file. The package is intentionally left as reviewable local changes; do not reset, replay the patch or treat older H2-only text as the latest operational stop. Preserve all unrelated work and stop at real product/deployment boundaries.
+Start from [CURRENT.md](CURRENT.md), then inspect actual branch/HEAD/worktree and use this file only for the 2026-09-28 evidence chain. The package is no longer intentionally left dirty: it landed in `b8d334a694b49060b838c41531ebc9a11e5fd359`. Do not replay it, and stop at real product/deployment/runtime approval boundaries.

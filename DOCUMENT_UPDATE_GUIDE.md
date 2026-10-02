@@ -1,13 +1,14 @@
 # 문서 업데이트 가이드 (빠른 체크용)
 
-마지막 업데이트: 2026-02-22
+마지막 업데이트: 2026-10-02
 
 ## 1) 기본 원칙
 
 - `AGENTS.md`: Codex 시작 문서
 - `.kiro/steering/requirements.md`: Kiro 시작 문서
 - `AI_COMMON_RULES.md`: Codex/Kiro 공통 규칙 원본
-- `PROJECT_CONTEXT.md`: 현재 구현/동작의 사실(SOT)
+- `docs/handoff/CURRENT.md`: 현재 운영 상태·owner·인수 진입점·다음 경계
+- `PROJECT_CONTEXT.md`: 아키텍처/계약/구현 설명 (실제 Git/source/tests와 대조)
 - `README.md`: 외부 공개용 온보딩/실행 가이드
 - `ROADMAP.md`: 완료 이력 + 다음 계획
 - `.kiro/specs/<feature>/`: 기능별 요구/설계/태스크
@@ -47,6 +48,11 @@
 8. Kiro 시작 규칙만 바뀜:
 - 필수: `.kiro/steering/requirements.md`
 
+9. 운영 상태/owner/다음 범위, 환경·계정·세션 인수 또는 blocker 상태가 바뀜:
+- 필수: `docs/handoff/CURRENT.md` (확인 날짜, 실제 branch/HEAD/worktree, 완료/진행/미확인 구분)
+- 필요 시: 관련 handoff/incident/`docs/handoff/VALIDATION.md`에 날짜·커밋·플랫폼 근거 기록 후 연결
+- 세션 이전 전 안전한 경계에서 갱신하고, 허용된 경우 GitHub commit+push checkpoint 후 새 대화로 이전. Slack에는 repo 링크만 요약하며 비밀값/private runtime을 복원하지 않음
+
 ## 3) 빠른 의사결정 순서
 
 1. 이 변경이 “공통 AI 규칙”인가?
@@ -67,8 +73,12 @@
 6. 이 변경이 “특정 기능 요구/설계/태스크”인가?
 - Yes -> `.kiro/specs/<feature>/` 3종 문서
 
+7. 이 변경이 “현재 운영 상태/인수/owner/다음 경계”인가?
+- Yes -> `docs/handoff/CURRENT.md` + 관련 근거 문서
+
 ## 4) 작업 종료 전 체크리스트
 
+- [ ] 운영 상태/owner/다음 경계가 바뀌거나 세션을 이전한다면 `CURRENT.md`를 실제 Git 상태와 근거 링크로 갱신했는가? (문서 내 SHA보다 실제 HEAD/worktree 우선)
 - [ ] 구현 변경 사항이 `PROJECT_CONTEXT.md`에 반영되었는가?
 - [ ] 사용자 실행/설치/환경변수 영향이 있으면 `README.md`를 갱신했는가?
 - [ ] 마일스톤/계획이 바뀌면 `ROADMAP.md`를 갱신했는가?

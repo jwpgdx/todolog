@@ -1,6 +1,6 @@
 # Kiro Entry Requirements
 
-Last Updated: 2026-02-13
+Last Updated: 2026-10-02
 Scope: Kiro startup instructions only.
 
 ## 1. Purpose
@@ -18,14 +18,14 @@ When working with Kiro, read in this order:
 
 1. `.kiro/steering/requirements.md` (this file)
 2. `AI_COMMON_RULES.md`
-3. `PROJECT_CONTEXT.md`
-4. `README.md`
-5. `ROADMAP.md`
-6. Relevant `.kiro/specs/<feature>/...`
+3. `docs/handoff/CURRENT.md`
+4. `PROJECT_CONTEXT.md`
+5. Relevant handoffs/decisions/incidents and `.kiro/specs/<feature>/...`
+6. `README.md`, `ROADMAP.md` for onboarding and dated plans
 
 ## 3. Kiro-Specific Rules
 
-- Before substantial edits: restate scope, provide short plan, and get explicit user approval.
+- Follow `AI_COMMON_RULES.md` for initial bounded authorization, continued work inside that scope, approval boundaries and mutation ownership.
 - For shared policy conflicts, `AI_COMMON_RULES.md` is the source of truth.
 
 ## 4. Maintenance Rule

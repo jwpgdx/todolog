@@ -4,13 +4,12 @@ Offline-first Todo and Calendar app built with React Native (Expo) and Node.js.
 
 Todolog is designed to work fully offline, then sync safely to server and Google Calendar when online.
 
-## Current Handoff (2026-09-21)
+## Current Handoff
 
-Feature development is paused for documentation review and Web GPT / CoS handoff.
-Start with [WEB_GPT_HANDOFF.md](WEB_GPT_HANDOFF.md) on branch
-`codex/web-gpt-handoff-2026-09-21`. It separates frozen decisions, actual implementation,
-historical validation, and outstanding work. The July snapshot below is historical;
-no fresh native build or end-to-end test was performed during this documentation audit.
+Start with [docs/handoff/CURRENT.md](docs/handoff/CURRENT.md) on branch
+`codex/web-gpt-handoff-2026-09-21`. It records the live operational snapshot, authority order,
+ownership/runtime boundaries and next work. `WEB_GPT_HANDOFF.md` and the July status below are
+historical context; always verify actual branch/HEAD/worktree before resuming.
 
 ## Highlights
 
@@ -25,9 +24,9 @@ no fresh native build or end-to-end test was performed during this documentation
 - Google Calendar integration with strict schedule type handling
 - Timezone-aware selected-date state (`currentDate`) based on `user.settings.timeZone`
 
-## Current Status
+## Historical Status Snapshot
 
-As of 2026-07-12:
+The list below is preserved from the 2026-07-12-era onboarding baseline and later incremental edits. It is not the live operational checklist; use `docs/handoff/CURRENT.md` for current status.
 
 - Phase 1-2 calendar integration: complete
 - Phase 2.5 data normalization (floating date/time string contract): complete

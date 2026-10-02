@@ -1,6 +1,6 @@
 # Todolog AI Common Rules
 
-Last Updated: 2026-05-19
+Last Updated: 2026-10-02
 Scope: Shared rules for all AI tools used in this repository.
 
 ## 1. Purpose
@@ -18,7 +18,14 @@ Tool-specific entry behavior must stay in:
 - Prioritize safety, correctness, and clarity over speed.
 - Start with a short plan before substantial edits.
 - Keep communication concise and concrete.
-- Ask for explicit user confirmation before editing code/docs.
+- Obtain initial user authorization for a bounded work unit. Once authorized, continue repo-local inspection, implementation, verification, and documentation inside that scope without repeated approval requests. Ask again for new scope/product policy or deployment, DB write/migration, secrets/signing/provider, or destructive boundaries; existing explicit restrictions remain in force.
+
+### Operational Authority and Tool Roles
+
+- Authority order: explicit user decisions/approved frozen specs -> actual Git/source and commit-specific test evidence -> `docs/handoff/CURRENT.md` operational snapshot -> `PROJECT_CONTEXT.md` architecture/contracts -> `docs/handoff/DECISIONS.md` and relevant specs -> dated validation/incidents/handoffs -> actual CoS runtime for ephemeral external state -> Slack coordination/navigation. Approved policy remains authoritative regardless of its storage document; actual runtime observations determine external state, which must never be inferred from Slack.
+- GitHub's designated repo/branch is the durable checkpoint. Actual branch, `git rev-parse HEAD`, and worktree override embedded implementation SHAs; do not assume `main` is current.
+- Web GPT/Prime handles design, policy, review, model/review coordination and recording user approvals. CoS handles local runtime/UI, connected apps and external boundaries. Codex CLI handles repo-local search, implementation, tests/builds, diff and docs when efficient, within the authorized work unit.
+- Use one mutation owner per work unit. Before CoS/Codex handoff, inspect running commands/builds/services/UI control and worktree changes; transfer ownership only at a safe boundary. Do not mutate the same worktree/device concurrently.
 
 ## 3. Mandatory Development Method
 
@@ -51,6 +58,9 @@ Can skip spec-driven for small fixes (1-2 files), style-only tweaks, log-only ch
 - Never overwrite or delete non-code assets without permission.
 - Never revert unrelated user changes.
 - Prefer minimal, reviewable, non-destructive edits.
+- Before session/operator migration, stop at a safe boundary and update `CURRENT.md` plus relevant handoff/validation with actual Git state, owner, completed evidence, blockers and next scope. When authorized, commit and push a GitHub checkpoint before starting the new chat. If commit/push is prohibited, report local uncheckpointed changes instead of claiming remote preservation.
+- On takeover, use Slack START HERE if available, then repo entry/common rules -> `CURRENT.md` -> relevant decisions/handoffs/incidents/specs -> actual HEAD/worktree -> runtime/auth/device/provider state. Preserve completed evidence; repeat only checks needed for changed source/environment.
+- Slack uses START/CHECKPOINT/BLOCKER/DECISION/RESOLVED/NEXT/OWNERSHIP with repo links. Preserve decisions/evidence in Git; Slack is never implementation, approval, secrets, or private-runtime authority. Ambiguous real provider/Google/DB results require runtime inspection before retry; app sync retry follows `PROJECT_CONTEXT.md` and the sync spec.
 
 ## 5. Architecture Guardrails (Must Preserve)
 
@@ -82,7 +92,8 @@ For implementation detail, reference `PROJECT_CONTEXT.md`.
 - `AGENTS.md`: Codex entry-only instructions
 - `.kiro/steering/requirements.md`: Kiro entry-only instructions
 - `AI_COMMON_RULES.md`: shared AI rules (this file)
-- `PROJECT_CONTEXT.md`: implementation source of truth
+- `docs/handoff/CURRENT.md`: current operational snapshot, ownership, takeover entry and next boundary
+- `PROJECT_CONTEXT.md`: architecture/contracts and implementation context; verify against actual Git/source/tests
 - `README.md`: public onboarding and run instructions
 - `ROADMAP.md`: dated milestones and next plan
 
@@ -97,6 +108,7 @@ Rule of thumb:
 3. Implementation reality change -> update `PROJECT_CONTEXT.md`
 4. Public setup/onboarding change -> update `README.md`
 5. Milestone/plan change -> update `ROADMAP.md`
+6. Operational state/owner/next boundary or session/environment handoff change -> update `docs/handoff/CURRENT.md` and link dated evidence
 
 ## 8. Validation and Reporting
 

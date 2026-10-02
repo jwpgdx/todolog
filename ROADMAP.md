@@ -1,6 +1,6 @@
 # Todolog Roadmap
 
-Last Updated: 2026-09-21
+Last Updated: 2026-10-02
 Owner: Product + Engineering
 
 ## 1. Purpose
@@ -11,14 +11,13 @@ This roadmap tracks:
 - current focus
 - upcoming work by priority
 
-For implementation truth, see `PROJECT_CONTEXT.md`.
+For current operational state/ownership/NEXT, see `docs/handoff/CURRENT.md`.
+For architecture and implementation context, see `PROJECT_CONTEXT.md`.
 For execution rules, see `.kiro/steering/requirements.md`.
 
 ## 2. Current Focus
 
-Current priority is documentation handoff, not a new feature Gate. Start with
-`WEB_GPT_HANDOFF.md` and `docs/handoff/EXECUTION_GUIDE.md` (H0-H5). Web GPT will review
-open decisions before coding resumes. The milestones below retain historical validation.
+Current priority is **new-Mac baseline/runtime reproduction and validation of the existing F28 implementation**, not re-opening frozen decisions or blindly starting a new feature. Start with `docs/handoff/CURRENT.md` and `docs/handoff/EXECUTION_GUIDE.md`. The milestones below retain historical validation.
 
 Current state:
 
@@ -47,12 +46,12 @@ Current state:
 - Calendar-free screen selection mode is partially implemented on Favorites, All Todos, and Category detail
 - Shared category picker supports single and bulk todo IDs; the latest bulk selection -> move -> SQLite commit path still needs manual verification
 - The selection action bar currently wires Move only; offline-first bulk delete/complete/favorite hooks remain pending
-- TodoScreen V2 architecture decisions are frozen in triage, but formal requirements/design/tasks and TodoScreen selection chrome remain pending
-- A historical new-Mac checkpoint is documented in `NEW_MAC_HANDOFF_2026-07-12.md`; the current Web GPT / CoS handoff is `WEB_GPT_HANDOFF.md`
+- TodoScreen V2 decisions are frozen through F28 and formal requirements/design/tasks were approved on 2026-09-25. Substantial calendar-free F28 static stabilization landed on 2026-09-26; iOS/SQLite/native acceptance and native summary/spike gaps remain.
+- A historical new-Mac checkpoint is documented in `NEW_MAC_HANDOFF_2026-07-12.md`; the current operational handoff is `docs/handoff/CURRENT.md`
 
 Immediate objective:
 
-- finish Web GPT handoff, resolve documented decision conflicts, and validate CoS/device access before selecting the next implementation Gate
+- on the new Mac, restore the designated branch/lockfiles, verify actual CoS/Xcode/simulator/device/runtime state, then validate the existing F28 implementation before new feature mutation
 - treat the remaining bullets as the backlog, not authorization to start all work at once
 
 - maintain sync operational stability (retry/dead-letter/throughput monitoring)
@@ -65,8 +64,8 @@ Immediate objective:
 - finish floating tab bar Android/manual parity smoke after the iOS-validated detached-shell rollout
 - replace `react-native-wheel-pick` with native UI after the SDK 55 stabilization window
 - reproduce the preserved lockfile/native build on the new Apple Silicon Mac before any Expo patch upgrade
-- complete selection-mode manual/SQLite validation, then implement first-class offline-first bulk actions
-- promote TodoScreen V2 triage decisions into approved requirements/design/tasks before implementation
+- complete F28 calendar-free selection/bulk-move iOS + SQLite/pending acceptance and close its remaining native summary/spike/regression gates before choosing the next milestone
+- keep deferred bulk delete/complete/favorite, TodoScreen selection and Android todo/favorite native parity out of the current milestone until separately selected
 
 ## 3. Dated Milestones (Completed)
 

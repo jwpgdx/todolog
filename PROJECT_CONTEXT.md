@@ -1,9 +1,9 @@
 # Todolog Project Context
 
-Last Updated: 2026-09-28
-Status: Feature development remains paused. D02-D06 are frozen as F24-F28 and Todo Screen V2 formal requirements/design/tasks have been drafted for user review. Native-list foundations have historical validation; selection mode and bulk category move remain partial and unimplemented against the latest freezes.
+Last Updated: 2026-10-02
+Status: F24-F28 and the Todo Screen V2 formal requirements/design/tasks are approved. Calendar-free selection/bulk-move static stabilization is partially implemented; current iOS/SQLite/native acceptance evidence remains incomplete. Operational ownership, runtime state and the immediate new-Mac NEXT live in `docs/handoff/CURRENT.md`.
 
-Start with [WEB_GPT_HANDOFF.md](WEB_GPT_HANDOFF.md). The September audit did not rebuild or run the app. Historical "validated" statements below describe prior checks, not a fresh full regression pass.
+Start with [docs/handoff/CURRENT.md](docs/handoff/CURRENT.md), then use this file for architecture/contracts. Historical "validated" statements below describe their dated checks, not a fresh full regression pass.
 
 ## 1. Purpose
 
@@ -79,9 +79,9 @@ Server:
 - Codex local skill `upgrading-expo` is installed and listed in `AGENTS.md` for future Expo SDK upgrade work.
 - Current validated local iOS baseline is recorded in `client/docs/IOS_SIMULATOR_RUNBOOK.md`: macOS `15.7.3`, Xcode `26.2`, build SDK `iPhoneSimulator26.2.sdk`, simulator runtime `iOS 26.3.1`, simulator device `iPhone 17`. When Codex runs `xcodebuild`, `xcrun simctl`, or Maestro, run them outside the sandbox to avoid misleading CoreSimulator failures.
 - Dependency alignment note (2026-07-12): `npx expo-doctor` passes 16/19 checks. The preserved baseline is behind the newest SDK 55 patch set, `expo-constants` is missing as a direct peer dependency, and `react-native-wheel-pick` remains untested on the New Architecture. Do not auto-fix during machine migration; reproduce the lockfile baseline first, then handle dependency alignment as a separate approved task.
-- The historical new-Mac restore record is `NEW_MAC_HANDOFF_2026-07-12.md`; current Web GPT / CoS entry is `WEB_GPT_HANDOFF.md`.
-- Static audit gaps remain in code: bulk move reorders already-target todos, uses click order rather than screen-visible order, does not explicitly exit parent selection mode, and skips missing IDs. F24/F28 now define the required all-or-nothing behavior; see audit A03-A07/A13 and the formal Todo Screen V2 spec.
-- Latest AllTodos render references an undefined `styles.screen`; Favorites/Category detail retain wrapper/header structures. Revalidate layout and native header tracking after fixing the identified gaps; an earlier header spike is not proof of the current WIP layout.
+- The historical new-Mac restore record is `NEW_MAC_HANDOFF_2026-07-12.md`; current operational entry is `docs/handoff/CURRENT.md`.
+- `d2d39ac` statically addressed the earlier bulk-move gaps around target-category no-op, screen-visible ordering, selection-result exit and stale/exact-set transaction validation. Treat these as implemented-but-runtime-unverified until Gate 8 SQLite/iOS evidence exists; see `docs/handoff/IMPLEMENTATION_AUDIT.md`.
+- AllTodos now defines `styles.screen`; the earlier undefined-style audit finding is historical. Root flex/actual list height/native large-title tracking still require current iOS runtime validation.
 - My Page Completed/Upcoming/Inbox dedicated routes are placeholders. Settings screens remain largely RN; Account Hub and pinned language/timezone search are not implemented.
 
 ## 3. Non-Negotiable Architecture Commitments
